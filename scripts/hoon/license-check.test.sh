@@ -100,6 +100,17 @@ printf 'Multica License v2\n' > LICENSE && git commit -qam up2 && git update-ref
 git checkout -q main
 expect "base is newest merged tag; newer LICENSE warns" 0 "$(run)" 'base=v1.0.0 latest=v1.1.0.*warnings=1'
 
+setup non-ascii
+mkdir -p "docs" && printf 'x\n' > "docs/한글 파일.md" && git add -A && git commit -qm na
+git update-ref refs/upstream-tags/v1.0.0 HEAD && printf 'y\n' >> "docs/한글 파일.md" && git commit -qam na2
+expect "non-ASCII path with spaces is reported by name" 1 "$(run)" '한글 파일.md'
+awk '{ print } /^\| `server\/gen.go`/ { print "| `docs/한글 파일.md` | x |" }' FORK.md > FORK.tmp && mv FORK.tmp FORK.md && git commit -qam listed
+expect "non-ASCII path listed in FORK.md is exempt" 0 "$(run)" 'errors=0'
+
+setup notice-nul
+printf 'Multica\n\0\n' > NOTICE && git commit -qam nul
+expect "NOTICE with NUL byte still compared as text" 1 "$(run)" 'NOTICE dropped or changed'
+
 setup no-tags
 expect "missing tags fail" 1 "$(run --tag-prefix refs/nothing)" 'no upstream release tags'
 

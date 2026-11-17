@@ -84,7 +84,7 @@ fi
 if [ -z "$(blob "$HEAD_REF" NOTICE)" ]; then
   error "NOTICE is missing" NOTICE
 elif [ -n "$(blob "$base_ref" NOTICE)" ]; then
-  dropped="$(diff <(git show "$base_ref:NOTICE") <(git show "$HEAD_REF:NOTICE") | grep -c '^<' || true)"
+  dropped="$(diff -a <(git show "$base_ref:NOTICE") <(git show "$HEAD_REF:NOTICE") | grep -c '^<' || true)"
   [ "$dropped" = 0 ] || error "NOTICE dropped or changed $dropped upstream line(s)" NOTICE
 fi
 
@@ -103,7 +103,7 @@ while IFS=$'\t' read -r st path; do
   elif ! grep -aqF "$MARK" <<<"$(git show "$HEAD_REF:$path" 2>/dev/null | sed -n "1,${MARK_LINES}p")"; then
     error "modified upstream file has no '$MARK' notice in its first $MARK_LINES lines and is not listed in FORK.md: $path" "$path"
   fi
-done < <(git diff --name-status --no-renames --diff-filter=MDT "$base_ref" "$HEAD_REF")
+done < <(git -c core.quotePath=false diff --name-status --no-renames --diff-filter=MDT "$base_ref" "$HEAD_REF")
 
 # d. UI branding (warnings only). Code comments are not displayed, so skip them.
 brand_lines() {
@@ -124,6 +124,6 @@ while IFS=$'\t' read -r st path; do
     grep -qxF -- "$line" <<<"$new" || lost=$((lost + 1))
   done < <(git show "$base_ref:$path" 2>/dev/null | brand_lines)
   [ "$lost" = 0 ] || warn "UI file lost $lost line(s) mentioning Multica; keep the name/attribution: $path" "$path"
-done < <(git diff --name-status --no-renames --diff-filter=MDT "$base_ref" "$HEAD_REF")
+done < <(git -c core.quotePath=false diff --name-status --no-renames --diff-filter=MDT "$base_ref" "$HEAD_REF")
 
 finish
