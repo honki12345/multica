@@ -28,6 +28,9 @@ export function chatActivity(session: ChatSession): string {
  * the chat's whole life: ordering by activity would swap two running chats on
  * every message. The open chat is always among the visible chips, because the
  * window opens above its chip.
+ *
+ * With no `maxVisible`, every chip is visible and the bar scrolls them instead
+ * of folding the rest into an overflow menu.
  */
 export function selectChatBarSessions({
   sessions,
@@ -45,7 +48,7 @@ export function selectChatBarSessions({
   kept: readonly string[];
   /** Closed chips: sessionId to the chat's activity when it was closed. */
   dismissed: Readonly<Record<string, string>>;
-  maxVisible: number;
+  maxVisible?: number;
 }): ChatBarSessions {
   const items = sessions
     .filter((session) => session.status !== "archived")
@@ -66,7 +69,7 @@ export function selectChatBarSessions({
         new Date(b.session.created_at).getTime() - new Date(a.session.created_at).getTime(),
     );
 
-  const limit = Math.max(1, maxVisible);
+  const limit = maxVisible === undefined ? items.length : Math.max(1, maxVisible);
   const openIndex = items.findIndex((item) => item.open);
   if (openIndex >= limit) {
     const [open] = items.splice(openIndex, 1);

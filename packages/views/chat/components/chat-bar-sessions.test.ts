@@ -122,6 +122,20 @@ describe("selectChatBarSessions", () => {
     expect(ids(visible)).toEqual(["newer", "older"]);
   });
 
+  it("shows every chip with no overflow when there is no limit", () => {
+    const sessions = [1, 2, 3, 4, 5, 6].map((n) => session(`s${n}`, n, { has_unread: true }));
+    const { visible, overflow } = selectChatBarSessions({
+      sessions,
+      runningSessionIds: new Set(),
+      openSessionId: "s1",
+      kept: [],
+      dismissed: {},
+    });
+
+    expect(ids(visible)).toEqual(["s6", "s5", "s4", "s3", "s2", "s1"]);
+    expect(overflow).toEqual([]);
+  });
+
   it("puts what does not fit into the overflow", () => {
     const { visible, overflow } = select({
       sessions: [1, 2, 3, 4].map((n) => session(`s${n}`, n, { has_unread: true })),

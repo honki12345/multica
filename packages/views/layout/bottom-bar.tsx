@@ -28,7 +28,9 @@ function TeamStatus({ wsId }: { wsId: string }) {
   );
 
   return (
-    <div className="flex min-w-0 items-center gap-1">
+    // shrink-0: when quick chat runs out of room its chips scroll; the status
+    // is never squeezed for them.
+    <div className="flex shrink-0 items-center gap-1">
       {waitingTasks > 0 && (
         <AppLink
           href={teamHref}

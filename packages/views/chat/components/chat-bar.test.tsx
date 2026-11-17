@@ -107,6 +107,39 @@ describe("ChatBar", () => {
     expect(screen.queryByRole("button", { name: /Read and done/ })).not.toBeInTheDocument();
   });
 
+  it("shows a chip for every chat instead of folding the rest into a +N menu", () => {
+    const many = [1, 2, 3, 4, 5, 6].map((n) => session(`Chat ${n}`, n, { has_unread: true }));
+    renderBar(many);
+
+    for (const item of many) {
+      expect(screen.getByRole("button", { name: `${item.id}, Unread` })).toBeInTheDocument();
+    }
+    expect(screen.queryByRole("button", { name: /more chat/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/^\+\d+$/)).not.toBeInTheDocument();
+  });
+
+  it("scrolls the open chat's chip into view, so the window opens above it", () => {
+    const many = [1, 2, 3, 4, 5, 6].map((n) => session(`Chat ${n}`, n, { has_unread: true }));
+    // Chips are newest first, so the oldest chat's chip is last, past the strip's end.
+    const box = (left: number, right: number) => ({ left, right }) as DOMRect;
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      if (this.dataset.slot === "chat-bar-chips") return box(0, 300);
+      if (this.dataset.chatAnchor === "Chat 1") return box(500, 600);
+      return box(0, 0);
+    });
+    h.chat.isOpen = true;
+    h.chat.activeSessionId = "Chat 1";
+    try {
+      const { container } = renderBar(many);
+      const strip = container.querySelector<HTMLElement>('[data-slot="chat-bar-chips"]');
+      expect(strip?.scrollLeft).toBe(300);
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
   it("opens the chat window on the chip's chat, with that chat's agent", () => {
     renderBar(SESSIONS, [SESSIONS[1]!.id]);
 

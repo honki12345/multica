@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, X } from "@multica/ui/icons";
 import { useChatStore } from "@multica/core/chat";
@@ -8,12 +8,6 @@ import { chatSessionsOptions, pendingChatTasksOptions } from "@multica/core/chat
 import { useWorkspaceId } from "@multica/core/hooks";
 import type { ChatSession } from "@multica/core/types";
 import { TooltipHint } from "@multica/ui/components/common/tooltip-hint";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@multica/ui/components/ui/dropdown-menu";
 import { STAR_STROKE, starPath } from "@multica/ui/lib/multica-brand";
 import { cn } from "@multica/ui/lib/utils";
 import { ActionShortcutKeycaps } from "../../common/shortcut-keycaps";
@@ -33,32 +27,15 @@ function MulticaStar() {
     </svg>
   );
 }
-const DEFAULT_MAX_CHIPS = 3;
-
 /**
- * How many chips fit. The bar's other content (workspace status, Ask Multica,
- * history) takes about 560px and a chip up to 170px; a narrow window gives up
- * chips before it squeezes the status.
+ * Scrolls the strip so the chip is wholly inside it. Done by hand rather than
+ * with `scrollIntoView`, which would also scroll the strip's ancestors.
  */
-function maxChipsForWidth(width: number): number {
-  return Math.min(4, Math.max(1, Math.floor((width - 560) / 170)));
-}
-
-function useMaxChips(ref: React.RefObject<HTMLElement | null>): number {
-  const [max, setMax] = useState(DEFAULT_MAX_CHIPS);
-  useEffect(() => {
-    const bar = ref.current?.parentElement;
-    if (!bar || typeof ResizeObserver === "undefined") return;
-    const update = () => {
-      // Unmeasured (hidden, or no layout): keep the default.
-      if (bar.clientWidth > 0) setMax(maxChipsForWidth(bar.clientWidth));
-    };
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(bar);
-    return () => observer.disconnect();
-  }, [ref]);
-  return max;
+function scrollChipIntoView(strip: HTMLElement, chip: HTMLElement) {
+  const stripBox = strip.getBoundingClientRect();
+  const chipBox = chip.getBoundingClientRect();
+  if (chipBox.left < stripBox.left) strip.scrollLeft -= stripBox.left - chipBox.left;
+  else if (chipBox.right > stripBox.right) strip.scrollLeft += chipBox.right - stripBox.right;
 }
 
 /**
@@ -101,8 +78,7 @@ export function ChatBar() {
   const startNewChat = useChatStore((s) => s.startNewChat);
   const keepChatInBar = useChatStore((s) => s.keepChatInBar);
   const dismissChatFromBar = useChatStore((s) => s.dismissChatFromBar);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const maxVisible = useMaxChips(rootRef);
+  const stripRef = useRef<HTMLDivElement>(null);
 
   const { data: sessions = EMPTY_SESSIONS } = useQuery(chatSessionsOptions(wsId));
   // Per-chat running state needs the task list, not the boolean the launcher
@@ -120,11 +96,30 @@ export function ChatBar() {
     if (openSessionId) keepChatInBar(openSessionId);
   }, [openSessionId, keepChatInBar]);
 
-  const { visible, overflow } = useMemo(
-    () =>
-      selectChatBarSessions({ sessions, runningSessionIds, openSessionId, kept, dismissed, maxVisible }),
-    [sessions, runningSessionIds, openSessionId, kept, dismissed, maxVisible],
+  // Every chip is shown; when they do not fit, the strip scrolls sideways
+  // instead of folding the rest into a "+N" menu.
+  const { visible } = useMemo(
+    () => selectChatBarSessions({ sessions, runningSessionIds, openSessionId, kept, dismissed }),
+    [sessions, runningSessionIds, openSessionId, kept, dismissed],
   );
+  const chipIds = visible.map((item) => item.session.id).join("\n");
+
+  // The window opens above the open chat's chip, so that chip has to be in
+  // view. Runs before the anchor hook measures it on the next frame.
+  useLayoutEffect(() => {
+    const strip = stripRef.current;
+    if (!strip || !openSessionId) return;
+    const chip = Array.from(strip.querySelectorAll<HTMLElement>("[data-chat-anchor]")).find(
+      (el) => el.dataset.chatAnchor === openSessionId,
+    );
+    if (chip) scrollChipIntoView(strip, chip);
+  }, [openSessionId, chipIds]);
+
+  // A mouse wheel only scrolls vertically; turn it into the strip's sideways scroll.
+  const onStripWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    event.currentTarget.scrollLeft += event.deltaY;
+  };
   const openOnChip = visible.some((item) => item.open);
   const askPressed = isOpen && !openOnChip;
 
@@ -160,65 +155,51 @@ export function ChatBar() {
   const askLabel = t(($) => $.fab.default);
 
   return (
-    <div ref={rootRef} data-slot="chat-bar" className="flex min-w-0 shrink-0 items-center gap-0.5">
-      {visible.map((item) => {
-        const title = titleOf(item.session);
-        const state = stateOf(item);
-        return (
-          <span key={item.session.id} className="group/chip relative flex shrink-0">
-            <TooltipHint label={state ? `${title} · ${state}` : title}>
-              <button
-                type="button"
-                data-chat-anchor={item.session.id}
-                aria-pressed={item.open}
-                aria-label={state ? `${title}, ${state}` : title}
-                onClick={() => toggleSession(item.session)}
-                className={cn(BOTTOM_BAR_ITEM_CLASS, "gap-1 pl-1.5")}
-              >
-                <SessionMark item={item} />
-                {/* The close button sits over the end of the title rather than
-                    beside it, so showing it never changes the chip's width. */}
-                <span className="max-w-32 truncate group-focus-within/chip:[mask-image:linear-gradient(to_right,black_calc(100%-26px),transparent_calc(100%-14px))] group-hover/chip:[mask-image:linear-gradient(to_right,black_calc(100%-26px),transparent_calc(100%-14px))]">
-                  {title}
-                </span>
-              </button>
-            </TooltipHint>
-            <button
-              type="button"
-              aria-label={t(($) => $.bar.close_chip, { title })}
-              onClick={() => closeChip(item)}
-              className="absolute top-1 right-1 flex size-4 cursor-pointer items-center justify-center rounded-sm text-muted-foreground opacity-0 outline-none transition-opacity hover:bg-surface-hover hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-ring group-hover/chip:opacity-100 [&_svg]:size-3"
-            >
-              <X aria-hidden />
-            </button>
-          </span>
-        );
-      })}
-      {overflow.length > 0 && (
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            aria-label={t(($) => $.bar.more, { count: overflow.length })}
-            className={cn(BOTTOM_BAR_ITEM_CLASS, "px-1.5 tabular-nums")}
-          >
-            +{overflow.length}
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" side="top" sideOffset={8} className="max-w-72 min-w-48">
-            {overflow.map((item) => (
-              <DropdownMenuItem
-                key={item.session.id}
-                data-chat-anchor-trigger
-                onClick={() => openSession(item.session)}
-              >
-                <span className="flex shrink-0 [&_svg]:size-3.5">
-                  <SessionMark item={item} />
-                </span>
-                <span className="min-w-0 truncate">{titleOf(item.session)}</span>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+    <div data-slot="chat-bar" className="flex min-w-0 items-center gap-0.5">
+      {visible.length > 0 && (
+        <div
+          ref={stripRef}
+          data-slot="chat-bar-chips"
+          onWheel={onStripWheel}
+          // py/px: room for the chips' focus outline, which the scroller would clip.
+          className="flex min-w-0 items-center gap-0.5 overflow-x-auto overscroll-x-contain px-0.5 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {visible.map((item) => {
+            const title = titleOf(item.session);
+            const state = stateOf(item);
+            return (
+              <span key={item.session.id} className="group/chip relative flex shrink-0">
+                <TooltipHint label={state ? `${title} · ${state}` : title}>
+                  <button
+                    type="button"
+                    data-chat-anchor={item.session.id}
+                    aria-pressed={item.open}
+                    aria-label={state ? `${title}, ${state}` : title}
+                    onClick={() => toggleSession(item.session)}
+                    className={cn(BOTTOM_BAR_ITEM_CLASS, "gap-1 pl-1.5")}
+                  >
+                    <SessionMark item={item} />
+                    {/* The close button sits over the end of the title rather than
+                        beside it, so showing it never changes the chip's width. */}
+                    <span className="max-w-32 truncate group-focus-within/chip:[mask-image:linear-gradient(to_right,black_calc(100%-26px),transparent_calc(100%-14px))] group-hover/chip:[mask-image:linear-gradient(to_right,black_calc(100%-26px),transparent_calc(100%-14px))]">
+                      {title}
+                    </span>
+                  </button>
+                </TooltipHint>
+                <button
+                  type="button"
+                  aria-label={t(($) => $.bar.close_chip, { title })}
+                  onClick={() => closeChip(item)}
+                  className="absolute top-1 right-1 flex size-4 cursor-pointer items-center justify-center rounded-sm text-muted-foreground opacity-0 outline-none transition-opacity hover:bg-surface-hover hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-ring group-hover/chip:opacity-100 [&_svg]:size-3"
+                >
+                  <X aria-hidden />
+                </button>
+              </span>
+            );
+          })}
+        </div>
       )}
-      {(visible.length > 0 || overflow.length > 0) && (
+      {visible.length > 0 && (
         <span aria-hidden className="mx-1.5 h-3.5 w-px shrink-0 bg-surface-border" />
       )}
       <TooltipHint
