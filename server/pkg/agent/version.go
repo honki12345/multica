@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: enable task supplements for Hermes >= 0.22.3.
+
 package agent
 
 import (

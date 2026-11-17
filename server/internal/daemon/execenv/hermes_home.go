@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: mirror resident gateway state instead of isolating it.
+
 package execenv
 
 import (

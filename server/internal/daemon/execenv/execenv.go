@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: skip the per-task Hermes home overlay in resident gateway mode.
+
 // Package execenv manages isolated per-task execution environments for the daemon.
 // Each task gets its own directory with injected context files. Repositories are
 // checked out on demand by the agent via `multica repo checkout`.

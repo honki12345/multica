@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: let `repo checkout` work from a resident Hermes tool shell.
+
 package main
 
 import (

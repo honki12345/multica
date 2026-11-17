@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: show every chat chip instead of folding extras into +N (CALA-72).
+
 import type { ChatSession } from "@multica/core/types";
 
 export interface ChatBarSession {

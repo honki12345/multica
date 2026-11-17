@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: read resident task identity and quick-create context from the workdir.
+
 package main
 
 import (

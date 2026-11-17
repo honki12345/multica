@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: resident Hermes gateway mode (shared sessions, task context file).
+
 package daemon
 
 import (

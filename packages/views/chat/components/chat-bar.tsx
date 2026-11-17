@@ -1,5 +1,7 @@
 "use client";
 
+// Modified by honki12345, 2026: render all chat chips in a horizontally scrolling strip (CALA-72).
+
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, X } from "@multica/ui/icons";

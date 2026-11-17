@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: support mid-run steering (task supplements) for Hermes.
+
 package agent
 
 import (

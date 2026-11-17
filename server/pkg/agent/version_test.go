@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: cover the Hermes task supplement minimum version.
+
 package agent
 
 import (

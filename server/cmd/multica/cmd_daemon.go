@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: let `daemon status` work from a resident Hermes tool shell.
+
 package main
 
 import (

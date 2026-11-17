@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: cover chat bar sessions with no chip cap (CALA-72).
+
 import { describe, expect, it } from "vitest";
 import type { ChatSession } from "@multica/core/types";
 import { chatActivity, selectChatBarSessions } from "./chat-bar-sessions";

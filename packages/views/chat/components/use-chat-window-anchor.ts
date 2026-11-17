@@ -1,5 +1,7 @@
 "use client";
 
+// Modified by honki12345, 2026: anchor the chat window to a scrolled chip (CALA-72).
+
 import { useLayoutEffect, useRef, useState } from "react";
 
 /** The window's inset from its container, and its resting place with no anchor. */

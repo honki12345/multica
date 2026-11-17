@@ -1,5 +1,7 @@
 "use client";
 
+// Modified by honki12345, 2026: keep team status from shrinking beside scrolling chat chips (CALA-72).
+
 import { TriangleAlert } from "@multica/ui/icons";
 import { useChatStore } from "@multica/core/chat";
 import { useCurrentWorkspace, useWorkspacePaths } from "@multica/core/paths";

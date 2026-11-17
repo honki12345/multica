@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: cover the horizontally scrolling chip strip (CALA-72).
+
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";

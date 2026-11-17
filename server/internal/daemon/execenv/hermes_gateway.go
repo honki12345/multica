@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: add the resident gateway opt-in and keep its state mirrored.
+
 package execenv
 
 import (
