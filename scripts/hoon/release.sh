@@ -32,7 +32,7 @@ WAIT_SECONDS="${MULTICA_HOON_WAIT_SECONDS:-120}"
 IMAGE_KEYS=(MULTICA_IMAGE_TAG MULTICA_BACKEND_IMAGE MULTICA_WEB_IMAGE)
 VERSION_RE='^[0-9]+\.[0-9]+\.[0-9]+-hoon\.[0-9]+$'
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+REPO_ROOT="${MULTICA_HOON_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 ENV_FILE="$SELFHOST_DIR/.env"
 DEPLOYS_DIR="$RELEASE_HOME/deploys"
 
@@ -111,9 +111,10 @@ cmd_build() {
   mkdir -p "$out"
   if [[ ! -f "$src/.export-sha" || "$(cat "$src/.export-sha")" != "$sha" ]]; then
     log "exporting $ref ($short) to $src"
-    rm -rf "$src"; mkdir -p "$src"
-    git -C "$REPO_ROOT" archive --format=tar "$sha" | tar -x -C "$src"
-    echo "$sha" > "$src/.export-sha"
+    rm -rf "$src" "$src.tmp"; mkdir -p "$src.tmp"
+    git -C "$REPO_ROOT" archive --format=tar "$sha" | tar -x -C "$src.tmp"
+    echo "$sha" > "$src.tmp/.export-sha"
+    mv "$src.tmp" "$src"
   fi
 
   if [[ ",$only," == *",cli,"* ]]; then
@@ -165,7 +166,8 @@ write_env_with_images() {
 assert_only_image_keys_changed() {
   local pattern='^(MULTICA_IMAGE_TAG|MULTICA_BACKEND_IMAGE|MULTICA_WEB_IMAGE)='
   if ! diff -q <(grep -vE "$pattern" "$1") <(grep -vE "$pattern" "$2") >/dev/null; then
-    die "refusing to write .env: a non-image key would change"
+    log "ERROR: refusing to write .env: a non-image key would change"
+    return 1
   fi
 }
 
@@ -213,9 +215,9 @@ cmd_deploy() {
   rec="$DEPLOYS_DIR/$ts.env"
 
   new_env="$ENV_FILE.new-$ts"
-  write_env_with_images "$ENV_FILE" "$new_env" "v$v" "$be" "$we"
-  chmod 0600 "$new_env"
-  assert_only_image_keys_changed "$ENV_FILE" "$new_env"
+  # The copy holds every secret in .env: create it 0600 from the start.
+  (umask 077; write_env_with_images "$ENV_FILE" "$new_env" "v$v" "$be" "$we")
+  assert_only_image_keys_changed "$ENV_FILE" "$new_env" || { rm -f "$new_env"; exit 1; }
 
   cp -p "$ENV_FILE" "$env_bak"
   local prev_bin_version=""
@@ -313,7 +315,7 @@ cmd_rollback() {
 
   local restored_env="$ENV_FILE.restore-$now"
   cp -p "$env_bak" "$restored_env"
-  assert_only_image_keys_changed "$ENV_FILE" "$restored_env"
+  assert_only_image_keys_changed "$ENV_FILE" "$restored_env" || { rm -f "$restored_env"; exit 1; }
   cp -p "$ENV_FILE" "$ENV_FILE.bak-rollback-$now"
   mv -f "$restored_env" "$ENV_FILE"
   print_image_keys "restored" "$ENV_FILE"
@@ -332,6 +334,25 @@ cmd_rollback() {
   log "rollback of $v done"
 }
 
+# Resolves the version up front so cmd_build runs outside a command
+# substitution, where bash would ignore set -e and keep going after a failure.
+cmd_release() {
+  local ref="" version_arg="" a=("$@")
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --version) version_arg="$2"; shift 2 ;;
+      --only) die "release always builds cli,backend,web" ;;
+      -*) die "unknown release flag $1" ;;
+      *) ref="$1"; shift ;;
+    esac
+  done
+  [[ -n "$ref" ]] || die "usage: release <ref> [--version X.Y.Z-hoon.N]"
+  local v
+  v="$(resolve_version "$ref" "$version_arg")"
+  cmd_build "${a[@]}" >/dev/null
+  cmd_deploy "$v"
+}
+
 cmd_status() {
   [[ -f "$ENV_FILE" ]] && print_image_keys "env" "$ENV_FILE"
   log "binary $("$RESIDENT_BIN" version 2>/dev/null | head -1)"
@@ -345,9 +366,7 @@ main() {
   case "$cmd" in
     build) cmd_build "$@" ;;
     deploy) cmd_deploy "$@" ;;
-    release)
-      local v; v="$(cmd_build "$@" | tail -1)"
-      cmd_deploy "$v" ;;
+    release) cmd_release "$@" ;;
     verify) cmd_verify "$@" ;;
     rollback) cmd_rollback ;;
     status) cmd_status ;;

@@ -88,4 +88,28 @@ src="$T/a.env"; dst="$T/b.env"
 printf 'A=1\nMULTICA_IMAGE_TAG=x\n' > "$src"; printf 'A=2\nMULTICA_IMAGE_TAG=y\n' > "$dst"
 (assert_only_image_keys_changed "$src" "$dst") 2>/dev/null && bad "guard rejects non-image change" || pass "guard rejects non-image change"
 
+# --- deploy guard failure leaves no temp file and no change ---
+# shellcheck disable=SC2034  # read inside check eval strings
+before="$(cat "$T/selfhost/.env")"
+write_env_with_images() { awk '{print} END {print "INJECTED=1"}' "$1" > "$2"; }
+export -f write_env_with_images 2>/dev/null || true
+(cmd_deploy 0.9.0-hoon.1) >/dev/null 2>&1 && bad "deploy refuses non-image diff" || pass "deploy refuses non-image diff"
+check "refused deploy leaves .env unchanged" '[[ "$(cat "$T/selfhost/.env")" == "$before" ]]'
+check "refused deploy leaves no .env.new-*" '! ls "$T/selfhost"/.env.new-* >/dev/null 2>&1'
+unset -f write_env_with_images
+# shellcheck source=/dev/null
+source "$SCRIPT"
+
+# --- release stops when the build fails ---
+mkdir -p "$T/repo" && git -C "$T/repo" init -q && git -C "$T/repo" -c user.name=t -c user.email=t@t commit -q --allow-empty -m x
+cat > "$T/stub/go" <<'EOF'
+#!/usr/bin/env bash
+echo "go $*" >> "$STUB_LOG"; exit 1
+EOF
+chmod +x "$T/stub/go"
+: > "$T/docker.log"
+MULTICA_HOON_REPO_ROOT="$T/repo" bash "$SCRIPT" release HEAD --version 0.9.0-hoon.9 >/dev/null 2>&1 && bad "release fails on build failure" || pass "release fails on build failure"
+check "release stops before docker build" '! grep -q "docker build" "$T/docker.log"'
+check "release does not deploy after build failure" '! ls "$T/releases/deploys"/*.env >/dev/null 2>&1'
+
 exit $fail
