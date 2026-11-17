@@ -1768,3 +1768,5 @@ func (w *logWriter) Write(p []byte) (int, error) {
 	}
 	return len(p), nil
 }
+
+// fork test: unmarked change to an upstream file
