@@ -677,7 +677,9 @@ func Prepare(params PrepareParams, logger *slog.Logger) (*Environment, error) {
 	// (service.LoadAgentSkillBundles), so a claimed task's AgentSkills is never
 	// empty and the skill-less branch is effectively unreachable in production.
 	// Emptying an agent's own skill list is NOT a way to opt out of the overlay.
-	if params.Provider == "hermes" && len(params.Task.AgentSkills) > 0 {
+	// Resident mode: tools run in the resident owner's real home, so a per-task overlay only
+	// re-derives a second dependency set for the ACP viewer. Run the viewer on the real home.
+	if params.Provider == "hermes" && len(params.Task.AgentSkills) > 0 && !ResidentHermesGatewayEnabled() {
 		hermesHome := filepath.Join(envRoot, "hermes-home")
 		sessions, err := prepareHermesHome(hermesHome, params.HermesSourceHome, params.HermesSourceMustExist, params.Task.AgentSkills, params.HermesEnv, params.HermesMemoryStore, params.HermesSessionStore, logger)
 		if err != nil {
@@ -1013,7 +1015,7 @@ func Reuse(params ReuseParams, logger *slog.Logger) *Environment {
 	// skill-less agent.
 	if params.Provider == "hermes" && env.RootDir != "" {
 		hermesHome := filepath.Join(env.RootDir, "hermes-home")
-		if len(params.Task.AgentSkills) > 0 {
+		if len(params.Task.AgentSkills) > 0 && !ResidentHermesGatewayEnabled() {
 			sessions, err := prepareHermesHome(hermesHome, params.HermesSourceHome, params.HermesSourceMustExist, params.Task.AgentSkills, params.HermesEnv, params.HermesMemoryStore, params.HermesSessionStore, logger)
 			if err != nil {
 				// Fail closed: a half-built overlay must not run. Returning nil
