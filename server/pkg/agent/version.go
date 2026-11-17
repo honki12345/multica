@@ -157,6 +157,11 @@ func SupportsTaskSupplement(provider, version string) bool {
 		// 2026.10.14 is the oldest build verified to forward postToolUse
 		// additional_context into the model turn in --print mode.
 		minimum = "2026.10.14"
+	case "hermes":
+		// 0.22.3 is the first release whose ACP adapter answers `/steer`
+		// during a running turn on both the in-process and the gateway
+		// path (acp_adapter/gateway_commands.py _steer -> session.steer).
+		minimum = "0.22.3"
 	default:
 		return false
 	}

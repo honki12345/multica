@@ -574,6 +574,7 @@ func (b *hermesBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 
 	promptDone := make(chan hermesPromptResult, 1)
 	activity := make(chan struct{}, 1)
+	supplements := &hermesSupplementSession{}
 
 	c := &hermesClient{
 		cfg:                        b.cfg,
@@ -584,7 +585,9 @@ func (b *hermesBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 		acceptNotification: func(string) bool {
 			return streamingCurrentTurn.Load()
 		},
+		acceptUpdate: supplements.acceptUpdate,
 		onActivity: func() {
+			supplements.observeActivity()
 			select {
 			case activity <- struct{}{}:
 			default:
@@ -609,6 +612,7 @@ func (b *hermesBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 		},
 		onUsage: opts.OnUsage,
 	}
+	supplements.client = c
 
 	// Start reading stdout in background.
 	readerDone := make(chan struct{})
@@ -908,12 +912,21 @@ func (b *hermesBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 		trySend(msgCh, Message{Type: MessageStatus, Status: "running", SessionID: sessionID})
 
 		streamingCurrentTurn.Store(true)
-		_, err = c.request(runCtx, "session/prompt", map[string]any{
+		// Steering opens only once the prompt is on the wire (and the turn has
+		// produced activity, see hermesSupplementSession.ready) and closes as
+		// soon as it answers, so additional input never targets setup or a
+		// finished turn.
+		_, err = c.requestAndNotifySent(runCtx, "session/prompt", map[string]any{
 			"sessionId": sessionID,
 			"prompt": []map[string]any{
 				{"type": "text", "text": hermesTurnText(prompt, opts.ResumeExpected, resumeLanded, opts.ResumeContinuityNotice)},
 			},
+		}, func() {
+			if opts.EnableTaskSupplement {
+				supplements.begin(sessionID)
+			}
 		})
+		supplements.stop()
 		if err != nil {
 			// If the request itself failed (not just context cancelled),
 			// check if the context was cancelled/timed out.
@@ -1088,7 +1101,14 @@ func (b *hermesBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 		}
 	}()
 
-	return &Session{Messages: msgCh, Result: resCh}, nil
+	session := &Session{Messages: msgCh, Result: resCh}
+	// Only the real Hermes Agent is known to answer `/steer` this way; a
+	// custom hermes-protocol runtime (jcode, ...) keeps the plain contract.
+	if opts.EnableTaskSupplement && b.cfg.BuiltinRuntime {
+		session.Supplement = supplements.send
+		session.SupplementReady = supplements.ready
+	}
+	return session, nil
 }
 
 // waitForHermesNotificationQuiescence gives the stdout reader a bounded chance
@@ -1305,10 +1325,17 @@ func (c *hermesClient) request(ctx context.Context, method string, params any) (
 // that request use it to avoid advertising readiness before the provider has
 // received the lifecycle-starting frame.
 func (c *hermesClient) requestAndNotifySent(ctx context.Context, method string, params any, afterWrite func()) (json.RawMessage, error) {
+	return c.requestTracked(ctx, method, method, params, afterWrite)
+}
+
+// requestTracked sends method but files the pending response under label, so
+// response handling keyed on the method (extractPromptResult for
+// session/prompt) can tell a secondary request apart from the turn's own.
+func (c *hermesClient) requestTracked(ctx context.Context, method, label string, params any, afterWrite func()) (json.RawMessage, error) {
 	c.mu.Lock()
 	id := c.nextID
 	c.nextID++
-	pr := &pendingRPC{ch: make(chan rpcResult, 1), method: method}
+	pr := &pendingRPC{ch: make(chan rpcResult, 1), method: label}
 	c.pending[id] = pr
 	c.mu.Unlock()
 
