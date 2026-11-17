@@ -16,6 +16,12 @@ type residentTaskContext struct {
 	WorkspaceID   string `json:"workspace_id"`
 	ChatSessionID string `json:"chat_session_id,omitempty"`
 	Token         string `json:"token"`
+	// Quick-create context mirrors the MULTICA_QUICK_CREATE_* env the daemon
+	// injects for non-resident runs; resident tool shells cannot inherit it.
+	QuickCreateTaskID              string   `json:"quick_create_task_id,omitempty"`
+	QuickCreateAttachmentIDs       []string `json:"quick_create_attachment_ids,omitempty"`
+	QuickCreateDefaultAssigneeType string   `json:"quick_create_default_assignee_type,omitempty"`
+	QuickCreateDefaultAssigneeID   string   `json:"quick_create_default_assignee_id,omitempty"`
 }
 
 // The resident owner outlives task environments, so its tools read a short-lived credential file.
@@ -24,13 +30,22 @@ func writeResidentTaskContext(envRoot, provider string, task Task, token string)
 	if !execenv.ResidentHermesGatewayEnabled() || provider != "hermes" || envRoot == "" {
 		return noop, nil
 	}
-	data, err := json.Marshal(residentTaskContext{
+	ctx := residentTaskContext{
 		TaskID:        task.ID,
 		AgentID:       task.AgentID,
 		WorkspaceID:   task.WorkspaceID,
 		ChatSessionID: task.ChatSessionID,
 		Token:         token,
-	})
+	}
+	if task.QuickCreatePrompt != "" {
+		ctx.QuickCreateTaskID = task.ID
+		ctx.QuickCreateAttachmentIDs = task.QuickCreateAttachmentIDs
+		ctx.QuickCreateDefaultAssigneeType, ctx.QuickCreateDefaultAssigneeID = "agent", task.AgentID
+		if task.SquadID != "" {
+			ctx.QuickCreateDefaultAssigneeType, ctx.QuickCreateDefaultAssigneeID = "squad", task.SquadID
+		}
+	}
+	data, err := json.Marshal(ctx)
 	if err != nil {
 		return noop, err
 	}

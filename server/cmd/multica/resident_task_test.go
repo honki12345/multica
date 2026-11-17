@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,6 +80,66 @@ func TestResidentNewAPIClient(t *testing.T) {
 				}
 			} else if client.Token != tc.token || client.TaskID != tc.task || client.AgentID != "" || client.WorkspaceID != "workspace-explicit" {
 				t.Error("client did not preserve explicit identity and workspace")
+			}
+		})
+	}
+}
+
+func TestResidentQuickCreateAssigneePicker(t *testing.T) {
+	const agentID = "8da18e1c-0f08-4a9c-b706-a68ba8975e54"
+	quickFile := `{"task_id":"task-file","agent_id":"` + agentID + `","workspace_id":"workspace-file","token":"mat_file",` +
+		`"quick_create_task_id":"task-file","quick_create_attachment_ids":["att-1"],` +
+		`"quick_create_default_assignee_type":"agent","quick_create_default_assignee_id":"` + agentID + `"}`
+	plainFile := `{"task_id":"task-file","agent_id":"` + agentID + `","workspace_id":"workspace-file","token":"mat_file"}`
+	for _, tc := range []struct {
+		name    string
+		data    string
+		wantErr string
+	}{
+		{name: "quick-create file", data: quickFile},
+		{name: "non quick-create file still fails closed", data: plainFile, wantErr: "requires a quick-create task context"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			redirectTestHome(t, t.TempDir())
+			t.Setenv("MULTICA_RESIDENT_OWNER", "1")
+			for _, name := range []string{"MULTICA_TASK_ID", "MULTICA_TOKEN", "MULTICA_AGENT_ID", "MULTICA_DAEMON_PORT",
+				"MULTICA_QUICK_CREATE_TASK_ID", "MULTICA_QUICK_CREATE_ATTACHMENT_IDS",
+				"MULTICA_QUICK_CREATE_DEFAULT_ASSIGNEE_TYPE", "MULTICA_QUICK_CREATE_DEFAULT_ASSIGNEE_ID"} {
+				t.Setenv(name, "")
+			}
+			t.Setenv("MULTICA_SERVER_URL", "http://127.0.0.1:8080")
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, ".multica_resident_task.json"), []byte(tc.data), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			t.Chdir(root)
+			cmd := testCmd()
+			cmd.Flags().Bool("assignee-picker", false, "")
+			cmd.Flags().String("assignee", "", "")
+			cmd.Flags().String("assignee-id", "", "")
+			if err := cmd.Flags().Set("assignee-picker", "true"); err != nil {
+				t.Fatal(err)
+			}
+			client, err := newAPIClient(cmd)
+			if err != nil {
+				t.Fatal(err)
+			}
+			aType, aID, ok, err := pickIssueCreateAssignee(context.Background(), client, cmd)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("expected %q, got %v", tc.wantErr, err)
+				}
+				return
+			}
+			if err != nil || !ok || aType != "agent" || aID != agentID {
+				t.Fatalf("picker = %q %q %v %v", aType, aID, ok, err)
+			}
+			if got := os.Getenv("MULTICA_QUICK_CREATE_TASK_ID"); got != "task-file" {
+				t.Errorf("origin task id = %q", got)
+			}
+			ids, err := quickCreateAttachmentIDsFromEnv()
+			if err != nil || len(ids) != 1 || ids[0] != "att-1" {
+				t.Errorf("attachments = %v, %v", ids, err)
 			}
 		})
 	}

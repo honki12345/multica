@@ -83,3 +83,44 @@ func TestResidentTaskContext(t *testing.T) {
 		})
 	}
 }
+
+func TestResidentTaskContextQuickCreate(t *testing.T) {
+	t.Setenv("MULTICA_HERMES_RESIDENT_GATEWAY", "1")
+	for _, tc := range []struct {
+		name     string
+		task     Task
+		wantType string
+		wantID   string
+	}{
+		{"agent", Task{ID: "task-1", AgentID: "agent-1", QuickCreatePrompt: "make it", QuickCreateAttachmentIDs: []string{"att-1"}}, "agent", "agent-1"},
+		{"squad", Task{ID: "task-1", AgentID: "agent-1", SquadID: "squad-1", QuickCreatePrompt: "make it"}, "squad", "squad-1"},
+		{"not quick create", Task{ID: "task-1", AgentID: "agent-1"}, "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			cleanup, err := writeResidentTaskContext(root, "hermes", tc.task, "mat_task")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(cleanup)
+			data, err := os.ReadFile(filepath.Join(root, ".multica_resident_task.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got residentTaskContext
+			if err := json.Unmarshal(data, &got); err != nil {
+				t.Fatal(err)
+			}
+			wantTaskID := ""
+			if tc.wantType != "" {
+				wantTaskID = "task-1"
+			}
+			if got.QuickCreateTaskID != wantTaskID || got.QuickCreateDefaultAssigneeType != tc.wantType || got.QuickCreateDefaultAssigneeID != tc.wantID {
+				t.Errorf("quick-create context = %+v", got)
+			}
+			if !reflect.DeepEqual(got.QuickCreateAttachmentIDs, tc.task.QuickCreateAttachmentIDs) {
+				t.Errorf("attachments = %v, want %v", got.QuickCreateAttachmentIDs, tc.task.QuickCreateAttachmentIDs)
+			}
+		})
+	}
+}

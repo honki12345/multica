@@ -261,6 +261,7 @@ func newAPIClient(cmd *cobra.Command) (*cli.APIClient, error) {
 	resident := residentTaskCredentialFromCwd(token)
 	if resident != nil {
 		token = resident.Token
+		resident.applyQuickCreateEnv()
 	}
 	if taskContext && !strings.HasPrefix(token, "mat_") {
 		// When the ONLY daemon signal is a workdir marker (no MULTICA_AGENT_ID /
