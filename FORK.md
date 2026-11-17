@@ -87,3 +87,59 @@ Base `v0.9.0`. Commit links point to this repository.
 | Daemon-local CLI commands from resident tool shells | [`09e87daed`](https://github.com/honki12345/multica/commit/09e87daed61aa5cea3fb02d1c2294f0ebfb016de) | `0.9.0-resident.5` |
 | `daemon status` from resident tool shells | [`eeef72c10`](https://github.com/honki12345/multica/commit/eeef72c10c253d58adda17b13c6255ed0d7cd171) | `0.9.0-resident.6` |
 | Chat bar shows every chip (CALA-72) | [`6565efb51`](https://github.com/honki12345/multica/commit/6565efb51d966a816e553969e20ce55b5b1af7a8) | web |
+
+## Deploy and rollback (self-host on calabii-macstudio)
+
+`scripts/hoon/release.sh` builds, swaps in, verifies, and rolls back the
+backend image, the web image and the resident CLI/daemon binary from one ref.
+Tests: `bash scripts/hoon/release.test.sh` (stubbed docker/curl, no real
+deploy).
+
+| Thing | Value |
+|---|---|
+| Compose | `~/.local/share/multica-selfhost/` (`docker-compose.selfhost.yml`, `.env`), project `multica` |
+| Services recreated | `backend`, `frontend` only (`up -d --no-deps`); postgres is never touched |
+| `.env` keys changed | `MULTICA_IMAGE_TAG`, `MULTICA_BACKEND_IMAGE`, `MULTICA_WEB_IMAGE` only (the script refuses any other diff) |
+| Images | `multica-backend-hoon:vX.Y.Z-hoon.N`, `multica-web-hoon:vX.Y.Z-hoon.N` |
+| Binary | `~/.local/share/multica-resident/bin/multica`, reports `X.Y.Z-hoon.N` |
+| Build output, deploy records | `~/.local/share/multica-resident/releases/<version>/`, `.../releases/deploys/<ts>.env` |
+
+### Release
+
+```bash
+git tag -a v0.9.0-hoon.2 -m "..." && git push origin v0.9.0-hoon.2
+scripts/hoon/release.sh build  v0.9.0-hoon.2   # git archive of the tag -> CLI + both images
+scripts/hoon/release.sh deploy 0.9.0-hoon.2     # backups, .env swap, up -d, binary swap, verify
+# or both at once:
+scripts/hoon/release.sh release v0.9.0-hoon.2
+```
+
+- `build` exports the committed tree (`git archive`), so uncommitted files never
+  ship. A version already built from a different commit is refused: bump `N`.
+- `deploy` writes `.env.bak-<ts>` and `multica.bak-<ts>` next to the originals,
+  records them in `releases/deploys/<ts>.env`, then recreates `backend` and
+  `frontend` (the UI drops for a few seconds).
+- The binary is replaced by rename. The running daemon keeps its old inode and
+  its auto-reload (10-minute tick) restarts into the new version once no task is
+  in flight. Confirm with
+  `grep 'auto-reload: restarting' ~/.multica/daemon.log | tail -1`
+  (`... reports X.Y.Z-hoon.N`). A deploy started from inside a Multica task
+  delays that restart until the task ends.
+- `verify [version]` (also run by `deploy`): local and public `/login` 200,
+  backend `/health` ok with the build's commit, `/api/config` `server_version`,
+  and `multica version`.
+
+### Rollback
+
+```bash
+scripts/hoon/release.sh rollback
+```
+
+Restores the latest deploy record's `.env` backup and binary backup, runs the
+same `up -d --no-deps backend frontend`, and re-runs the HTTP checks. The record
+is renamed to `.rolledback`, so a second rollback goes one deploy further back.
+Database migrations are not reversed: if a release applied a migration, restore
+from a `pg_dump` taken before the deploy instead of rolling back blindly.
+
+`scripts/hoon/release.sh status` prints the current image keys, binary version,
+containers and last deploy record.
