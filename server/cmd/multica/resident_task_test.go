@@ -233,3 +233,47 @@ func TestResidentDaemonLocalCommands(t *testing.T) {
 		})
 	}
 }
+
+// `daemon status` inside a resident task workdir sees the task marker but no
+// daemon-injected MULTICA_DAEMON_PORT; the context file supplies it.
+func TestResidentDaemonStatusPort(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		owner  string
+		wantOK bool
+	}{
+		{name: "port from context file", owner: "1", wantOK: true},
+		{name: "owner opt-in required", owner: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			redirectTestHome(t, t.TempDir())
+			clearDaemonTaskEnv(t)
+			t.Setenv("MULTICA_TOKEN", "")
+			t.Setenv("MULTICA_RESIDENT_OWNER", tc.owner)
+			root := t.TempDir()
+			data := `{"task_id":"task-file","agent_id":"agent-file","workspace_id":"ws-file","token":"mat_file","daemon_port":19777}`
+			if err := os.WriteFile(filepath.Join(root, ".multica_resident_task.json"), []byte(data), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			marker := filepath.Join(root, "workdir", execenv.TaskContextMarkerRelPath)
+			if err := os.MkdirAll(filepath.Dir(marker), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(marker, []byte(`{"managed_by":"`+execenv.TaskContextMarkerManagedBy+`","agent_id":"agent-file","issue_id":"issue-1"}`), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			t.Chdir(filepath.Join(root, "workdir"))
+
+			got, err := daemonStatusHealthPort(testCmd())
+			if !tc.wantOK {
+				if err == nil || !strings.Contains(err.Error(), "requires the daemon-injected MULTICA_DAEMON_PORT") {
+					t.Fatalf("expected unchanged fail-closed error, got %d, %v", got, err)
+				}
+				return
+			}
+			if err != nil || got != 19777 {
+				t.Fatalf("port = %d, %v; want 19777", got, err)
+			}
+		})
+	}
+}

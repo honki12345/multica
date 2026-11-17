@@ -1581,6 +1581,7 @@ func daemonStatusHealthPort(cmd *cobra.Command) (int, error) {
 	if profile != "" {
 		return 0, fmt.Errorf("daemon status --profile is not available inside a daemon-managed task")
 	}
+	applyResidentDaemonEnv()
 	raw := strings.TrimSpace(os.Getenv("MULTICA_DAEMON_PORT"))
 	if raw == "" {
 		return 0, fmt.Errorf("daemon status inside a daemon-managed task requires the daemon-injected MULTICA_DAEMON_PORT")
