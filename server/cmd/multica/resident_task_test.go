@@ -2,10 +2,18 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/spf13/cobra"
 
 	"github.com/multica-ai/multica/server/internal/daemon/execenv"
 )
@@ -140,6 +148,87 @@ func TestResidentQuickCreateAssigneePicker(t *testing.T) {
 			ids, err := quickCreateAttachmentIDsFromEnv()
 			if err != nil || len(ids) != 1 || ids[0] != "att-1" {
 				t.Errorf("attachments = %v, %v", ids, err)
+			}
+		})
+	}
+}
+
+// Resident tool shells inherit the owner's environment, not the daemon's
+// per-task env, so daemon-local commands must find the task from the workdir.
+func TestResidentDaemonLocalCommands(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		owner    string
+		filePort bool
+		wantOK   bool
+	}{
+		{name: "port from context file", owner: "1", filePort: true, wantOK: true},
+		{name: "port from daemon.port fallback", owner: "1", wantOK: true},
+		{name: "owner opt-in required", owner: "", filePort: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotAuth string
+			var gotBody map[string]any
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotAuth = r.Header.Get("Authorization")
+				_ = json.NewDecoder(r.Body).Decode(&gotBody)
+				_ = json.NewEncoder(w).Encode(map[string]string{"path": "/work/repo", "branch_name": "agent/x/task"})
+			}))
+			defer srv.Close()
+			u, _ := url.Parse(srv.URL)
+			port, _ := strconv.Atoi(u.Port())
+
+			home := t.TempDir()
+			redirectTestHome(t, home)
+			for _, name := range []string{"MULTICA_TASK_ID", "MULTICA_TOKEN", "MULTICA_AGENT_ID", "MULTICA_DAEMON_PORT", "MULTICA_WORKSPACE_ID", "MULTICA_AGENT_NAME"} {
+				t.Setenv(name, "")
+			}
+			t.Setenv("MULTICA_RESIDENT_OWNER", tc.owner)
+			if !tc.filePort {
+				dir := filepath.Join(home, ".multica")
+				if err := os.MkdirAll(dir, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				rec, _ := json.Marshal(daemonPortRecord{Port: port, PID: os.Getpid()})
+				if err := os.WriteFile(filepath.Join(dir, "daemon.port"), rec, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			ctx := map[string]any{"task_id": "task-file", "agent_id": "agent-file", "workspace_id": "ws-file", "token": "mat_file"}
+			if tc.filePort {
+				ctx["daemon_port"] = port
+			}
+			data, _ := json.Marshal(ctx)
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, ".multica_resident_task.json"), data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			nested := filepath.Join(root, "workdir")
+			if err := os.MkdirAll(nested, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			t.Chdir(nested)
+
+			err := runRepoCheckout(&cobra.Command{}, []string{"https://github.com/org/repo.git"})
+			if !tc.wantOK {
+				if err == nil || !strings.Contains(err.Error(), "MULTICA_DAEMON_PORT not set") {
+					t.Fatalf("expected unchanged missing-port error, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("runRepoCheckout: %v", err)
+			}
+			if gotAuth != "Bearer mat_file" || gotBody["task_id"] != "task-file" || gotBody["workspace_id"] != "ws-file" {
+				t.Fatalf("auth=%q body=%v", gotAuth, gotBody)
+			}
+
+			gotAuth = ""
+			if err := callDaemonEnvironment(context.Background(), "/environments/list", map[string]any{}, &map[string]any{}, 5*time.Second); err != nil {
+				t.Fatalf("callDaemonEnvironment: %v", err)
+			}
+			if gotAuth != "Bearer mat_file" {
+				t.Fatalf("environment auth = %q", gotAuth)
 			}
 		})
 	}

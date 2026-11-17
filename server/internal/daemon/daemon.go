@@ -8867,7 +8867,7 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 		return TaskResult{}, err
 	}
 	agentEnv := taskMulticaEnvironment(task, provider, agentName, agentToken, env.MulticaConfigRoot, d.cfg.WorkspacesRoot, d.cfg.ServerBaseURL, d.cfg.HealthPort, slot, taskTempDir)
-	cleanupResident, err := writeResidentTaskContext(env.RootDir, provider, task, agentToken)
+	cleanupResident, err := writeResidentTaskContext(env.RootDir, provider, task, agentToken, agentName, d.cfg.HealthPort)
 	if err != nil {
 		return TaskResult{}, fmt.Errorf("write resident task context: %w", err)
 	}

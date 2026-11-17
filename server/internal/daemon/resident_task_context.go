@@ -16,6 +16,11 @@ type residentTaskContext struct {
 	WorkspaceID   string `json:"workspace_id"`
 	ChatSessionID string `json:"chat_session_id,omitempty"`
 	Token         string `json:"token"`
+	// AgentName and DaemonPort mirror MULTICA_AGENT_NAME / MULTICA_DAEMON_PORT
+	// so daemon-local CLI commands (`repo checkout`, `env`) work from a
+	// resident tool shell too.
+	AgentName  string `json:"agent_name,omitempty"`
+	DaemonPort int    `json:"daemon_port,omitempty"`
 	// Quick-create context mirrors the MULTICA_QUICK_CREATE_* env the daemon
 	// injects for non-resident runs; resident tool shells cannot inherit it.
 	QuickCreateTaskID              string   `json:"quick_create_task_id,omitempty"`
@@ -25,7 +30,7 @@ type residentTaskContext struct {
 }
 
 // The resident owner outlives task environments, so its tools read a short-lived credential file.
-func writeResidentTaskContext(envRoot, provider string, task Task, token string) (func(), error) {
+func writeResidentTaskContext(envRoot, provider string, task Task, token, agentName string, daemonPort int) (func(), error) {
 	noop := func() {}
 	if !execenv.ResidentHermesGatewayEnabled() || provider != "hermes" || envRoot == "" {
 		return noop, nil
@@ -36,6 +41,8 @@ func writeResidentTaskContext(envRoot, provider string, task Task, token string)
 		WorkspaceID:   task.WorkspaceID,
 		ChatSessionID: task.ChatSessionID,
 		Token:         token,
+		AgentName:     agentName,
+		DaemonPort:    daemonPort,
 	}
 	if task.QuickCreatePrompt != "" {
 		ctx.QuickCreateTaskID = task.ID

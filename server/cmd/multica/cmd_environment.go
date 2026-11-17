@@ -214,6 +214,7 @@ func runEnvironmentList(cmd *cobra.Command, _ []string) error {
 }
 
 func callDaemonEnvironment(parent context.Context, path string, body, out any, timeout time.Duration) error {
+	applyResidentDaemonEnv()
 	daemonPort := os.Getenv("MULTICA_DAEMON_PORT")
 	if daemonPort == "" {
 		return fmt.Errorf("MULTICA_DAEMON_PORT not set (this command is intended to be run by an agent inside a daemon task)")

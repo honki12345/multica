@@ -41,7 +41,7 @@ func TestResidentTaskContext(t *testing.T) {
 			t.Setenv("MULTICA_HERMES_RESIDENT_GATEWAY", tc.mode)
 			root := t.TempDir()
 			task := Task{ID: "task-1", AgentID: "agent-1", WorkspaceID: "workspace-1", ChatSessionID: tc.chat}
-			cleanup, err := writeResidentTaskContext(root, tc.provider, task, "mat_task")
+			cleanup, err := writeResidentTaskContext(root, tc.provider, task, "mat_task", "Agent One", 19514)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -61,11 +61,11 @@ func TestResidentTaskContext(t *testing.T) {
 			if err != nil || info.Mode().Perm() != 0o600 {
 				t.Fatalf("context mode is not 0600: %v", err)
 			}
-			var got map[string]string
+			var got map[string]any
 			if err := json.Unmarshal(data, &got); err != nil {
 				t.Fatal(err)
 			}
-			want := map[string]string{"task_id": "task-1", "agent_id": "agent-1", "workspace_id": "workspace-1", "token": "mat_task"}
+			want := map[string]any{"task_id": "task-1", "agent_id": "agent-1", "workspace_id": "workspace-1", "token": "mat_task", "agent_name": "Agent One", "daemon_port": float64(19514)}
 			if tc.chat != "" {
 				want["chat_session_id"] = tc.chat
 			}
@@ -98,7 +98,7 @@ func TestResidentTaskContextQuickCreate(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
-			cleanup, err := writeResidentTaskContext(root, "hermes", tc.task, "mat_task")
+			cleanup, err := writeResidentTaskContext(root, "hermes", tc.task, "mat_task", "", 0)
 			if err != nil {
 				t.Fatal(err)
 			}

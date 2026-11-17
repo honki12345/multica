@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -15,6 +16,8 @@ type residentTaskCredential struct {
 	AgentID     string `json:"agent_id"`
 	WorkspaceID string `json:"workspace_id"`
 	Token       string `json:"token"`
+	AgentName   string `json:"agent_name"`
+	DaemonPort  int    `json:"daemon_port"`
 
 	QuickCreateTaskID              string   `json:"quick_create_task_id"`
 	QuickCreateAttachmentIDs       []string `json:"quick_create_attachment_ids"`
@@ -71,5 +74,37 @@ func residentTaskCredentialFromCwd(token string) *residentTaskCredential {
 			return nil
 		}
 		dir = parent
+	}
+}
+
+// applyResidentDaemonEnv fills the per-task variables that daemon-local
+// commands (`repo checkout`, `env`) read but a resident tool shell never
+// inherits. Values already in the environment win, and nothing changes
+// outside a resident task workdir, so non-resident runs keep failing closed.
+func applyResidentDaemonEnv() {
+	c := residentTaskCredentialFromCwd(strings.TrimSpace(os.Getenv("MULTICA_TOKEN")))
+	if c == nil {
+		return
+	}
+	setIfEmpty := func(name, value string) {
+		if value != "" && os.Getenv(name) == "" {
+			_ = os.Setenv(name, value)
+		}
+	}
+	setIfEmpty("MULTICA_TOKEN", c.Token)
+	setIfEmpty("MULTICA_TASK_ID", c.TaskID)
+	setIfEmpty("MULTICA_WORKSPACE_ID", c.WorkspaceID)
+	setIfEmpty("MULTICA_AGENT_NAME", c.AgentName)
+	port := c.DaemonPort
+	if port <= 0 {
+		// Context files written before daemon_port existed: the default
+		// profile's published port. The daemon still authorizes the request
+		// against the task token, so a stale hint fails rather than misroutes.
+		if record, ok := readDaemonPortRecord(""); ok {
+			port = record.Port
+		}
+	}
+	if port > 0 {
+		setIfEmpty("MULTICA_DAEMON_PORT", strconv.Itoa(port))
 	}
 }
