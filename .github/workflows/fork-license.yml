@@ -1,0 +1,34 @@
+# Fork license obligations (FORK.md "License obligations"). Not part of upstream.
+name: Fork license check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  license:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Fetch upstream release tags
+        run: git fetch --no-tags https://github.com/multica-ai/multica.git '+refs/tags/v*:refs/upstream-tags/v*'
+
+      - name: Self-test
+        run: bash scripts/hoon/license-check.test.sh
+
+      - name: Check license obligations
+        run: bash scripts/hoon/license-check.sh

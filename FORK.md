@@ -62,6 +62,29 @@ would replace our binary with the official one. Image tags and
 — functional changes are allowed there, but the Multica product name, logo
 assets and displayed copyright/attribution stay as upstream ships them.
 
+## License check (CI)
+
+`.github/workflows/fork-license.yml` runs `scripts/hoon/license-check.sh` on
+every PR into `main` and every push to `main`. The base is the newest upstream
+`vX.Y.Z` tag merged into the head (upstream tags are fetched into
+`refs/upstream-tags/`).
+
+| Check | Result |
+|---|---|
+| `LICENSE` byte-identical to the base tag | fail |
+| every base-tag `NOTICE` line still present | fail |
+| every upstream file changed or deleted since the base tag has `Modified by honki12345` in its first 30 lines, or is listed in the table below | fail |
+| a newer upstream tag ships a different `LICENSE` | warning |
+| UI areas: logo/brand asset changed or deleted, or a non-comment line mentioning `Multica` disappeared | warning |
+
+Run it locally:
+
+```bash
+git fetch --no-tags upstream '+refs/tags/v*:refs/upstream-tags/v*'
+bash scripts/hoon/license-check.sh
+bash scripts/hoon/license-check.test.sh   # throwaway repos, no network
+```
+
 ## Modified files without an inline notice
 
 | File | Reason | Change |
