@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: license-check demo (test PR, not merged).
+
 package agent
 
 import (
