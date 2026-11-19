@@ -496,6 +496,8 @@ features:
         name: TestInboxListArchivedSendsWebFilters
       - go: server/cmd/multica
         name: TestInboxListRefusesFilterCombinationsBeforeAnyRequest
+      - go: server/cmd/multica
+        name: TestInboxListArchivedRechecksNotificationFiltersLocally
       - vitest: packages/core/inbox/filter-parity.test.ts
     scenarios:
       - name: CLI list matches the filtered web Inbox

@@ -782,11 +782,20 @@ func (r *inboxListRow) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, &r.filter)
 }
 
-// applyInboxListFilters is the filter step of `inbox list`. The archive was
-// filtered by the server, so its rows pass through as they came.
+// applyInboxListFilters is the filter step of `inbox list`. The archive
+// comes one row per issue, filtered by the server; as upstream does, its rows
+// are asked the notification filters and --unread again, so a server that
+// ignores a parameter (notification_types before #10861) cannot widen it.
 func applyInboxListFilters(ctx context.Context, client *cli.APIClient, rows []inboxListRow, f inboxFilters, archived, ungrouped bool) ([]inboxListRow, error) {
 	if archived {
-		return rows, nil
+		tests := compileInboxFilters(f, time.Now())
+		out := make([]inboxListRow, 0, len(rows))
+		for _, r := range rows {
+			if inboxPasses(tests.notification, r.filter) && !(f.UnreadOnly && r.Read) {
+				out = append(out, r)
+			}
+		}
+		return out, nil
 	}
 	filterRows := make([]inboxRow, len(rows))
 	byID := make(map[string]inboxListRow, len(rows))

@@ -570,3 +570,41 @@ func TestInboxListRefusesFilterCombinationsBeforeAnyRequest(t *testing.T) {
 		t.Fatalf("refused flags reached the server: %v", *requests)
 	}
 }
+
+// A server older than #10861 ignores notification_types and returns every
+// archived issue; the CLI still lists only the requested type, as upstream's
+// own check after the request did.
+func TestInboxListArchivedRechecksNotificationFiltersLocally(t *testing.T) {
+	fakeInboxServer(t, map[string]func(http.ResponseWriter, *http.Request){
+		"GET /api/inbox/archived/page": reply(`{"items":[
+			{"id":"` + inboxItemA + `","type":"status_changed","title":"S","issue_id":"` + inboxIssue1 + `","read":true,"created_at":"2026-11-01T00:00:00Z"},
+			{"id":"` + inboxItemB + `","type":"mentioned","title":"M","issue_id":"` + inboxIssue2 + `","read":false,"created_at":"2026-11-01T00:00:00Z"}
+		],"next_cursor":null,"has_more":false}`),
+		"GET /api/issues": reply(`{"issues":[]}`),
+	})
+	list := func(cmd *cobra.Command, _ []string) error { return runInboxList(cmd, nil) }
+	for _, tc := range []struct {
+		want  string
+		flags map[string]string
+	}{
+		{inboxItemB, map[string]string{"type": "mentioned"}},
+		{inboxItemB, map[string]string{"type": "mention"}},
+		{inboxItemB, map[string]string{"unread": "true"}},
+		{inboxItemA, map[string]string{"type": "mention", "not": "type"}},
+	} {
+		tc.flags["archived"], tc.flags["output"] = "true", "json"
+		out, err := runInboxCommand(t, registerInboxListFlags, list, nil, tc.flags)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var rows []struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal([]byte(out), &rows); err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) != 1 || rows[0].ID != tc.want {
+			t.Errorf("%v: rows = %v, want only %s", tc.flags, rows, tc.want)
+		}
+	}
+}
