@@ -181,7 +181,7 @@ The fork build cannot fall back to an official release:
 
 | Path | Official build | Fork build |
 |---|---|---|
-| App updates (`electron-builder.yml` `publish`, packaged as `app-update.yml`) | `multica-ai/multica` releases | `honki12345/multica` releases (the fork publishes no desktop release assets, so a manual check finds nothing) |
+| App updates (`electron-builder.yml` `publish`, packaged as `app-update.yml`) | `multica-ai/multica` releases | `honki12345/multica` releases. The Mac mini build (`--dir`) ships no `app-update.yml` at all, so electron-updater fails to load a feed and a manual check reports an error; a zip/dmg build points at the fork, which publishes no desktop assets |
 | Automatic update checks (`updater-preferences.ts` default) | on | off; a user can still turn them on under Settings → Updates |
 | Managed CLI repair download (`cli-bootstrap.ts`) | `multica-ai/multica/releases/latest` | `honki12345/multica/releases/latest` |
 | Bundled CLI | official binary | built from the same tag, `-X main.version=X.Y.Z-hoon.N` |
