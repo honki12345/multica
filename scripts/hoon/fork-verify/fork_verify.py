@@ -184,7 +184,10 @@ def run_go_tests(tree, features, env, logdir, real_agent, hermes_env):
             cmd[2:2] = ["-tags", tags]
         e = dict(env)
         if real:
+            # HOME becomes the test home; keep the shared Go caches.
+            vals = run(["go", "env", "GOPATH", "GOMODCACHE", "GOCACHE"]).stdout.split("\n")
             e.update(hermes_env)
+            e.update(zip(("GOPATH", "GOMODCACHE", "GOCACHE"), vals))
             e["MULTICA_RUN_REAL_AGENT_SMOKE"] = "1"
         log("go test %s (%d tests)" % (pkg, len(names)))
         t0 = time.time()
@@ -427,6 +430,21 @@ class Resident:
         p = self.cli(*args, "--output", "json", check=True)
         return json.loads(p.stdout)
 
+    def prepare_hermes_home(self):
+        """Test HERMES_HOME: own config (model via the local proxy), shared dependency install only."""
+        hh = self.home / ".hermes"
+        if (hh / "config.yaml").exists():
+            return hh
+        hh.mkdir(parents=True, exist_ok=True)
+        (self.home / "bin").mkdir(exist_ok=True)
+        os.symlink(self.cli_bin, self.home / "bin" / "multica")
+        installs = Path(self.a.hermes_installs).expanduser()
+        if installs.exists():
+            os.symlink(installs, hh / "installs")
+        cfg = (HERE / "hermes-config.yaml").read_text().replace("__MODEL__", self.a.agent_model)
+        (hh / "config.yaml").write_text(cfg)
+        return hh
+
     def start(self):
         missing = [k for k in self.a.hermes_env.split(",") if k and not os.environ.get(k)]
         if not shutil.which("hermes", path=self.a.hermes_path_dirs):
@@ -435,15 +453,7 @@ class Resident:
         if missing:
             self.ready_reason = "Hermes 모델 키 환경변수 없음: %s" % ",".join(missing)
             return False
-        hh = self.home / ".hermes"
-        hh.mkdir(parents=True)
-        (self.home / "bin").mkdir()
-        os.symlink(self.cli_bin, self.home / "bin" / "multica")
-        installs = Path(self.a.hermes_installs).expanduser()
-        if installs.exists():
-            os.symlink(installs, hh / "installs")
-        cfg = (HERE / "hermes-config.yaml").read_text().replace("__MODEL__", self.a.agent_model)
-        (hh / "config.yaml").write_text(cfg)
+        hh = self.prepare_hermes_home()
         prof = self.home / ".multica" / "profiles" / "fork-verify"
         prof.mkdir(parents=True)
         fd = os.open(prof / "config.json", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -887,7 +897,10 @@ def run_screens(args, stack, prod, features, out_dir, logdir, screen_input):
     shot_dir = out_dir / "screens"
     shot_dir.mkdir(parents=True, exist_ok=True)
     session = "fork-verify-%s" % stack.name
-    run(["playwright-cli", "-s=" + session, "open", "about:blank"], timeout=120)
+    # playwright-cli writes .playwright-cli/ into its cwd; keep it out of the repo.
+    pw_cwd = tempfile.mkdtemp(prefix="fv-pw-")
+    pw = lambda *a, **kw: run(["playwright-cli", "-s=" + session, *a], cwd=pw_cwd, **kw)
+    pw("open", "about:blank", timeout=120)
     fixture = chat_fixture()
     summary = {"prod_blocked": 0, "prod_blocked_sample": [], "cand_passthrough": set(), "replayed": 0}
     try:
@@ -902,7 +915,7 @@ def run_screens(args, stack, prod, features, out_dir, logdir, screen_input):
             os.write(fd, src.encode())
             os.close(fd)
             try:
-                p = run(["playwright-cli", "-s=" + session, "--raw", "run-code", "--filename", path], timeout=600)
+                p = pw("--raw", "run-code", "--filename", path, timeout=600)
             finally:
                 os.unlink(path)
             try:
@@ -949,8 +962,9 @@ def run_screens(args, stack, prod, features, out_dir, logdir, screen_input):
                                                  "-" if page_ratio is None else "%.2f%%" % (page_ratio * 100))
             checks.append(Check(shot["feature"], "screen", "%s @%dpx" % (shot["scenario"], shot["width"]), v, d, evidence))
     finally:
-        run(["playwright-cli", "-s=" + session, "close"], timeout=60)
-        run(["playwright-cli", "-s=" + session, "delete-data"], timeout=60)
+        pw("close", timeout=60)
+        pw("delete-data", timeout=60)
+        shutil.rmtree(pw_cwd, ignore_errors=True)
     summary["cand_passthrough"] = sorted(summary["cand_passthrough"])
     return checks, summary
 
@@ -1118,8 +1132,12 @@ def main(argv):
             env = clean_env()
             if stack.up_ok:
                 env["DATABASE_URL"] = stack.gotest_db_url()
+            agent_env = {}
             res_for_env = Resident(args, stack, version, logdir, cli_bin)
-            checks += run_go_tests(tree, present, env, logdir, args.real_agent, res_for_env.base_env() if args.real_agent else {})
+            if args.real_agent:
+                res_for_env.prepare_hermes_home()
+                agent_env = res_for_env.base_env()
+            checks += run_go_tests(tree, present, env, logdir, args.real_agent, agent_env)
             res_for_env.cleanup()
             checks += run_vitest(tree, present, clean_env(), logdir)
             timings["tests"] = time.time() - t
