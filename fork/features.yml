@@ -553,7 +553,7 @@ features:
     cards: [CALA-281]
     origin:
       type: ours
-      commits: ["fef6e83d1"]
+      commits: ["fef6e83d1", "d8f841b55"]
     files:
       - packages/core/shortcuts/definitions.ts
       - packages/core/shortcuts/definitions.test.ts
@@ -605,6 +605,8 @@ features:
         name: brings the previous sent message to the top, skipping replies and wakeup turns
       - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
         name: moves the floating chat while its composer has focus, and the page chat otherwise
+      - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
+        name: climbs to the oldest loaded row so the older page loads when no earlier sent message is loaded
       - vitest: packages/core/shortcuts/definitions.test.ts
         name: steps between sent chat messages with Mod+Alt+[ and ] everywhere, composer included
     scenarios:
