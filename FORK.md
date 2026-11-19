@@ -5,6 +5,11 @@ by Index Labs (Hong Kong) Limited, distributed under the Multica License
 (`LICENSE`: Part I additional conditions + Apache License 2.0). It is built on
 Multica; the upstream project lives at https://github.com/multica-ai/multica.
 
+> **Agents and contributors:** a PR that adds, changes or drops a fork feature
+> must update [`fork/features.yml`](fork/features.yml) in the same PR. The fork
+> CI (`scripts/hoon/features-check.sh`) fails when a changed file belongs to no
+> feature. See "Fork feature registry" below.
+
 ## Upstream base
 
 | Item | Value |
@@ -24,7 +29,8 @@ Multica; the upstream project lives at https://github.com/multica-ai/multica.
 - Individual upstream `main` commits that we need before a release are
   **cherry-picked** (`git cherry-pick -x`) so the upstream origin stays visible.
 - When upstream fixes the same problem as one of our changes, drop ours in the
-  merge and say why in the merge commit body.
+  merge and say why in the merge commit body. Set that feature's `status:
+  dropped` in `fork/features.yml` in the same merge.
 - Never push to upstream or open PRs there from this repository's automation.
 
 ## Version format
@@ -100,18 +106,58 @@ modification notice.
 
 ## Fork changes
 
-Introduced on base `v0.9.0`; carried through the `v0.10.0` and `v0.11.0` merges unchanged.
-Commit links point to this repository.
+The list of fork features lives in [`fork/features.yml`](fork/features.yml),
+the only copy. Each entry records the files we changed or added, the
+surrounding code that can break it (`watch`), how to spot upstream shipping the
+same thing (`upstream_equivalent`), its tests and runnable scenarios, and when
+to drop it (`drop_when`). Upstream triage, fork verification and the absorb
+gate read that file; do not repeat its contents here.
 
-| Feature | Commit | Notes |
-|---|---|---|
-| Resident Hermes gateway (upstream PR [#10119](https://github.com/multica-ai/multica/pull/10119), cherry-picked, upstream authorship kept) | [`2707ff0c3`](https://github.com/honki12345/multica/commit/2707ff0c39a347d5a93c121e05294cc0981bec65), [`dcd2e0ccd`](https://github.com/honki12345/multica/commit/dcd2e0ccdf32b815885bf289ca3e4f9af5a7c2f6) | still open upstream; drop when it lands in a merged release |
-| Quick Create context for resident runs | [`1d5640104`](https://github.com/honki12345/multica/commit/1d5640104349adc249b25b71f60fee65334be625) | `0.9.0-resident.2` |
-| No per-task Hermes home overlay in resident mode | [`7637018c6`](https://github.com/honki12345/multica/commit/7637018c63573e164a54454f9d88020652fb60b4) | `0.9.0-resident.3` |
-| Hermes mid-run steering (task supplements) | [`9204e1d53`](https://github.com/honki12345/multica/commit/9204e1d535c0d397b773f9e2e4993408f89096c2) | `0.9.0-resident.4` |
-| Daemon-local CLI commands from resident tool shells | [`09e87daed`](https://github.com/honki12345/multica/commit/09e87daed61aa5cea3fb02d1c2294f0ebfb016de) | `0.9.0-resident.5` |
-| `daemon status` from resident tool shells | [`eeef72c10`](https://github.com/honki12345/multica/commit/eeef72c10c253d58adda17b13c6255ed0d7cd171) | `0.9.0-resident.6` |
-| Chat bar shows every chip (CALA-72) | [`6565efb51`](https://github.com/honki12345/multica/commit/6565efb51d966a816e553969e20ce55b5b1af7a8) | web |
+## Fork feature registry
+
+### Rule for every change
+
+Adding, changing or dropping a fork feature updates `fork/features.yml` in the
+same PR. `scripts/hoon/features-check.sh` runs in the fork CI
+(`fork-license.yml`) and fails the PR when the registry is out of step.
+
+| Check | Result |
+|---|---|
+| registry format (required keys, `kind`, `status`, unique `id`, known `origin.commits`) | fail |
+| an active feature's `files` entry is missing; a `watch` path matches nothing | fail |
+| a file that differs from the base tag (changed, added or deleted) is in no active feature's `files` and no `infrastructure` entry | fail |
+| a `tests` entry names a Go test function or vitest file/case that does not exist | fail |
+| an upstream file in `files` is identical to the base tag | warning |
+| a `planned` feature's file already differs from the base tag | warning |
+
+The registry is read from the committed tree (`HEAD` by default), so commit
+before running it. It needs PyYAML (`python3 -c 'import yaml'`) or `uv`.
+
+```bash
+git fetch --no-tags upstream '+refs/tags/v*:refs/upstream-tags/v*'
+bash scripts/hoon/features-check.sh
+bash scripts/hoon/features-check.test.sh   # throwaway repos, no network
+```
+
+### Entry fields
+
+| Field | Meaning |
+|---|---|
+| `id`, `summary` | kebab-case id, one line |
+| `status` | `active` (shipped), `planned` (in progress, not merged), `dropped` |
+| `kind` | `server` / `cli` / `daemon` / `web-ui` / `desktop` |
+| `cards` | Multica cards (`CALA-72`) |
+| `origin` | `type: ours` or `upstream-cherry-pick` with `upstream_pr`; `commits` on this fork |
+| `files` | upstream files we modified and files we added (tests included) |
+| `watch` | `{path, why}`: files or globs we did not change whose changes can break the feature, chosen from its imports and callers |
+| `upstream_equivalent` | `prs`, `symbols`, `keywords` that mean upstream shipped the same feature |
+| `tests` | `{go: <package dir>, name: <TestFunc>}` or `{vitest: <file>, name: <case>}`; `tags`/`real_agent` for gated tests; `tests_gap` when none exists |
+| `scenarios` | `name`, `setup`, numbered `steps`, `expect`; web UI adds `path`, `widths`, `selectors` |
+| `drop_when` | the condition that lets us delete the feature |
+
+Files that are fork upkeep rather than a feature (`NOTICE`, `FORK.md`,
+`fork/**`, `scripts/hoon/**`, the fork workflow) are listed under
+`infrastructure`.
 
 ## Deploy and rollback (self-host on calabii-macstudio)
 
