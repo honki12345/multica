@@ -1,4 +1,5 @@
-# Fork license obligations (FORK.md "License obligations"). Not part of upstream.
+# Fork license obligations and feature registry (FORK.md "License obligations",
+# "Fork feature registry"). Not part of upstream.
 name: Fork license check
 
 on:
@@ -32,3 +33,12 @@ jobs:
 
       - name: Check license obligations
         run: bash scripts/hoon/license-check.sh
+
+      - name: Install PyYAML for the feature registry check
+        run: python3 -m pip install --user --quiet --break-system-packages pyyaml
+
+      - name: Feature registry self-test
+        run: bash scripts/hoon/features-check.test.sh
+
+      - name: Check feature registry
+        run: bash scripts/hoon/features-check.sh
