@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: cherry-pick upstream multica-ai/multica#10861 (inbox management from the CLI) ahead of an upstream release (CALA-273).
+
 package handler
 
 import (
@@ -36,6 +38,9 @@ func (h *Handler) ListSnoozedInbox(w http.ResponseWriter, r *http.Request) {
 	workspaceID := ctxWorkspaceID(r.Context())
 	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace id")
 	if !ok {
+		return
+	}
+	if !h.requireInboxOwnerAccess(w, r, userID, wsUUID) {
 		return
 	}
 	hidden, ok := h.requestInboxHiddenProjects(w, r, workspaceID)
@@ -115,6 +120,7 @@ func (h *Handler) SnoozeInboxItem(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to snooze")
 		return
 	}
+	logAgentInboxWrite(r, "snooze", "item_id", uuidToString(prev.ID), "issue_id", uuidToPtr(prev.IssueID), "snoozed_until", until.UTC().Format(time.RFC3339), "count", len(rows))
 
 	h.publish(protocol.EventInboxSnoozed, uuidToString(prev.WorkspaceID), "member", requestUserID(r), map[string]any{
 		"item_id":       uuidToString(prev.ID),
@@ -171,6 +177,7 @@ func (h *Handler) UnsnoozeInboxItem(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	logAgentInboxWrite(r, "unsnooze", "item_id", uuidToString(prev.ID), "issue_id", uuidToPtr(prev.IssueID), "count", len(rows))
 
 	h.publish(protocol.EventInboxUnsnoozed, uuidToString(prev.WorkspaceID), "member", requestUserID(r), map[string]any{
 		"item_id":      uuidToString(prev.ID),

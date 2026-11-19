@@ -58,13 +58,24 @@ La page de la tâche signale un tel abonnement par **Mises à jour clés**. Son 
 
 ## Les agents et la boîte de réception
 
-Les notifications appartiennent aux membres de l'espace de travail. Pour la liste des notifications actives utilisée par `multica inbox list` et pour les notifications archivées, un agent peut lire les notifications du propriétaire du runtime uniquement si le serveur vérifie que ce propriétaire est la personne à l'origine de l'exécution. Cette identité est transmise dans les chaînes de délégation entre agents. Les exécutions déclenchées par une autre personne ou sans personne vérifiable, ainsi que les identifiants de nœud cloud sans liaison à une exécution, ne peuvent pas les lire. Cette garantie couvre uniquement la liste active et les archives ; la liste reportée, les compteurs de non-lus et les interfaces d'écriture conservent leurs permissions actuelles en attendant un traitement séparé.
+Les notifications appartiennent aux membres de l'espace de travail. Un agent peut lire et traiter les notifications du propriétaire du runtime uniquement si le serveur vérifie que ce propriétaire est la personne à l'origine de l'exécution. Cette identité est transmise dans les chaînes de délégation entre agents. La règle couvre toutes les actions de la boîte de réception : la liste active, les archives, la liste reportée, les compteurs de non-lus et toutes les modifications. Les exécutions déclenchées par une autre personne ou sans personne vérifiable, ainsi que les identifiants de nœud cloud sans liaison à une exécution, sont refusés. Seules les personnes peuvent supprimer des notifications. Le serveur journalise chaque modification faite par un agent, avec l'agent, l'exécution et la personne pour qui il agissait.
 
 @mentionner un agent dans un commentaire, lui assigner une tâche ou déclencher une automatisation crée directement une exécution ; aucune notification n'est laissée à l'agent. `@all` ne notifie que les membres.
 
-## Lire depuis le CLI
+## Gérer depuis le CLI
 
-Utilisez votre connexion CLI existante pour lister les notifications actives sans les marquer comme lues. Les filtres sont ceux du menu de filtres de la boîte de réception et sélectionnent les mêmes lignes :
+Utilisez votre connexion CLI existante pour lire et traiter vos notifications. Lister ne marque rien comme lu :
+
+```sh
+multica inbox count
+multica inbox list --unread --since 1d --output json
+multica inbox list --issue MUL-123
+multica inbox list --archived     # ou --snoozed
+```
+
+Chaque ligne indique l'ID de la notification, la clé de la tâche, le type, son auteur, le titre et un court résumé du commentaire ou du changement. `--unread`, `--issue` (une clé de tâche ou un UUID), `--since` (une date RFC 3339 ou une durée comme `2h`, `1d`, `1w`), `--project` et `--type` filtrent la liste. `--archived` lit toute l'archive page par page : une tâche archivée il y a longtemps reste trouvable et restaurable. `--project` accepte un UUID complet ou un préfixe d'ID unique, y compris l'ID court affiché par `multica project list` ; un préfixe sans correspondance ou ambigu produit une erreur. Le tableau garde aussi les ID de tâche, de commentaire et de projet, et abrège le résumé ; `--output json` donne le résumé complet.
+
+Les filtres du menu de la boîte de réception existent aussi en options et sélectionnent les mêmes lignes :
 
 ```sh
 multica inbox list --unread --type mention
@@ -74,10 +85,10 @@ multica inbox list --assignee none --due overdue,today
 
 | Option | Valeurs |
 | --- | --- |
-| `--unread` | uniquement les tâches dont la notification affichée est non lue |
+| `--unread` | uniquement les tâches dont la notification affichée est non lue ; avec `--ungrouped`, chaque notification non lue |
 | `--type` | `mention`, `comment`, `assign`, `review`, `change`, `run`, `system`, ou un type exact comme `mentioned` |
 | `--actor` | nom, e-mail ou ID d'un membre ou d'un agent, `member:<id>`, `agent:<id>`, `system` |
-| `--received` | `today`, `last_7_days`, `last_30_days` (jours calendaires locaux) |
+| `--received` | `today`, `last_7_days`, `last_30_days` (jours calendaires locaux ; pas avec `--since`) |
 | `--status`, `--priority` | clés de statut de tâche ; `urgent`, `high`, `medium`, `low`, `none` |
 | `--project` | UUID de projet ou préfixe d'ID unique, `none` |
 | `--assignee` | nom, e-mail ou ID d'un membre, d'un agent ou d'une équipe, `<type>:<id>`, `none` |
@@ -87,11 +98,26 @@ multica inbox list --assignee none --due overdue,today
 | `--not <option>` | transforme `type`, `actor`, `status`, `priority`, `project`, `assignee`, `label` ou `due` en « n'est pas » |
 | `--ungrouped` | liste chaque notification correspondante au lieu d'une ligne par tâche |
 
-Répétez une option ou séparez les valeurs par des virgules pour accepter l'une d'elles ; des options différentes doivent toutes correspondre. Une valeur mal écrite produit une erreur qui liste les valeurs acceptées, de même qu'une option de tâche à laquelle un serveur trop ancien ne peut pas répondre. `--project` accepte un UUID complet ou un préfixe d'ID unique, y compris l'ID court affiché par `multica project list` ; un préfixe sans correspondance ou ambigu produit une erreur. Les filtres enregistrés dans la boîte de réception web restent dans ce navigateur : passez-les de nouveau en options.
+Répétez une option ou séparez les valeurs par des virgules pour accepter l'une d'elles ; des options différentes doivent toutes correspondre. Une valeur mal écrite produit une erreur qui liste les valeurs acceptées, de même qu'une option de tâche à laquelle un serveur trop ancien ne peut pas répondre. Les filtres enregistrés dans la boîte de réception web restent dans ce navigateur : passez-les de nouveau en options.
 
-Comme dans la liste de la boîte de réception, la sortie compte une ligne par tâche, la plus récente d'abord, et une tâche revenue d'un report compte à partir de son retour. La ligne est la notification la plus récente de la tâche qui satisfait `--type`, `--actor` et `--received` ; `--unread` et les options de tâche s'appliquent ensuite à cette ligne. Une notification sans tâche ne correspond jamais à une option de tâche, `--not` compris.
+Comme dans la liste de la boîte de réception, la sortie compte une ligne par tâche, la plus récente d'abord, et une tâche revenue d'un report compte à partir de son retour. La ligne est la notification la plus récente de la tâche qui satisfait `--type`, `--actor`, `--since` et `--received` ; `--unread` et les options de tâche s'appliquent ensuite à cette ligne. Une notification sans tâche ne correspond jamais à une option de tâche, `--not` compris.
 
-Les filtres s'appliquent localement après une lecture de la boîte de réception active (`--agent` lit aussi la liste des tâches d'agent). Le JSON contient les ID de notification, de tâche, de projet et, si disponible, de commentaire, ainsi que le type, le titre, l'état lu et la date de création. La sortie par défaut est un tableau. Une exécution d'agent autorisée utilise son identifiant d'exécution pour lire les notifications du propriétaire du runtime, sans revenir à la connexion d'une personne.
+Avec `--archived`, le serveur applique les mêmes filtres à l'archive ; `--agent` et `--ungrouped` n'y s'appliquent pas, et `--type` prend soit des groupes, soit des types exacts, pas les deux. `--snoozed` n'accepte aucun filtre sauf `--issue`.
+
+Traitez les notifications avec les ID affichés par la liste :
+
+```sh
+multica inbox read <id>...                      # unread <id>... annule
+multica inbox read --issue MUL-123              # toutes les notifications d'une tâche
+multica inbox archive <id>...                   # unarchive <id>... restaure
+multica inbox snooze <id>... --until tomorrow   # RFC 3339, 30m, 3h, 1d, 1w ; unsnooze <id>... y met fin
+```
+
+Comme dans l'application, marquer comme lue, archiver ou reporter une notification de tâche s'applique à toute la tâche, tandis que marquer une notification comme non lue ne change qu'elle. L'échec d'un ID n'arrête pas les autres ; la commande indique lesquels ont échoué et se termine avec un code non nul.
+
+Les actions groupées correspondent au menu de la boîte de réception : `multica inbox read --all`, et `multica inbox archive` avec `--all`, `--read` (tâches dont la notification la plus récente est lue) ou `--completed` (tâches dans un statut `done` ou `closed`). Elles exigent `--yes`, ou une confirmation saisie lors d'une exécution manuelle, et laissent de côté les tâches reportées, sauf `--completed` : comme dans l'application, il archive aussi une tâche terminée ou fermée même reportée, ce qui met fin au report. Chaque modification affiche le nombre de notifications réellement modifiées, tâches entières comprises ; une notification déjà dans cet état compte pour 0. `--output json` renvoie ce même nombre, avec le résultat de chaque ID. Le CLI ne permet pas de supprimer des notifications.
+
+Une exécution d'agent autorisée utilise son identifiant d'exécution pour tout cela, sans revenir à la connexion d'une personne.
 
 ## Traiter les notifications
 

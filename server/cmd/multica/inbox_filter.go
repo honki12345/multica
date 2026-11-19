@@ -1,12 +1,20 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
+	"maps"
+	"net/url"
 	"regexp"
 	"slices"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/spf13/cobra"
+
+	"github.com/multica-ai/multica/server/internal/cli"
 )
 
 // The CLI's copy of the web Inbox filter (packages/core/inbox/filters.ts,
@@ -122,6 +130,10 @@ type inboxFilters struct {
 	Labels     []string `json:"labels"`
 	DueDates   []string `json:"dueDates"`
 	Agent      string   `json:"agent"`
+	// CLI-only: upstream's --since (received at or after) and --issue (one
+	// issue's notifications), both notification dimensions.
+	Since time.Time `json:"-"`
+	Issue string    `json:"-"`
 	// Dimensions whose values are excluded rather than required, by their
 	// web names (type, actor, status, priority, project, assignee, label,
 	// dueDate).
@@ -252,10 +264,21 @@ func compileInboxFilters(f inboxFilters, now time.Time) inboxCompiledFilters {
 			compiled.notification = append(compiled.notification, test)
 		}
 	}
+	if !f.Since.IsZero() {
+		compiled.notification = append(compiled.notification, func(r inboxRow) bool {
+			created, ok := parseInboxTimestamp(r.CreatedAt)
+			return ok && !created.Before(f.Since)
+		})
+	}
+	if f.Issue != "" {
+		compiled.notification = append(compiled.notification, func(r inboxRow) bool {
+			return r.IssueID != nil && strings.EqualFold(*r.IssueID, f.Issue)
+		})
+	}
 	if f.Received != "" {
 		after := inboxReceivedAfter(f.Received, now)
 		compiled.notification = append(compiled.notification, func(r inboxRow) bool {
-			created, ok := parseInboxTime(r.CreatedAt)
+			created, ok := parseInboxTimestamp(r.CreatedAt)
 			return ok && !created.Before(after)
 		})
 	}
@@ -293,7 +316,7 @@ func inboxReceivedAfter(received string, now time.Time) time.Time {
 	return time.Date(y, m, d-(inboxReceivedDays[received]-1), 0, 0, 0, 0, now.Location())
 }
 
-func parseInboxTime(s string) (time.Time, bool) {
+func parseInboxTimestamp(s string) (time.Time, bool) {
 	if s == "" {
 		return time.Time{}, false
 	}
@@ -313,7 +336,7 @@ func inboxDayNumber(value string) (int64, bool) {
 			return 0, false
 		}
 		day = parsed
-	} else if parsed, ok := parseInboxTime(value); ok {
+	} else if parsed, ok := parseInboxTimestamp(value); ok {
 		day = parsed.UTC()
 	} else {
 		return 0, false
@@ -353,13 +376,13 @@ func inboxSnoozeTime(r inboxRow) (time.Time, bool) {
 	if r.SnoozedUntil == nil {
 		return time.Time{}, false
 	}
-	return parseInboxTime(*r.SnoozedUntil)
+	return parseInboxTimestamp(*r.SnoozedUntil)
 }
 
 // inboxRowTime is where a row sorts: when it arrived, or when it came back
 // from a snooze, whichever is later.
 func inboxRowTime(r inboxRow, now time.Time) time.Time {
-	created, _ := parseInboxTime(r.CreatedAt)
+	created, _ := parseInboxTimestamp(r.CreatedAt)
 	if at, ok := inboxSnoozeTime(r); ok && !at.After(now) && at.After(created) {
 		return at
 	}
@@ -389,8 +412,8 @@ func groupInboxRows(items []inboxRow) [][]inboxRow {
 	}
 	for _, group := range groups {
 		sort.SliceStable(group, func(i, j int) bool {
-			a, _ := parseInboxTime(group[i].CreatedAt)
-			b, _ := parseInboxTime(group[j].CreatedAt)
+			a, _ := parseInboxTimestamp(group[i].CreatedAt)
+			b, _ := parseInboxTimestamp(group[j].CreatedAt)
 			return a.After(b)
 		})
 	}
@@ -437,4 +460,379 @@ func filterInboxRowsUngrouped(items []inboxRow, f inboxFilters, activeIssueIDs m
 		out = append(out, r)
 	}
 	return out
+}
+
+// The fork's web Inbox filters on top of upstream `inbox list` (CALA-248,
+// CALA-273). Upstream owns the command, its --project, --type, --unread,
+// --issue, --since, --archived and --snoozed flags and its output; this file
+// adds the web's other filters and its one-row-per-issue grouping, and hooks
+// into runInboxList at flag parsing, the archive query and the filter step.
+
+const inboxFilterHelp = "Filters are the web Inbox's filters and mean the same thing. Values within a flag match ANY of them (repeat the flag or separate values with commas); different flags must ALL match; --not <dimension> turns that flag into \"is not\". --type takes an exact notification type, as upstream does, or a type group.\n\n" +
+	"By default the list is the web Inbox list: one row per issue, newest first. The row is the issue's newest notification that passes --type, --actor, --since and --received; --unread and the issue flags (--status, --priority, --project, --assignee, --label, --due, --agent) are then asked of that row, so --unread means \"the issue's shown notification is unread\". --ungrouped lists every matching notification instead, in server order, and asks --unread of each notification.\n\n" +
+	"--archived sends the filters to the server, which applies the same rules to the archive; --agent and --ungrouped do not apply there. --snoozed takes no filter but --issue.\n\n"
+
+const inboxUnreadUsage = "Only unread: the issue's shown notification by default, each notification with --ungrouped"
+
+// inboxSnoozedRefusedFlags are the list flags --snoozed refuses; --issue is
+// the one filter it takes.
+var inboxSnoozedRefusedFlags = []string{"project", "type", "unread", "since", "actor", "received", "status", "priority", "assignee", "label", "due", "agent", "not", "ungrouped"}
+
+// inboxKnownTypes are the exact notification types --type accepts besides
+// the groups; a typo fails instead of listing nothing.
+var inboxKnownTypes = slices.Sorted(slices.Values(append(slices.Collect(maps.Keys(inboxTypeGroups)), inboxSystemTypes...)))
+
+// inboxNegatableFlagNames are the --not values, in help order; each is the
+// web's dimension name except --due (dueDate).
+var inboxNegatableFlagNames = []string{"type", "actor", "status", "priority", "project", "assignee", "label", "due"}
+
+func inboxDimensionOfFlag(flag string) string {
+	if flag == "due" {
+		return "dueDate"
+	}
+	return flag
+}
+
+// registerInboxFilterFlags adds the web filters upstream `inbox list` lacks.
+func registerInboxFilterFlags(cmd *cobra.Command) {
+	f := cmd.Flags()
+	f.StringSlice("actor", nil, "Who sent it: member or agent name, email, ID, member:<id>, agent:<id>, or system")
+	f.String("received", "", "Received in the local calendar window, as the web presets: "+strings.Join(inboxReceivedFilters, ", ")+" (not with --since)")
+	f.StringSlice("status", nil, "Issue status (e.g. "+strings.Join(validIssueStatuses, ", ")+")")
+	f.StringSlice("priority", nil, "Issue priority: "+strings.Join(validIssuePriorities, ", "))
+	f.StringSlice("assignee", nil, "Issue assignee name, email, ID, <type>:<id>, or none")
+	f.StringSlice("label", nil, "Issue label name, ID or unique ID prefix")
+	f.StringSlice("due", nil, "Issue due date: "+strings.Join(inboxDueFilters, ", "))
+	f.String("agent", "", "Whether an agent is running or queued on the issue: "+strings.Join(inboxAgentFilters, ", "))
+	f.StringSlice("not", nil, "Exclude instead of require this flag's values: "+strings.Join(inboxNegatableFlagNames, ", "))
+	f.Bool("ungrouped", false, "List every matching notification instead of one row per issue")
+}
+
+func inboxAllowed(flag, value string, allowed []string) error {
+	if slices.Contains(allowed, value) {
+		return nil
+	}
+	return fmt.Errorf("invalid --%s %q; valid values: %s", flag, value, strings.Join(allowed, ", "))
+}
+
+func inboxFlagValues(cmd *cobra.Command, name string) []string {
+	raw, _ := cmd.Flags().GetStringSlice(name)
+	out := make([]string, 0, len(raw))
+	for _, v := range raw {
+		if v = strings.TrimSpace(v); v != "" && !slices.Contains(out, v) {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// inboxArchivedTypeSplit splits --type values into the type groups and the
+// exact types the archive endpoint takes as separate parameters.
+func inboxArchivedTypeSplit(types []string) (groups, exact []string) {
+	for _, v := range types {
+		if slices.Contains(inboxTypeGroupNames, v) {
+			groups = append(groups, v)
+		} else {
+			exact = append(exact, v)
+		}
+	}
+	return groups, exact
+}
+
+// parseInboxListFlags reads everything that needs no server, so a typo or an
+// unsupported combination fails before any request. Name-like values are
+// resolved later by resolveInboxListNames.
+func parseInboxListFlags(cmd *cobra.Command, since time.Time, archived bool) (inboxFilters, error) {
+	var f inboxFilters
+	f.Since = since
+	f.UnreadOnly, _ = cmd.Flags().GetBool("unread")
+	for _, v := range inboxFlagValues(cmd, "type") {
+		if !slices.Contains(inboxTypeGroupNames, v) && !slices.Contains(inboxKnownTypes, v) {
+			return f, fmt.Errorf("invalid --type %q; valid groups: %s; or a notification type: %s",
+				v, strings.Join(inboxTypeGroupNames, ", "), strings.Join(inboxKnownTypes, ", "))
+		}
+		f.Types = append(f.Types, v)
+	}
+	f.Received, _ = cmd.Flags().GetString("received")
+	if f.Received != "" {
+		if err := inboxAllowed("received", f.Received, inboxReceivedFilters); err != nil {
+			return f, err
+		}
+		if !since.IsZero() {
+			return f, fmt.Errorf("--received and --since cannot be combined; pick one received window")
+		}
+	}
+	for _, v := range inboxFlagValues(cmd, "status") {
+		if err := validateIssueStatus(v); err != nil {
+			return f, err
+		}
+		f.Statuses = append(f.Statuses, strings.ToLower(v))
+	}
+	for _, v := range inboxFlagValues(cmd, "priority") {
+		if err := inboxAllowed("priority", v, validIssuePriorities); err != nil {
+			return f, err
+		}
+		f.Priorities = append(f.Priorities, v)
+	}
+	for _, v := range inboxFlagValues(cmd, "due") {
+		if err := inboxAllowed("due", v, inboxDueFilters); err != nil {
+			return f, err
+		}
+		f.DueDates = append(f.DueDates, v)
+	}
+	f.Agent, _ = cmd.Flags().GetString("agent")
+	if f.Agent != "" {
+		if err := inboxAllowed("agent", f.Agent, inboxAgentFilters); err != nil {
+			return f, err
+		}
+	}
+	// Name-like values are kept raw for now; their presence is what --not checks.
+	f.Actors = inboxFlagValues(cmd, "actor")
+	f.Projects = inboxFlagValues(cmd, "project")
+	f.Assignees = inboxFlagValues(cmd, "assignee")
+	f.Labels = inboxFlagValues(cmd, "label")
+	for _, v := range inboxFlagValues(cmd, "not") {
+		dimension := inboxDimensionOfFlag(v)
+		if !slices.Contains(inboxNegatableFlagNames, v) {
+			return f, fmt.Errorf("invalid --not %q; valid values: %s", v, strings.Join(inboxNegatableFlagNames, ", "))
+		}
+		if len(f.values(dimension)) == 0 {
+			return f, fmt.Errorf("--not %s needs --%s values to exclude", v, v)
+		}
+		f.Negated = append(f.Negated, dimension)
+	}
+	if archived {
+		for _, name := range []string{"agent", "ungrouped"} {
+			if cmd.Flags().Changed(name) {
+				return f, fmt.Errorf("--%s does not apply to --archived", name)
+			}
+		}
+		// The archive endpoint ANDs its group and exact-type parameters and
+		// negates only the groups, so neither mix can mean what the flags say.
+		groups, exact := inboxArchivedTypeSplit(f.Types)
+		if len(groups) > 0 && len(exact) > 0 {
+			return f, fmt.Errorf("--archived takes either type groups (%s) or exact notification types in --type, not both", strings.Join(groups, ", "))
+		}
+		if len(exact) > 0 && slices.Contains(f.Negated, "type") {
+			return f, fmt.Errorf("--archived --not type needs type groups (%s), not exact notification types", strings.Join(inboxTypeGroupNames, ", "))
+		}
+	}
+	return f, nil
+}
+
+// resolveInboxActorRef resolves a name, email or ID, or a "<type>:<id>" key
+// whose id may be a short ID, to the "<type>:<uuid>" form the rows carry.
+func resolveInboxActorRef(ctx context.Context, client *cli.APIClient, flag, v string, kinds assigneeKinds) (string, error) {
+	kind, id, typed := strings.Cut(v, ":")
+	typed = typed && (kind == "member" || kind == "agent" || kind == "squad")
+	if typed && uuidRegexp.MatchString(id) && (kind == "member" && kinds.member || kind == "agent" && kinds.agent || kind == "squad" && kinds.squad) {
+		return kind + ":" + strings.ToLower(id), nil
+	}
+	lookup := v
+	if typed {
+		lookup = id
+	}
+	gotKind, gotID, err := resolveAssignee(ctx, client, lookup, kinds)
+	if err != nil {
+		return "", fmt.Errorf("resolve --%s: %w", flag, err)
+	}
+	if typed && gotKind != kind {
+		return "", fmt.Errorf("resolve --%s: %q resolves to %s:%s, not %s", flag, v, gotKind, gotID, kind)
+	}
+	return gotKind + ":" + strings.ToLower(gotID), nil
+}
+
+// resolveInboxListNames turns names and ID prefixes into the ID forms the
+// inbox rows carry.
+func resolveInboxListNames(ctx context.Context, client *cli.APIClient, f *inboxFilters) error {
+	for i, v := range f.Projects {
+		if v == inboxNoneValue {
+			continue
+		}
+		project, err := resolveProjectID(ctx, client, v)
+		if err != nil {
+			return err
+		}
+		f.Projects[i] = strings.ToLower(project.ID)
+	}
+	for i, v := range f.Assignees {
+		if v == inboxNoneValue {
+			continue
+		}
+		key, err := resolveInboxActorRef(ctx, client, "assignee", v, issueAssigneeKinds)
+		if err != nil {
+			return err
+		}
+		f.Assignees[i] = key
+	}
+	for i, v := range f.Actors {
+		if v == "system" {
+			continue
+		}
+		key, err := resolveInboxActorRef(ctx, client, "actor", v, memberOrAgentKinds)
+		if err != nil {
+			return err
+		}
+		f.Actors[i] = key
+	}
+	if len(f.Labels) > 0 {
+		candidates, err := fetchLabelCandidates(ctx, client, "issue")
+		if err != nil {
+			return fmt.Errorf("resolve --label: %w", err)
+		}
+		ids, err := resolveIssueBatchLabels(ctx, client, candidates, f.Labels)
+		if err != nil {
+			return err
+		}
+		f.Labels = ids
+	}
+	return nil
+}
+
+// archivedInboxListQuery is the archive page query for the filters, in the
+// parameters the web sends (archivedInboxQuery in packages/core/inbox), plus
+// upstream's exact notification_types and group_id.
+func archivedInboxListQuery(f inboxFilters, now time.Time) url.Values {
+	q := url.Values{}
+	list := func(name string, values []string) {
+		if len(values) > 0 {
+			sorted := slices.Sorted(slices.Values(values))
+			q.Set(name, strings.Join(sorted, ","))
+		}
+	}
+	groups, exact := inboxArchivedTypeSplit(f.Types)
+	list("types", groups)
+	list("notification_types", exact)
+	list("actors", f.Actors)
+	list("statuses", f.Statuses)
+	list("priorities", f.Priorities)
+	list("projects", f.Projects)
+	list("assignees", f.Assignees)
+	list("labels", f.Labels)
+	list("due_dates", f.DueDates)
+	list("negated", f.Negated)
+	if len(f.DueDates) > 0 {
+		q.Set("today", now.Format(time.DateOnly))
+	}
+	switch {
+	case !f.Since.IsZero():
+		q.Set("received_after", f.Since.UTC().Format(time.RFC3339Nano))
+	case f.Received != "":
+		q.Set("received_after", inboxReceivedAfter(f.Received, now).UTC().Format(time.RFC3339Nano))
+	}
+	if f.UnreadOnly {
+		q.Set("unread_only", "true")
+	}
+	if f.Issue != "" {
+		q.Set("group_id", f.Issue)
+	}
+	return q
+}
+
+// inboxUnsupportedFlag names a requested issue flag the server's rows cannot
+// answer: an older server omits the fields. The web leaves such a filter
+// dormant; the CLI says so instead of returning a different list.
+func inboxUnsupportedFlag(rows []inboxRow, f inboxFilters) string {
+	if len(rows) == 0 {
+		return ""
+	}
+	allHave := func(has func(inboxRow) bool) bool {
+		return !slices.ContainsFunc(rows, func(r inboxRow) bool { return !has(r) })
+	}
+	if len(f.Priorities) > 0 && !allHave(func(r inboxRow) bool { return r.hasPriority }) {
+		return "priority"
+	}
+	if !allHave(func(r inboxRow) bool { return r.IssueLabelIDs != nil }) {
+		for _, flag := range []struct {
+			name   string
+			values []string
+		}{{"project", f.Projects}, {"assignee", f.Assignees}, {"label", f.Labels}, {"due", f.DueDates}} {
+			if len(flag.values) > 0 {
+				return flag.name
+			}
+		}
+	}
+	return ""
+}
+
+// inboxActiveIssueIDs is the set of issues an agent is running or queued on,
+// by the rule the web Inbox and the issue rows use.
+func inboxActiveIssueIDs(ctx context.Context, client *cli.APIClient) (map[string]bool, error) {
+	var tasks []struct {
+		IssueID  string `json:"issue_id"`
+		Status   string `json:"status"`
+		WakeupID string `json:"wakeup_id"`
+	}
+	if err := client.GetJSON(ctx, "/api/agent-task-snapshot", &tasks); err != nil {
+		return nil, fmt.Errorf("read agent tasks for --agent: %w", err)
+	}
+	active := map[string]bool{}
+	for _, t := range tasks {
+		if t.IssueID == "" {
+			continue
+		}
+		switch t.Status {
+		case "running", "queued", "dispatched", "waiting_local_directory":
+			active[t.IssueID] = true
+		case "deferred":
+			if t.WakeupID != "" {
+				active[t.IssueID] = true
+			}
+		}
+	}
+	return active, nil
+}
+
+// UnmarshalJSON decodes a list row once for upstream's output and once for
+// the web filter.
+func (r *inboxListRow) UnmarshalJSON(data []byte) error {
+	type plain inboxListRow
+	if err := json.Unmarshal(data, (*plain)(r)); err != nil {
+		return err
+	}
+	return json.Unmarshal(data, &r.filter)
+}
+
+// applyInboxListFilters is the filter step of `inbox list`. The archive
+// comes one row per issue, filtered by the server; as upstream does, its rows
+// are asked the notification filters and --unread again, so a server that
+// ignores a parameter (notification_types before #10861) cannot widen it.
+func applyInboxListFilters(ctx context.Context, client *cli.APIClient, rows []inboxListRow, f inboxFilters, archived, ungrouped bool) ([]inboxListRow, error) {
+	if archived {
+		tests := compileInboxFilters(f, time.Now())
+		out := make([]inboxListRow, 0, len(rows))
+		for _, r := range rows {
+			if inboxPasses(tests.notification, r.filter) && !(f.UnreadOnly && r.Read) {
+				out = append(out, r)
+			}
+		}
+		return out, nil
+	}
+	filterRows := make([]inboxRow, len(rows))
+	byID := make(map[string]inboxListRow, len(rows))
+	for i, r := range rows {
+		filterRows[i] = r.filter
+		byID[r.ID] = r
+	}
+	if flag := inboxUnsupportedFlag(filterRows, f); flag != "" {
+		return nil, fmt.Errorf("this server does not send the issue fields --%s needs; upgrade the server or drop --%s", flag, flag)
+	}
+	var active map[string]bool
+	if f.Agent != "" {
+		var err error
+		if active, err = inboxActiveIssueIDs(ctx, client); err != nil {
+			return nil, err
+		}
+	}
+	var kept []inboxRow
+	if ungrouped {
+		kept = filterInboxRowsUngrouped(filterRows, f, active, time.Now())
+	} else {
+		kept = filterInboxRows(filterRows, f, active, time.Now())
+	}
+	out := make([]inboxListRow, 0, len(kept))
+	for _, r := range kept {
+		out = append(out, byID[r.ID])
+	}
+	return out, nil
 }

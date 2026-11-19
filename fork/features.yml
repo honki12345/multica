@@ -362,14 +362,80 @@ features:
           - No [data-slot="chat-bar"] (upstream behaviour below 768px, unchanged).
     drop_when: upstream shows every chip without a +N overflow menu.
 
-  - id: inbox-list-filters
-    summary: "`multica inbox list` takes the web Inbox's filters as flags and lists the same rows: one per issue, newest first; --ungrouped for every notification."
+  - id: inbox-cli-manage
+    summary: "Upstream's `multica inbox` management (count, read, unread, archive, unarchive, snooze, unsnooze; list --unread/--issue/--since/--archived/--snoozed) and the owner gate on every inbox route, cherry-picked ahead of an upstream release."
     status: active
     kind: cli
-    cards: [CALA-138, CALA-248]
+    cards: [CALA-273]
+    origin:
+      type: upstream-cherry-pick
+      upstream_pr: 10861
+      commits: ["267194a85", "9ab32e563"]
+    files:
+      - server/cmd/multica/cmd_inbox_manage_test.go
+      - server/cmd/server/inbox_owner_gate_routes_test.go
+      - server/cmd/server/router.go
+      - server/internal/daemon/execenv/runtime_config_sections.go
+      - server/internal/handler/handler.go
+      - server/internal/handler/inbox.go
+      - server/internal/handler/inbox_access_test.go
+      - server/internal/handler/inbox_archive.go
+      - server/internal/handler/inbox_archive_test.go
+      - server/internal/handler/inbox_snooze.go
+      - server/internal/handler/inbox_write_access_test.go
+      - server/internal/service/builtin_skills/multica-platform/SKILL.md
+      - server/internal/service/builtin_skills/multica-platform/references/inbox.md
+      - server/internal/service/builtin_skills_test.go
+      - server/pkg/db/generated/inbox.sql.go
+      - server/pkg/db/generated/inbox_archive.sql.go
+      - server/pkg/db/queries/inbox.sql
+      - server/pkg/db/queries/inbox_archive.sql
+      - apps/docs/content/docs/cli.mdx
+      - apps/docs/content/docs/cli.ko.mdx
+      - apps/docs/content/docs/cli.ja.mdx
+      - apps/docs/content/docs/cli.fr.mdx
+      - apps/docs/content/docs/cli.zh.mdx
+      - apps/docs/content/docs/cli.zh-Hant.mdx
+    watch:
+      - path: server/cmd/multica/cmd_id_resolver.go
+        why: resolveIssueRef / loadActorDisplayLookup used by --issue, read --issue and the FROM column
+      - path: server/internal/handler/inbox_archive_legacy_types_test.go
+        why: archived rows with types upstream no longer writes; the archive list and its type filter must keep reading them
+    upstream_equivalent:
+      prs: [10861, 10921]
+      symbols: [runInboxCount, runInboxSnooze, listArchivedInbox, inboxAccessNote]
+      keywords: [inbox count, inbox snooze, owner-gated writes]
+    tests:
+      - go: server/cmd/multica
+        name: TestInboxListArchivedReadsEveryPage
+      - go: server/cmd/multica
+        name: TestInboxItemWritesReportCountAndFailures
+      - go: server/cmd/multica
+        name: TestInboxReadIssueAndBulkModes
+      - go: server/cmd/multica
+        name: TestInboxCommandsRegisteredWithoutDelete
+      - go: server/cmd/server
+        name: TestEveryInboxRouteDeniesMachineCredentialsWithoutOwnerTrigger
+    scenarios:
+      - name: Upstream inbox reads through the fork CLI
+        setup: a member with notifications, logged in to the CLI, against a server that has the owner gate
+        steps:
+          - Run `multica inbox count --output json`.
+          - Run `multica inbox list --since 1d --output json`.
+          - Run `multica inbox list --snoozed --output json`.
+        expect:
+          - Each command exits 0; `workspaces[].count` for this workspace matches the web Inbox badge (`unread` counts raw notifications).
+          - No notification changes read state.
+    drop_when: "an upstream release tag that contains multica-ai/multica#10861 is merged into main (the cherry-picks become no-ops in that merge; `inbox_filter.go` stays with inbox-list-filters)."
+
+  - id: inbox-list-filters
+    summary: "`multica inbox list` takes the web Inbox's filters as flags and lists the same rows: one per issue, newest first; --ungrouped for every notification. Sits on upstream's list (inbox-cli-manage)."
+    status: active
+    kind: cli
+    cards: [CALA-138, CALA-248, CALA-273]
     origin:
       type: ours
-      commits: ["5724f3b9d"]
+      commits: ["5724f3b9d", "267194a85"]
     files:
       - server/cmd/multica/cmd_inbox.go
       - server/cmd/multica/cmd_inbox_test.go
@@ -384,6 +450,10 @@ features:
       - apps/docs/content/docs/inbox.zh.mdx
       - apps/docs/content/docs/inbox.zh-Hant.mdx
     watch:
+      - path: server/pkg/db/queries/inbox_archive.sql
+        why: ListArchivedInboxPage filter parameters archivedInboxListQuery sends (types, notification_types, negated, due_dates + today)
+      - path: server/cmd/multica/cmd_inbox_manage_test.go
+        why: upstream's list tests; cmd_inbox_test.go fixtures gained issue_id/issue_label_ids so upstream's cases pass under the grouped default, and the absorb merge will conflict there
       - path: packages/core/inbox/filters.ts
         why: InboxFilters / filterInboxItems, the semantics inbox_filter.go ports; a change there must update the parity fixture
       - path: packages/core/inbox/group.ts
@@ -405,8 +475,8 @@ features:
       - path: server/cmd/multica/cmd_issue.go
         why: resolveAssignee / validateIssueStatus / validIssuePriorities used by --assignee, --actor, --status, --priority
     upstream_equivalent:
-      prs: [10726]
-      symbols: [filterInboxRows, inboxUnsupportedFlag]
+      prs: [10726, 10861]
+      symbols: [filterInboxRows, inboxUnsupportedFlag, archivedInboxListQuery]
       keywords: [inbox list, inbox filter flags, inbox list --unread]
     tests:
       - go: server/cmd/multica
@@ -421,6 +491,14 @@ features:
         name: TestInboxListRefusesIssueFlagsAnOlderServerCannotAnswer
       - go: server/cmd/multica
         name: TestInboxListKeepsEachRowsOwnCommentAndCurrentServerShape
+      - go: server/cmd/multica
+        name: TestInboxListUnreadGroupedAndUngrouped
+      - go: server/cmd/multica
+        name: TestInboxListArchivedSendsWebFilters
+      - go: server/cmd/multica
+        name: TestInboxListRefusesFilterCombinationsBeforeAnyRequest
+      - go: server/cmd/multica
+        name: TestInboxListArchivedRechecksNotificationFiltersLocally
       - vitest: packages/core/inbox/filter-parity.test.ts
     scenarios:
       - name: CLI list matches the filtered web Inbox

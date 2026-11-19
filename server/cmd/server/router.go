@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: cherry-pick upstream multica-ai/multica#10861 (inbox management from the CLI) ahead of an upstream release (CALA-273) and #10921 (owner-gate route test).
+
 package main
 
 import (
@@ -2708,7 +2710,9 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Post("/{id}/reject", h.RejectAppRequest)
 			})
 
-			// Inbox
+			// Inbox. Every handler here calls requireInboxOwnerAccess;
+			// TestEveryInboxRouteDeniesMachineCredentialsWithoutOwnerTrigger
+			// walks these routes and fails on one that skips it.
 			r.Route("/api/inbox", func(r chi.Router) {
 				r.Get("/", h.ListInbox)
 				// Archived notifications, for the inbox's "Archived" sub-view.
