@@ -1,0 +1,446 @@
+# Fork feature registry: the one machine-readable list of what this fork
+# changes on top of upstream Multica. Upstream-triage, fork-verify and the
+# absorb gate all read this file; FORK.md points here instead of keeping its
+# own table. Schema and rules: FORK.md "Fork feature registry".
+# Checked by scripts/hoon/features-check.sh (CI: .github/workflows/fork-license.yml).
+# Quote commit ids: YAML reads an unquoted id such as 1234e56 as a number.
+version: 1
+
+# Fork upkeep, not features. Every file that differs from the upstream base tag
+# must be claimed by a feature's `files` or matched here.
+infrastructure:
+  - path: NOTICE
+    why: modified-fork line (Apache 2.0 §4(d))
+  - path: FORK.md
+  - path: fork/**
+  - path: scripts/hoon/**
+  - path: .github/workflows/fork-license.yml
+
+features:
+  - id: resident-hermes-gateway
+    summary: One long-lived Hermes owner serves every task through per-task ACP viewers; tools find their task from a context file in the workdir.
+    status: active
+    kind: daemon
+    cards: [CALA-197, CALA-245]
+    origin:
+      type: upstream-cherry-pick
+      upstream_pr: 10119
+      commits: ["2707ff0c3", "dcd2e0ccd"]
+    files:
+      - server/cmd/multica/cmd_agent.go
+      - server/cmd/multica/resident_task.go
+      - server/cmd/multica/resident_task_test.go
+      - server/internal/daemon/daemon.go
+      - server/internal/daemon/execenv/hermes_gateway.go
+      - server/internal/daemon/execenv/hermes_home.go
+      - server/internal/daemon/execenv/hermes_resident_gateway_test.go
+      - server/internal/daemon/resident_task_context.go
+      - server/internal/daemon/resident_task_context_test.go
+      - apps/docs/content/docs/daemon-runtimes.mdx
+      - apps/docs/content/docs/daemon-runtimes.zh.mdx
+    watch:
+      - path: server/internal/daemon/execenv/hermes_sessions.go
+        why: HermesSessionStorePath; daemon.go skips the per-task session store when resident
+      - path: server/internal/daemon/execenv/hermes_memory.go
+        why: per-task Hermes home layout that resident mode bypasses
+      - path: server/internal/daemon/types.go
+        why: Task fields copied into .multica_resident_task.json
+      - path: server/internal/cli/client.go
+        why: APIClient AgentID/TaskID/WorkspaceID set from the resident credential
+      - path: server/pkg/agent/hermes.go
+        why: ACP client the per-task viewer runs
+      - path: server/cmd/multica/cmd_auth.go
+        why: task-context detection (inDaemonManagedExecutionContext) the resident credential must keep passing
+    upstream_equivalent:
+      prs: [10119]
+      symbols: [ResidentHermesGatewayEnabled, MULTICA_HERMES_RESIDENT_GATEWAY, MULTICA_RESIDENT_OWNER, .multica_resident_task.json, residentTaskCredentialFromCwd]
+      keywords: [resident gateway, resident hermes]
+    tests:
+      - go: server/cmd/multica
+        name: TestResidentNewAPIClient
+      - go: server/internal/daemon/execenv
+        name: TestResidentGatewayKeepsGatewayStateMirrored
+      - go: server/internal/daemon
+        name: TestResidentSessionHomeReachable
+      - go: server/internal/daemon
+        name: TestResidentTaskContext
+    scenarios:
+      - name: resident task runs with its own identity
+        setup: daemon started with MULTICA_HERMES_RESIDENT_GATEWAY=1 and a resident Hermes agent
+        steps:
+          - Assign a test issue to the resident Hermes agent.
+          - From the task's tool shell run `multica issue get <issue-id> --output json`.
+          - From the same shell run `multica issue comment add <issue-id> --content-file ./reply.md`.
+          - After the run ends, list the task root (`ls -a ..` from the workdir).
+        expect:
+          - issue get returns the issue (no "not authenticated" / workspace error).
+          - The comment is authored by the agent, not the resident owner's member account.
+          - .multica_resident_task.json exists during the run and is gone after it.
+    drop_when: upstream PR #10119 (or an equivalent resident gateway mode) ships in an upstream release tag we merge; drop ours in that merge and re-base the resident follow-ups below on upstream's version.
+
+  - id: resident-quick-create-context
+    summary: Quick Create runs on the resident gateway get the MULTICA_QUICK_CREATE_* context, so issue create stamps origin and --assignee-picker works.
+    status: active
+    kind: daemon
+    cards: []
+    origin:
+      type: ours
+      commits: ["1d5640104"]
+      release: 0.9.0-resident.2
+    files:
+      - server/cmd/multica/cmd_agent.go
+      - server/cmd/multica/resident_task.go
+      - server/cmd/multica/resident_task_test.go
+      - server/internal/daemon/resident_task_context.go
+      - server/internal/daemon/resident_task_context_test.go
+    watch:
+      - path: server/cmd/multica/cmd_issue.go
+        why: reads MULTICA_QUICK_CREATE_* and resolves --assignee-picker
+      - path: server/internal/daemon/daemon.go
+        why: sets QuickCreate env for non-resident runs (QuickCreatePrompt branch)
+      - path: server/internal/daemon/types.go
+        why: Task.QuickCreatePrompt / QuickCreateAttachmentIDs
+      - path: server/internal/service/task.go
+        why: origin_type=quick_create provenance on agent-created issues
+    upstream_equivalent:
+      symbols: [quick_create_task_id, applyQuickCreateEnv]
+      keywords: [quick create resident, resident quick create]
+    tests:
+      - go: server/cmd/multica
+        name: TestResidentQuickCreateAssigneePicker
+      - go: server/internal/daemon
+        name: TestResidentTaskContextQuickCreate
+    scenarios:
+      - name: quick create through the resident agent
+        setup: resident daemon as in resident-hermes-gateway
+        steps:
+          - Start a Quick Create with the resident Hermes agent and a one-line prompt.
+          - Wait for the task to finish.
+          - Run `multica issue get <created-issue> --output json`.
+        expect:
+          - The created issue has origin_type "quick_create" and origin_id = the quick-create task id.
+          - Its assignee is the default picked for the run (the agent, or the squad for a squad run).
+    drop_when: upstream's resident mode passes quick-create context to resident tool shells itself (check together with #10119).
+
+  - id: resident-no-hermes-home-overlay
+    summary: In resident mode the daemon skips the per-task hermes-home overlay; the viewer runs on the owner's real Hermes home.
+    status: active
+    kind: daemon
+    cards: []
+    origin:
+      type: ours
+      commits: ["7637018c6"]
+      release: 0.9.0-resident.3
+    files:
+      - server/internal/daemon/execenv/execenv.go
+    watch:
+      - path: server/internal/daemon/execenv/hermes_home.go
+        why: prepareHermesHomeTracked, the overlay this skips
+      - path: server/internal/daemon/execenv/hermes_sessions.go
+        why: session store mount tied to the overlay
+    upstream_equivalent:
+      symbols: [prepareHermesHomeTracked, hermes-home]
+      keywords: [hermes home overlay, resident]
+    tests: []
+    tests_gap: no Go test pins the skipped overlay; the scenario below is the only check (fork-verify covers it).
+    scenarios:
+      - name: resident task has no hermes-home overlay
+        setup: resident daemon as in resident-hermes-gateway, agent with at least one skill
+        steps:
+          - Run any task on the resident Hermes agent.
+          - From its workdir run `ls -a ..`.
+        expect:
+          - The task root has no hermes-home directory.
+    drop_when: upstream drops or conditions the per-task overlay for resident mode.
+
+  - id: hermes-steer-supplement
+    summary: Comments posted while a Hermes task runs reach it through Hermes' /steer (task supplements), as other providers already do.
+    status: active
+    kind: server
+    cards: []
+    origin:
+      type: ours
+      commits: ["9204e1d53"]
+      release: 0.9.0-resident.4
+    files:
+      - server/pkg/agent/hermes.go
+      - server/pkg/agent/hermes_supplement.go
+      - server/pkg/agent/hermes_supplement_integration_test.go
+      - server/pkg/agent/hermes_supplement_test.go
+      - server/pkg/agent/version.go
+      - server/pkg/agent/version_test.go
+      - server/pkg/db/queries/supplement.sql
+      - server/pkg/db/generated/supplement.sql.go
+    watch:
+      - path: server/pkg/agent/agent.go
+        why: Session.Supplement / SupplementReady contract
+      - path: server/pkg/agent/*_supplement.go
+        why: other providers' supplement pattern; upstream changes there usually change the contract
+      - path: server/internal/daemon/task_supplement.go
+        why: daemon side that calls Session.Supplement
+      - path: server/internal/handler/task_supplement.go
+        why: server side that claims supplements
+      - path: server/internal/service/chat_supplement.go
+        why: chat steering path (v0.11 non-interrupting chat steering)
+      - path: server/pkg/db/queries/chat_supplement.sql
+        why: capability join used with the provider list we extended
+    upstream_equivalent:
+      symbols: [hermesSupplementSession, "'hermes')"]
+      keywords: [hermes steer, hermes supplement, task supplement hermes]
+    tests:
+      - go: server/pkg/agent
+        name: TestHermesSupplementSteersActivePrompt
+      - go: server/pkg/agent
+        name: TestHermesSupplementRequiresSteerAcknowledgement
+      - go: server/pkg/agent
+        name: TestHermesSupplementNotExposedWithoutNegotiationOrForCustomRuntime
+      - go: server/pkg/agent
+        name: TestTaskSupplementVersionGate
+      - go: server/pkg/agent
+        name: TestHermesRealACPSteerSmoke
+        tags: agentintegration
+        real_agent: true
+    scenarios:
+      - name: comment steers a running Hermes task
+        setup: Hermes >= 0.22.3 runtime
+        steps:
+          - Start a Hermes task that takes over a minute (e.g. a long investigation issue).
+          - While it runs, post a comment on the issue with a short extra instruction.
+          - Read the run's messages (`multica issue run-messages <task-id> --output json`).
+        expect:
+          - No new run is queued for that comment.
+          - The run's messages include "⏩ Steer queued" and the run's result reflects the extra instruction.
+    drop_when: upstream adds hermes to the task-supplement providers (supplement.sql provider list and SupportsTaskSupplement).
+
+  - id: resident-daemon-local-commands
+    summary: repo checkout and environment commands work from a resident Hermes tool shell (daemon port and agent name come from the context file).
+    status: active
+    kind: cli
+    cards: [CALA-197, CALA-245]
+    origin:
+      type: ours
+      commits: ["09e87daed"]
+      release: 0.9.0-resident.5
+    files:
+      - server/cmd/multica/cmd_environment.go
+      - server/cmd/multica/cmd_repo.go
+      - server/cmd/multica/resident_task.go
+      - server/cmd/multica/resident_task_test.go
+      - server/internal/daemon/daemon.go
+      - server/internal/daemon/resident_task_context.go
+      - server/internal/daemon/resident_task_context_test.go
+    watch:
+      - path: server/cmd/multica/cmd_daemon_port.go
+        why: readDaemonPortRecord, the fallback for old context files
+      - path: server/internal/daemon/health.go
+        why: /repo/checkout and /environments/* endpoints these commands call
+      - path: server/cmd/multica/cmd_agent.go
+        why: MULTICA_DAEMON_PORT task-context rules
+    upstream_equivalent:
+      symbols: [applyResidentDaemonEnv, daemon_port]
+      keywords: [resident repo checkout, MULTICA_DAEMON_PORT not set]
+    tests:
+      - go: server/cmd/multica
+        name: TestResidentDaemonLocalCommands
+    scenarios:
+      - name: repo checkout from a resident tool shell
+        setup: resident daemon as in resident-hermes-gateway
+        steps:
+          - From a resident task's workdir run `multica repo checkout https://github.com/honki12345/multica`.
+          - Run `multica environment list`.
+        expect:
+          - 'repo checkout prints "Checked out <url> → <path> (branch: agent/...)".'
+          - Neither command fails with "MULTICA_DAEMON_PORT not set".
+    drop_when: upstream's resident mode exposes the daemon port to resident tool shells.
+
+  - id: resident-daemon-status
+    summary: daemon status works from a resident Hermes tool shell.
+    status: active
+    kind: cli
+    cards: [CALA-197, CALA-245]
+    origin:
+      type: ours
+      commits: ["eeef72c10"]
+      release: 0.9.0-resident.6
+    files:
+      - server/cmd/multica/cmd_daemon.go
+      - server/cmd/multica/resident_task_test.go
+    watch:
+      - path: server/cmd/multica/resident_task.go
+        why: applyResidentDaemonEnv, which daemonStatusHealthPort calls
+    upstream_equivalent:
+      symbols: [daemonStatusHealthPort]
+      keywords: [daemon status resident]
+    tests:
+      - go: server/cmd/multica
+        name: TestResidentDaemonStatusPort
+    scenarios:
+      - name: daemon status from a resident tool shell
+        setup: resident daemon as in resident-hermes-gateway
+        steps:
+          - From a resident task's workdir run `multica daemon status --output json`.
+        expect:
+          - status is "running" and cli_version is the deployed X.Y.Z-hoon.N.
+    drop_when: upstream's resident mode exposes the daemon port to resident tool shells.
+
+  - id: chat-bar-all-chips
+    summary: The bottom chat bar shows every chat chip in a sideways-scrolling strip instead of folding extras into a +N menu.
+    status: active
+    kind: web-ui
+    cards: [CALA-72]
+    origin:
+      type: ours
+      commits: ["6565efb51"]
+    files:
+      - packages/views/chat/components/chat-bar.tsx
+      - packages/views/chat/components/chat-bar.test.tsx
+      - packages/views/chat/components/chat-bar-sessions.ts
+      - packages/views/chat/components/chat-bar-sessions.test.ts
+      - packages/views/chat/components/use-chat-window-anchor.ts
+      - packages/views/layout/bottom-bar.tsx
+    watch:
+      - path: packages/views/chat/components/**
+        why: chat-bar-history.tsx renders in the bar; chat-window.tsx anchors on [data-slot="chat-bar"] via use-chat-window-anchor
+      - path: packages/views/chat/floating-chat-visibility.ts
+        why: decides when bottom-bar.tsx renders the chat bar
+      - path: packages/views/layout/bottom-bar-styles.ts
+        why: BOTTOM_BAR_ITEM_CLASS used by every chip
+      - path: packages/views/layout/dashboard-layout.tsx
+        why: mounts AppBottomBar on web
+      - path: packages/views/layout/app-shell-context.tsx
+        why: useAppShell in bottom-bar.tsx
+      - path: packages/views/layout/panels/team-status.ts
+        why: team status sits beside the chips (shrink-0)
+      - path: apps/desktop/src/renderer/src/components/desktop-layout.tsx
+        why: mounts AppBottomBar on desktop
+      - path: packages/core/chat/**
+        why: useChatStore, chatSessionsOptions, pendingChatTasksOptions feed the chips
+      - path: packages/ui/hooks/use-mobile.ts
+        why: the bar is hidden below 768px
+      - path: packages/ui/components/common/tooltip-hint.tsx
+        why: chip tooltips
+      - path: packages/ui/styles/**
+        why: tokens and utilities the strip's layout uses
+      - path: packages/views/locales/*/chat.json
+        why: bar.close_chip and the now-unused bar.more_* strings
+    upstream_equivalent:
+      symbols: [maxChipsForWidth, useMaxChips, chat-bar-chips]
+      keywords: [chat bar overflow, chat chips, bottom bar chips]
+    tests:
+      - vitest: packages/views/chat/components/chat-bar.test.tsx
+        name: shows a chip for every chat instead of folding the rest into a +N menu
+      - vitest: packages/views/chat/components/chat-bar.test.tsx
+        name: scrolls the open chat's chip into view, so the window opens above it
+      - vitest: packages/views/chat/components/chat-bar-sessions.test.ts
+        name: shows every chip with no overflow when there is no limit
+      - vitest: packages/views/layout/bottom-bar.test.tsx
+    scenarios:
+      - name: every chip visible, strip scrolls
+        path: /<workspace-slug>/issues
+        widths: [1440, 900]
+        setup: at least 8 chats that are running, unread or opened in quick chat
+        steps:
+          - Open the page and wait for the bottom bar.
+          - Count chips inside [data-slot="chat-bar-chips"].
+          - Scroll the mouse wheel over the strip.
+          - Click the right-most chip.
+        selectors:
+          - '[data-slot="chat-bar"]'
+          - '[data-slot="chat-bar-chips"] [data-chat-anchor]'
+        expect:
+          - One chip per qualifying chat; no "+N" button (aria-label "N more chats") anywhere in the bar.
+          - The wheel scrolls the strip sideways; team status and the Ask Multica button keep their width.
+          - The clicked chip scrolls fully into view and the chat window opens above it.
+      - name: bar hidden on a narrow window
+        path: /<workspace-slug>/issues
+        widths: [700]
+        steps:
+          - Open the page.
+        selectors: []
+        expect:
+          - No [data-slot="chat-bar"] (upstream behaviour below 768px, unchanged).
+    drop_when: upstream shows every chip without a +N overflow menu.
+
+  - id: inbox-list-filters
+    summary: "`multica inbox list` takes the web inbox's filter conditions as flags (status, priority, assignee, label, unread, negation...)."
+    status: planned
+    kind: cli
+    cards: [CALA-138]
+    origin:
+      type: ours
+    files: [server/cmd/multica/cmd_inbox.go]
+    watch:
+      - path: packages/core/inbox/filters.ts
+        why: InboxFilters / filterInboxItems, the semantics the flags must match
+    upstream_equivalent:
+      prs: [10726]
+      keywords: [inbox list filter, inbox filter flags]
+    drop_when: upstream `inbox list` gains the same filters (follow-up to multica-ai/multica#10714).
+
+  - id: chat-list-filter-sort
+    summary: Filter and sort menus on the chat page's left chat list (mock-up first).
+    status: planned
+    kind: web-ui
+    cards: [CALA-138]
+    origin:
+      type: ours
+    files: [packages/views/chat/components/chat-thread-list.tsx]
+    watch:
+      - path: packages/core/chat/queries.ts
+        why: sortChatSessions, the only ordering today
+    upstream_equivalent:
+      keywords: [chat list filter, chat sort]
+    drop_when: upstream adds filtering and sorting to the chat list.
+
+  - id: desktop-fork-build
+    summary: Desktop app built from the fork (X.Y.Z-hoon.N, fork CLI bundled) that never auto-updates to the official release or runs its daemon from an official CLI.
+    status: active
+    kind: desktop
+    cards: [CALA-247]
+    origin:
+      type: ours
+      commits: ["53949591f", "a50ec7921"]
+    files:
+      - apps/desktop/electron-builder.yml
+      - apps/desktop/src/main/updater-preferences.ts
+      - apps/desktop/src/main/updater-preferences.test.ts
+      - apps/desktop/src/main/updater.test.ts
+      - apps/desktop/src/main/cli-bootstrap.ts
+      - apps/desktop/src/main/cli-version-policy.ts
+      - apps/desktop/src/main/cli-version-policy.test.ts
+      - apps/desktop/src/main/daemon-manager.ts
+    watch:
+      - path: apps/desktop/src/main/updater.ts
+        why: autoDownload/autoInstallOnAppQuit and the preference gate on background checks
+      - path: apps/desktop/scripts/package.mjs
+        why: deriveVersion (git describe) sets the app version to X.Y.Z-hoon.N
+      - path: apps/desktop/scripts/bundle-cli.mjs
+        why: passes the same version to -X main.version for the bundled CLI
+      - path: apps/desktop/src/main/version-decision.ts
+        why: restarts the daemon when its version differs from the bundled CLI
+      - path: apps/desktop/src/renderer/src/components/updates-settings-tab.tsx
+        why: the automatic-updates switch reads the preference default
+      - path: server/internal/cli/update.go
+        why: IsReleaseVersion; a bare X.Y.Z would make the bundled daemon self-update
+    upstream_equivalent:
+      symbols: [GITHUB_LATEST_BASE, DEFAULT_UPDATER_PREFERENCES]
+      keywords: [desktop updater channel, self-host desktop update, custom update feed]
+    tests:
+      - vitest: apps/desktop/src/main/cli-version-policy.test.ts
+        name: refuses an official CLI only in packaged builds
+      - vitest: apps/desktop/src/main/updater.test.ts
+        name: keeps automatic background updates off by default
+      - vitest: apps/desktop/src/main/updater-preferences.test.ts
+        name: defaults automatic updates to disabled when the file is missing or invalid
+    scenarios:
+      - name: fork app installed on the Mac mini stays on the fork
+        setup: calabii-macmini, app installed with scripts/hoon/desktop-app.sh install <X.Y.Z-hoon.N>
+        steps:
+          - Run scripts/hoon/desktop-app.sh verify <X.Y.Z-hoon.N>.
+          - Quit the app (Cmd+Q) and open it again; run verify again.
+          - Run multica runtime list for the Mac mini runtimes.
+        expect:
+          - App and bundled CLI report X.Y.Z-hoon.N; app-update.yml is absent or owned by honki12345.
+          - ShipIt is not running and no staged update is in ~/Library/Caches; updater-preferences.json says automaticUpdates false.
+          - The app daemon reports cli_version X.Y.Z-hoon.N and the Mac mini runtimes are online.
+    drop_when: upstream desktop builds can point updates and CLI downloads at a self-hosted source.
