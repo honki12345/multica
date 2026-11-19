@@ -362,20 +362,80 @@ features:
     drop_when: upstream shows every chip without a +N overflow menu.
 
   - id: inbox-list-filters
-    summary: "`multica inbox list` takes the web inbox's filter conditions as flags (status, priority, assignee, label, unread, negation...)."
-    status: planned
+    summary: "`multica inbox list` takes the web Inbox's filters as flags and lists the same rows: one per issue, newest first; --ungrouped for every notification."
+    status: active
     kind: cli
-    cards: [CALA-138]
+    cards: [CALA-138, CALA-248]
     origin:
       type: ours
-    files: [server/cmd/multica/cmd_inbox.go]
+      commits: ["5724f3b9d"]
+    files:
+      - server/cmd/multica/cmd_inbox.go
+      - server/cmd/multica/cmd_inbox_test.go
+      - server/cmd/multica/inbox_filter.go
+      - server/cmd/multica/inbox_filter_test.go
+      - packages/core/inbox/filter-parity.test.ts
+      - packages/core/inbox/testdata/filter-parity.json
+      - apps/docs/content/docs/inbox.mdx
+      - apps/docs/content/docs/inbox.ko.mdx
+      - apps/docs/content/docs/inbox.ja.mdx
+      - apps/docs/content/docs/inbox.fr.mdx
+      - apps/docs/content/docs/inbox.zh.mdx
+      - apps/docs/content/docs/inbox.zh-Hant.mdx
     watch:
       - path: packages/core/inbox/filters.ts
-        why: InboxFilters / filterInboxItems, the semantics the flags must match
+        why: InboxFilters / filterInboxItems, the semantics inbox_filter.go ports; a change there must update the parity fixture
+      - path: packages/core/inbox/group.ts
+        why: groupInboxRows / sortInboxNewestFirst, the one-row-per-issue rule
+      - path: packages/core/inbox/snooze.ts
+        why: isInboxItemSnoozed / inboxRowTime, snooze hiding and return-time order
+      - path: packages/core/issues/stores/filter-tree.ts
+        why: DUE_DATE_FILTERS / dueDateMatches, the --due buckets
+      - path: packages/views/issues/surface/activity.ts
+        why: isQueuedTaskStatus, the running-or-queued rule behind --agent
+      - path: packages/core/types/inbox.ts
+        why: InboxItemType; a new type must get its group in inboxTypeGroups
+      - path: server/internal/handler/inbox.go
+        why: InboxItemResponse fields the filters read (issue_label_ids presence marks a server that sends them)
+      - path: server/cmd/multica/cmd_id_resolver.go
+        why: resolveProjectID / fetchLabelCandidates used by --project and --label
+      - path: server/cmd/multica/cmd_issue_batch.go
+        why: resolveIssueBatchLabels used by --label
+      - path: server/cmd/multica/cmd_issue.go
+        why: resolveAssignee / validateIssueStatus / validIssuePriorities used by --assignee, --actor, --status, --priority
     upstream_equivalent:
       prs: [10726]
-      keywords: [inbox list filter, inbox filter flags]
-    drop_when: upstream `inbox list` gains the same filters (follow-up to multica-ai/multica#10714).
+      symbols: [filterInboxRows, inboxUnsupportedFlag]
+      keywords: [inbox list filter, inbox filter flags, inbox list --unread]
+    tests:
+      - go: server/cmd/multica
+        name: TestInboxFilterParityWithWeb
+      - go: server/cmd/multica
+        name: TestInboxFilterCLIOnlyForms
+      - go: server/cmd/multica
+        name: TestInboxListResolvesNamesAndAgentState
+      - go: server/cmd/multica
+        name: TestInboxListRejectsBadValuesBeforeAnyRequest
+      - go: server/cmd/multica
+        name: TestInboxListRefusesIssueFlagsAnOlderServerCannotAnswer
+      - go: server/cmd/multica
+        name: TestInboxListKeepsEachRowsOwnCommentAndCurrentServerShape
+      - vitest: packages/core/inbox/filter-parity.test.ts
+    scenarios:
+      - name: CLI list matches the filtered web Inbox
+        setup: a member with notifications on several issues, some unread, logged in to the CLI
+        steps:
+          - Run `multica inbox list --unread --output json` and note the count.
+          - Run `multica inbox list --unread --type mention --output json`.
+          - Run `multica inbox list --project <id-prefix> --status todo,in_progress --not status --output json`.
+          - In the web Inbox set the same filters (Unread, Type is Mention) and compare the rows.
+          - Run `multica inbox list --unread --output json` again.
+        expect:
+          - Each command exits 0 and prints at most one row per issue.
+          - The CLI rows for a filter are the rows the web Inbox lists for the same filter.
+          - The --unread count is the same before and after (nothing marked read).
+          - '`multica inbox list --type mentions` fails with the list of valid groups.'
+    drop_when: upstream `inbox list` gains the same filters and grouping (follow-up to multica-ai/multica#10714).
 
   - id: chat-list-filter-sort
     summary: Filter and sort menus on the chat page's left chat list (mock-up first).
