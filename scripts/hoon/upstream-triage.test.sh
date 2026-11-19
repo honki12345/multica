@@ -220,6 +220,11 @@ setup user-git-config
 GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=diff.noprefix GIT_CONFIG_VALUE_0=true GIT_CONFIG_KEY_1=log.showSignature GIT_CONFIG_VALUE_1=true \
   run v1.0.0 v1.1.0 --fork-ref fork --registry-ref fork >/dev/null
 expect_key "diff.noprefix and log.showSignature do not change the result" triage_new_env NEW_SECRET_KEY,OPTIONAL_KNOB,SERVER_ONLY_KEY
+GIT_CONFIG_COUNT=4 GIT_CONFIG_KEY_0=color.diff GIT_CONFIG_VALUE_0=always GIT_CONFIG_KEY_1=color.grep GIT_CONFIG_VALUE_1=always \
+  GIT_CONFIG_KEY_2=grep.lineNumber GIT_CONFIG_VALUE_2=true GIT_CONFIG_KEY_3=grep.column GIT_CONFIG_VALUE_3=true \
+  run v1.0.0 v1.1.0 --fork-ref fork --registry-ref fork >/dev/null
+expect_key "forced diff/grep colour and grep line numbers do not change new env keys" triage_new_env NEW_SECRET_KEY,OPTIONAL_KNOB,SERVER_ONLY_KEY
+expect_key "...nor the symbol already present at <from>" triage_c 3
 
 setup odd-paths
 git checkout -q fork

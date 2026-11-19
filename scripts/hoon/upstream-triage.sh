@@ -120,7 +120,9 @@ LIST_MAX = 3
 
 
 GIT_PIN = ["-c", "core.quotePath=false", "-c", "diff.noprefix=false", "-c", "diff.mnemonicPrefix=false",
-           "-c", "log.showSignature=false", "-c", "diff.external=", "-c", "color.ui=false"]
+           "-c", "log.showSignature=false", "-c", "diff.external=", "-c", "color.ui=false",
+           "-c", "color.diff=false", "-c", "color.grep=false", "-c", "grep.lineNumber=false",
+           "-c", "grep.column=false", "-c", "grep.fullName=false"]
 
 
 def git(*args, check=True):
@@ -227,7 +229,8 @@ for chunk in log.split("\x01")[1:]:
 # commit's -z file list, so quoting and trailing tabs in the header never decide it.
 cur_commit, cur_file, in_header = None, None, False
 for line in text(git("log", "--no-merges", "--format=%x01%H", "-p", "--unified=0", "--no-renames",
-                     "--src-prefix=a/", "--dst-prefix=b/", "%s..%s" % (FROM, TO))).split("\n"):
+                     "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/",
+                     "%s..%s" % (FROM, TO))).split("\n"):
     if line.startswith("\x01"):
         cur_commit, cur_file, in_header = by_sha.get(line[1:]), None, False
     elif line.startswith("diff --git "):
