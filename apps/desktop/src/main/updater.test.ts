@@ -1,4 +1,5 @@
 // @vitest-environment node
+// Modified by honki12345, 2026: automatic desktop updates default to off in fork builds.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BrowserWindow, WebContents } from "electron";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -204,12 +205,24 @@ describe("setupAutoUpdater", () => {
     rmSync(ctx.userDataPath, { recursive: true, force: true });
   });
 
-  it("enables automatic background updates by default", async () => {
+  it("keeps automatic background updates off by default", async () => {
     setupAutoUpdater(() => []);
 
     await expect(invokeIpc("updater:get-preferences")).resolves.toEqual({
-      automaticUpdates: true,
+      automaticUpdates: false,
     });
+
+    await vi.advanceTimersByTimeAsync(60 * 60 * 1000 + 5_000);
+    expect(ctx.checkForUpdates).not.toHaveBeenCalled();
+  });
+
+  it("runs background checks once the user turns automatic updates on", async () => {
+    writeFileSync(
+      updaterPreferencesPath(ctx.userDataPath),
+      JSON.stringify({ automaticUpdates: true }),
+    );
+    setupAutoUpdater(() => []);
+    await invokeIpc("updater:get-preferences");
 
     await vi.advanceTimersByTimeAsync(5_000);
     expect(ctx.checkForUpdates).toHaveBeenCalledTimes(1);

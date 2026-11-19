@@ -1,3 +1,4 @@
+# Modified by honki12345, 2026: publish desktop updates from the fork, never the official multica-ai releases.
 appId: ai.multica.desktop
 productName: Multica
 directories:
@@ -133,7 +134,9 @@ win:
   artifactName: multica-desktop-${version}-windows-${arch}.${ext}
 publish:
   provider: github
-  owner: multica-ai
+  # The fork's packaged app-update.yml must point at the fork: an official
+  # multica-ai feed would replace this build with the upstream release.
+  owner: honki12345
   repo: multica
   # Align with our CLI release flow which pre-creates a *published* GitHub
   # Release via `gh release create`. The electron-builder default of

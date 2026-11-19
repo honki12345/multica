@@ -393,19 +393,54 @@ features:
     drop_when: upstream adds filtering and sorting to the chat list.
 
   - id: desktop-fork-build
-    summary: Desktop app built from the fork (X.Y.Z-hoon.N, fork CLI bundled) that never auto-updates to the official release.
-    status: planned
+    summary: Desktop app built from the fork (X.Y.Z-hoon.N, fork CLI bundled) that never auto-updates to the official release or runs its daemon from an official CLI.
+    status: active
     kind: desktop
     cards: [CALA-247]
     origin:
       type: ours
+      commits: ["53949591f", "a50ec7921"]
     files:
       - apps/desktop/electron-builder.yml
-      - apps/desktop/src/main/updater.ts
+      - apps/desktop/src/main/updater-preferences.ts
+      - apps/desktop/src/main/updater-preferences.test.ts
+      - apps/desktop/src/main/updater.test.ts
       - apps/desktop/src/main/cli-bootstrap.ts
+      - apps/desktop/src/main/cli-version-policy.ts
+      - apps/desktop/src/main/cli-version-policy.test.ts
+      - apps/desktop/src/main/daemon-manager.ts
     watch:
-      - path: apps/desktop/package.json
-        why: app version string
+      - path: apps/desktop/src/main/updater.ts
+        why: autoDownload/autoInstallOnAppQuit and the preference gate on background checks
+      - path: apps/desktop/scripts/package.mjs
+        why: deriveVersion (git describe) sets the app version to X.Y.Z-hoon.N
+      - path: apps/desktop/scripts/bundle-cli.mjs
+        why: passes the same version to -X main.version for the bundled CLI
+      - path: apps/desktop/src/main/version-decision.ts
+        why: restarts the daemon when its version differs from the bundled CLI
+      - path: apps/desktop/src/renderer/src/components/updates-settings-tab.tsx
+        why: the automatic-updates switch reads the preference default
+      - path: server/internal/cli/update.go
+        why: IsReleaseVersion; a bare X.Y.Z would make the bundled daemon self-update
     upstream_equivalent:
-      keywords: [desktop updater channel, self-host desktop update]
+      symbols: [GITHUB_LATEST_BASE, DEFAULT_UPDATER_PREFERENCES]
+      keywords: [desktop updater channel, self-host desktop update, custom update feed]
+    tests:
+      - vitest: apps/desktop/src/main/cli-version-policy.test.ts
+        name: refuses an official CLI only in packaged builds
+      - vitest: apps/desktop/src/main/updater.test.ts
+        name: keeps automatic background updates off by default
+      - vitest: apps/desktop/src/main/updater-preferences.test.ts
+        name: defaults automatic updates to disabled when the file is missing or invalid
+    scenarios:
+      - name: fork app installed on the Mac mini stays on the fork
+        setup: calabii-macmini, app installed with scripts/hoon/desktop-app.sh install <X.Y.Z-hoon.N>
+        steps:
+          - Run scripts/hoon/desktop-app.sh verify <X.Y.Z-hoon.N>.
+          - Quit the app (Cmd+Q) and open it again; run verify again.
+          - Run multica runtime list for the Mac mini runtimes.
+        expect:
+          - App and bundled CLI report X.Y.Z-hoon.N; app-update.yml is absent or owned by honki12345.
+          - ShipIt is not running and no staged update is in ~/Library/Caches; updater-preferences.json says automaticUpdates false.
+          - The app daemon reports cli_version X.Y.Z-hoon.N and the Mac mini runtimes are online.
     drop_when: upstream desktop builds can point updates and CLI downloads at a self-hosted source.

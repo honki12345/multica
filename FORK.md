@@ -215,3 +215,88 @@ from a `pg_dump` taken before the deploy instead of rolling back blindly.
 
 `scripts/hoon/release.sh status` prints the current image keys, binary version,
 containers and last deploy record.
+
+## Desktop app (Mac mini)
+
+The desktop app (`/Applications/Multica.app` on `calabii-macmini`) bundles its
+own UI and its own `multica` CLI, which runs that machine's daemon (profile
+`desktop-calabii-macstudio.tail37cc38.ts.net-9330`). A web deploy does not
+change it; rebuild the app from the same fork tag after each release.
+
+The fork build cannot fall back to an official release:
+
+| Path | Official build | Fork build |
+|---|---|---|
+| App updates (`electron-builder.yml` `publish`, packaged as `app-update.yml`) | `multica-ai/multica` releases | `honki12345/multica` releases. The Mac mini build (`--dir`) ships no `app-update.yml` at all, so electron-updater fails to load a feed and a manual check reports an error; a zip/dmg build points at the fork, which publishes no desktop assets |
+| Automatic update checks (`updater-preferences.ts` default) | on | off; a user can still turn them on under Settings → Updates |
+| Managed CLI repair download (`cli-bootstrap.ts`) | `multica-ai/multica/releases/latest` | `honki12345/multica/releases/latest` |
+| Bundled CLI | official binary | built from the same tag, `-X main.version=X.Y.Z-hoon.N` |
+| CLI that spawns the daemon (`daemon-manager.ts` `probeCliBinary`, `cli-version-policy.ts`) | first working one of bundled, managed, download, PATH | same order, but a packaged app skips any CLI whose version lacks `-hoon.N`, so an official managed or Homebrew CLI is never used |
+
+The app is ad-hoc signed and not notarized; it is for our own machines only.
+
+### Build and install (run on the Mac mini)
+
+`scripts/hoon/desktop-app.sh` (tests: `bash scripts/hoon/desktop-app.test.sh`).
+Build on the Mac mini, not the Mac Studio, which also runs the server and the
+gateway.
+
+```bash
+# once: get the script from the fork
+git clone --depth 1 --branch v0.11.0-hoon.2 https://github.com/honki12345/multica.git ~/.local/share/multica-desktop/src/0.11.0-hoon.2
+S=~/.local/share/multica-desktop/src/0.11.0-hoon.2/scripts/hoon/desktop-app.sh
+
+$S build   v0.11.0-hoon.2   # pnpm install + package, ~/.local/share/multica-desktop/apps/<version>/Multica.app
+$S install 0.11.0-hoon.2    # refuses while the app daemon has active tasks (--force overrides)
+$S verify  0.11.0-hoon.2    # app, bundled CLI and running daemon versions, feed owner, updater off, ShipIt stopped
+$S status
+```
+
+`install` order matters. Each step stops the run, with the old app still in
+place, if it does not take effect:
+
+1. Refuse while the app daemon has active tasks, or when its status cannot be
+   read (`--force` skips this).
+2. Stop the official updater: `launchctl remove ai.multica.desktop.ShipIt`,
+   wait for ShipIt to exit, and move `~/Library/Caches/ai.multica.desktop.ShipIt`
+   and `~/Library/Caches/@multicadesktop-updater` next to the backup. An
+   official app that already downloaded an update installs it the moment it
+   quits.
+3. Quit the app (`osascript … quit`) and check that ShipIt did not start again.
+4. Write `updater-preferences.json` `{"automaticUpdates": false}`.
+5. Copy the new app next to `/Applications/Multica.app`, check it, then move
+   the old app to `~/Applications-backup/Multica-<old version>-<ts>.app` and
+   the copy into place (a failed move puts the old app back). Clear
+   quarantine and open the app.
+6. The app sees that the running daemon's version differs from its bundled CLI
+   and restarts the daemon once it is idle.
+
+`~/Library/Application Support/Multica` (login, windows, settings) and
+`~/.multica` are kept, so the app stays signed in to the same server.
+
+### Gatekeeper
+
+A build made on the machine itself carries no quarantine attribute and opens
+directly. A copy downloaded or AirDropped from another Mac does: clear it
+before the first launch.
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Multica.app
+```
+
+(Or right-click → Open once and confirm.)
+
+### Rollback
+
+```bash
+$S rollback   # puts back the app recorded in ~/.local/share/multica-desktop/last-backup
+```
+
+Rollback stops ShipIt and writes `automaticUpdates: false` before it reopens
+the restored app, because an official app defaults to updating itself. Turn
+updates on under Settings → Updates only if the official app should update
+itself again.
+
+The build needs `pnpm` on PATH (electron-builder runs it to collect node
+modules); without a global pnpm the script enables corepack's shim in
+`~/.local/share/multica-desktop/corepack-bin`.
