@@ -1,4 +1,5 @@
 // @vitest-environment node
+// Modified by honki12345, 2026: automatic desktop updates default to off in fork builds.
 import { afterEach, describe, expect, it } from "vitest";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -24,29 +25,29 @@ afterEach(async () => {
 });
 
 describe("updater preferences", () => {
-  it("defaults automatic updates to enabled when the file is missing or invalid", async () => {
+  it("defaults automatic updates to disabled when the file is missing or invalid", async () => {
     const missingPath = await makePreferencesPath();
     const invalidPath = await makePreferencesPath();
-    await writeFile(invalidPath, JSON.stringify({ automaticUpdates: "false" }));
+    await writeFile(invalidPath, JSON.stringify({ automaticUpdates: "true" }));
 
     await expect(loadUpdaterPreferences(missingPath)).resolves.toEqual({
-      automaticUpdates: true,
+      automaticUpdates: false,
     });
     await expect(loadUpdaterPreferences(invalidPath)).resolves.toEqual({
-      automaticUpdates: true,
+      automaticUpdates: false,
     });
   });
 
-  it("round-trips a disabled automatic update preference", async () => {
+  it("round-trips an enabled automatic update preference", async () => {
     const filePath = await makePreferencesPath();
 
-    await saveUpdaterPreferences(filePath, { automaticUpdates: false });
+    await saveUpdaterPreferences(filePath, { automaticUpdates: true });
 
     await expect(loadUpdaterPreferences(filePath)).resolves.toEqual({
-      automaticUpdates: false,
+      automaticUpdates: true,
     });
     expect(JSON.parse(await readFile(filePath, "utf-8"))).toEqual({
-      automaticUpdates: false,
+      automaticUpdates: true,
     });
   });
 });

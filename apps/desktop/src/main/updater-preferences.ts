@@ -1,9 +1,12 @@
+// Modified by honki12345, 2026: default automatic desktop updates to off for fork builds.
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { UpdaterPreferences } from "../shared/updater-types";
 
+// Fork builds are installed by hand (scripts/hoon/desktop-app.sh), so
+// background update checks stay off unless the user turns them on.
 export const DEFAULT_UPDATER_PREFERENCES: UpdaterPreferences = {
-  automaticUpdates: true,
+  automaticUpdates: false,
 };
 
 export function updaterPreferencesPath(userDataPath: string): string {

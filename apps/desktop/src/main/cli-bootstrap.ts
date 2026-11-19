@@ -1,3 +1,4 @@
+// Modified by honki12345, 2026: download the managed CLI from the fork's releases, not multica-ai.
 import { app } from "electron";
 import { execFile } from "child_process";
 import { createHash } from "crypto";
@@ -14,8 +15,10 @@ import { selectPlatformReleaseAssetName } from "./cli-release-asset";
 // same-repo builds, but it can also repair or bootstrap a managed copy in
 // userData on first launch when the bundled binary is missing or unusable.
 
+// The fork's own releases: an official CLI would not match this fork's
+// server and daemon changes.
 const GITHUB_LATEST_BASE =
-  "https://github.com/multica-ai/multica/releases/latest/download";
+  "https://github.com/honki12345/multica/releases/latest/download";
 
 function binaryName(): string {
   return process.platform === "win32" ? "multica.exe" : "multica";

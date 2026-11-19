@@ -112,6 +112,7 @@ Commit links point to this repository.
 | Daemon-local CLI commands from resident tool shells | [`09e87daed`](https://github.com/honki12345/multica/commit/09e87daed61aa5cea3fb02d1c2294f0ebfb016de) | `0.9.0-resident.5` |
 | `daemon status` from resident tool shells | [`eeef72c10`](https://github.com/honki12345/multica/commit/eeef72c10c253d58adda17b13c6255ed0d7cd171) | `0.9.0-resident.6` |
 | Chat bar shows every chip (CALA-72) | [`6565efb51`](https://github.com/honki12345/multica/commit/6565efb51d966a816e553969e20ce55b5b1af7a8) | web |
+| Desktop app never updates to the official release (CALA-247) | this PR | `publish` → fork, managed CLI download → fork releases, automatic updates default off |
 
 ## Deploy and rollback (self-host on calabii-macstudio)
 
@@ -168,3 +169,76 @@ from a `pg_dump` taken before the deploy instead of rolling back blindly.
 
 `scripts/hoon/release.sh status` prints the current image keys, binary version,
 containers and last deploy record.
+
+## Desktop app (Mac mini)
+
+The desktop app (`/Applications/Multica.app` on `calabii-macmini`) bundles its
+own UI and its own `multica` CLI, which runs that machine's daemon (profile
+`desktop-calabii-macstudio.tail37cc38.ts.net-9330`). A web deploy does not
+change it; rebuild the app from the same fork tag after each release.
+
+The fork build cannot fall back to an official release:
+
+| Path | Official build | Fork build |
+|---|---|---|
+| App updates (`electron-builder.yml` `publish`, packaged as `app-update.yml`) | `multica-ai/multica` releases | `honki12345/multica` releases (the fork publishes no desktop release assets, so a manual check finds nothing) |
+| Automatic update checks (`updater-preferences.ts` default) | on | off; a user can still turn them on under Settings → Updates |
+| Managed CLI repair download (`cli-bootstrap.ts`) | `multica-ai/multica/releases/latest` | `honki12345/multica/releases/latest` |
+| Bundled CLI | official binary | built from the same tag, `-X main.version=X.Y.Z-hoon.N` |
+
+The app is ad-hoc signed and not notarized; it is for our own machines only.
+
+### Build and install (run on the Mac mini)
+
+`scripts/hoon/desktop-app.sh` (tests: `bash scripts/hoon/desktop-app.test.sh`).
+Build on the Mac mini, not the Mac Studio, which also runs the server and the
+gateway.
+
+```bash
+# once: get the script from the fork
+git clone --depth 1 --branch v0.11.0-hoon.2 https://github.com/honki12345/multica.git ~/.local/share/multica-desktop/src/0.11.0-hoon.2
+S=~/.local/share/multica-desktop/src/0.11.0-hoon.2/scripts/hoon/desktop-app.sh
+
+$S build   v0.11.0-hoon.2   # pnpm install + package, ~/.local/share/multica-desktop/apps/<version>/Multica.app
+$S install 0.11.0-hoon.2    # refuses while the app daemon has active tasks (--force overrides)
+$S verify  0.11.0-hoon.2    # app, bundled CLI and running daemon versions, feed owner, updater off, ShipIt stopped
+$S status
+```
+
+`install` order matters:
+
+1. Stop the official updater first: `launchctl remove ai.multica.desktop.ShipIt`
+   and move `~/Library/Caches/ai.multica.desktop.ShipIt` and
+   `~/Library/Caches/@multicadesktop-updater` next to the backup. An official
+   app that already downloaded an update installs it the moment it quits.
+2. Quit the app (`osascript … quit`), then move it to
+   `~/Applications-backup/Multica-<old version>-<ts>.app`.
+3. Copy the new app, clear quarantine, write
+   `updater-preferences.json` `{"automaticUpdates": false}`, open the app.
+4. The app sees that the running daemon's version differs from its bundled CLI
+   and restarts the daemon once it is idle.
+
+`~/Library/Application Support/Multica` (login, windows, settings) and
+`~/.multica` are kept, so the app stays signed in to the same server.
+
+### Gatekeeper
+
+A build made on the machine itself carries no quarantine attribute and opens
+directly. A copy downloaded or AirDropped from another Mac does: clear it
+before the first launch.
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Multica.app
+```
+
+(Or right-click → Open once and confirm.)
+
+### Rollback
+
+```bash
+$S rollback   # puts back the app recorded in ~/.local/share/multica-desktop/last-backup
+```
+
+Automatic updates stay off after a rollback; turn them on under Settings →
+Updates only if the official app should update itself again.
+
