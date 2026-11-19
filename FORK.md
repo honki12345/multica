@@ -254,4 +254,3 @@ itself again.
 The build needs `pnpm` on PATH (electron-builder runs it to collect node
 modules); without a global pnpm the script enables corepack's shim in
 `~/.local/share/multica-desktop/corepack-bin`.
-
