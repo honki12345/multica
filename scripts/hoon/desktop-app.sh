@@ -27,6 +27,7 @@ VERSION_RE='^[0-9]+\.[0-9]+\.[0-9]+-hoon\.[0-9]+$'
 FEED_OWNER=honki12345
 SHIPIT_LABEL=ai.multica.desktop.ShipIt
 APP_PROC='Multica.app/Contents/MacOS/Multica$'
+SHIPIT_WAIT="${MULTICA_DESKTOP_SHIPIT_WAIT:-10}"
 
 log() { printf '[desktop] %s\n' "$*" >&2; }
 die() { printf '[desktop] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -45,7 +46,8 @@ bundled_cli() { echo "$1/Contents/Resources/app.asar.unpacked/resources/bin/mult
 app_version() { plutil -extract CFBundleShortVersionString raw -o - "$1/Contents/Info.plist" 2>/dev/null || true; }
 cli_version() { "$1" version 2>/dev/null | head -1 | awk '{print $2}'; }
 feed_owner() { awk -F': *' '$1=="owner" { print $2 }' "$1/Contents/Resources/app-update.yml" 2>/dev/null || true; }
-json_field() { sed -n "s/.*\"$1\": *\"\{0,1\}\([^\",}]*\)\"\{0,1\}.*/\1/p" | head -1; }
+# Reads one top-level JSON field from stdin; empty on missing field or bad JSON.
+json_field() { plutil -extract "$1" raw -o - - 2>/dev/null || true; }
 
 # The bundle must carry the fork version in both the app and its CLI, and an
 # update feed that can only ever point at the fork.
@@ -60,10 +62,16 @@ check_bundle() {
   [[ -z "$got" || "$got" == "$FEED_OWNER" ]] || die "$app update feed owner is '$got', expected $FEED_OWNER"
 }
 
-# The Mac mini has no global pnpm; corepack provides the version pinned in
-# package.json without an interactive download prompt.
-pnpm_cmd() {
-  if command -v pnpm >/dev/null 2>&1; then echo pnpm; else echo "corepack pnpm"; fi
+# The Mac mini has no global pnpm. electron-builder runs a bare `pnpm` to
+# collect node modules, so put corepack's shim (the version pinned in
+# package.json) on PATH instead of calling `corepack pnpm`.
+ensure_pnpm() {
+  command -v pnpm >/dev/null 2>&1 && return 0
+  local shim="$DESKTOP_HOME/corepack-bin"
+  mkdir -p "$shim"
+  corepack enable pnpm --install-directory "$shim"
+  export PATH="$shim:$PATH"
+  command -v pnpm >/dev/null 2>&1 || die "pnpm is not available (install Node with corepack)"
 }
 export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 
@@ -83,11 +91,11 @@ cmd_build() {
   [[ "$described" == "$tag" ]] || die "$src is at '$described', expected $tag (remove it to re-clone)"
   [[ -z "$(git -C "$src" status --porcelain)" ]] || die "$src has local changes; the version would gain -dirty"
 
-  local pnpm; pnpm="$(pnpm_cmd)"
-  log "installing dependencies ($pnpm)"
-  (cd "$src" && $pnpm install --frozen-lockfile --prefer-offline)
+  ensure_pnpm
+  log "installing dependencies (pnpm $(pnpm --version))"
+  (cd "$src" && pnpm install --frozen-lockfile --prefer-offline)
   log "packaging (ad-hoc signature, no notarization, no publish)"
-  (cd "$src/apps/desktop" && CSC_IDENTITY_AUTO_DISCOVERY=false $pnpm package -- --mac --arm64 --dir --publish never)
+  (cd "$src/apps/desktop" && CSC_IDENTITY_AUTO_DISCOVERY=false pnpm package -- --mac --arm64 --dir --publish never)
 
   local built="$src/apps/desktop/dist/mac-arm64/Multica.app"
   check_bundle "$built" "$v"
@@ -100,9 +108,12 @@ cmd_build() {
 
 running_app() { pgrep -f "$APP_PROC" >/dev/null 2>&1; }
 
+# Profile of the daemon spawned by the installed app's bundled CLI; empty when
+# that daemon is not running.
 daemon_profile() {
-  pgrep -fl 'resources/bin/multica daemon start' 2>/dev/null \
-    | sed -n 's/.*--profile \([^ ]*\).*/\1/p' | head -1
+  local lines
+  lines="$(pgrep -fl "$(bundled_cli "$APP") daemon start" 2>/dev/null || true)"
+  printf '%s\n' "$lines" | sed -n 's/.*--profile \([^ ]*\).*/\1/p' | head -1
 }
 
 daemon_status_json() {
@@ -110,17 +121,55 @@ daemon_status_json() {
   "$(bundled_cli "$app")" daemon status --profile "$profile" --output json 2>/dev/null || true
 }
 
+shipit_running() { pgrep -f "ShipIt $SHIPIT_LABEL" >/dev/null 2>&1; }
+staged_update_present() { [[ -e "$CACHES/$SHIPIT_LABEL" || -e "$CACHES/@multicadesktop-updater" ]]; }
+
 # A downloaded official update is installed by ShipIt as soon as the app quits,
-# so the updater goes first and its staged bundle leaves the cache.
+# so the updater goes first and its staged bundle leaves the cache. Any step
+# that does not take effect stops the run before the app is touched.
 stop_official_updater() {
-  local keep="$1"
+  local keep="$1" d i
   launchctl remove "$SHIPIT_LABEL" >/dev/null 2>&1 || true
   pkill -f "ShipIt $SHIPIT_LABEL" >/dev/null 2>&1 || true
-  mkdir -p "$keep"
-  for d in "$CACHES/$SHIPIT_LABEL" "$CACHES/@multicadesktop-updater"; do
-    [[ -e "$d" ]] && mv "$d" "$keep/" && log "moved $d -> $keep/"
+  for ((i = 0; i < SHIPIT_WAIT; i++)); do
+    shipit_running || break
+    sleep 1
   done
+  shipit_running && die "the official updater (ShipIt) is still running; nothing was changed"
+  for d in "$CACHES/$SHIPIT_LABEL" "$CACHES/@multicadesktop-updater"; do
+    [[ -e "$d" ]] || continue
+    mkdir -p "$keep"
+    mv "$d" "$keep/" || die "could not move $d aside; nothing was changed"
+    log "moved $d -> $keep/"
+  done
+  staged_update_present && die "a staged official update is still in $CACHES; nothing was changed"
   return 0
+}
+
+# Run right before the swap: quitting the app must not have re-armed ShipIt.
+assert_updater_quiet() {
+  shipit_running && die "the official updater (ShipIt) started again; the app was not replaced"
+  staged_update_present && die "a staged official update reappeared in $CACHES; the app was not replaced"
+  return 0
+}
+
+# Swap $APP for $1. The copy is staged next to $APP (same volume) and checked
+# before the old app moves, and a failed swap puts the old app back.
+swap_in() {
+  local new="$1" version="$2" backup="$3"
+  local staged
+  staged="$(dirname "$APP")/.Multica.app.staged-$$"
+  /bin/rm -rf "$staged"
+  ditto "$new" "$staged" || { /bin/rm -rf "$staged"; die "could not copy $new; $APP is unchanged"; }
+  (check_bundle "$staged" "$version") || { /bin/rm -rf "$staged"; die "staged copy failed the bundle check; $APP is unchanged"; }
+  if [[ -d "$APP" ]]; then
+    mv "$APP" "$backup" || { /bin/rm -rf "$staged"; die "could not move $APP to $backup; $APP is unchanged"; }
+  fi
+  if ! mv "$staged" "$APP"; then
+    [[ -d "$backup" ]] && mv "$backup" "$APP"
+    /bin/rm -rf "$staged"
+    die "could not move the new app into place; the previous app was restored"
+  fi
 }
 
 quit_app() {
@@ -134,11 +183,19 @@ quit_app() {
   die "Multica is still running (a quit dialog may be open); the app was not replaced"
 }
 
+automatic_updates_off() {
+  [[ "$(json_field automaticUpdates < "$USER_DATA/updater-preferences.json" 2>/dev/null)" == false ]]
+}
+
+# Official builds default automatic updates to on, so the file must say off
+# before either app opens.
 disable_automatic_updates() {
   local prefs="$USER_DATA/updater-preferences.json" ts="$1"
   mkdir -p "$USER_DATA"
   [[ -f "$prefs" ]] && cp -p "$prefs" "$prefs.bak-$ts"
-  printf '{\n  "automaticUpdates": false\n}\n' > "$prefs"
+  printf '{\n  "automaticUpdates": false\n}\n' > "$prefs.tmp-$$"
+  mv "$prefs.tmp-$$" "$prefs"
+  automatic_updates_off || die "could not turn automatic updates off in $prefs"
 }
 
 cmd_install() {
@@ -156,12 +213,11 @@ cmd_install() {
   check_bundle "$new" "$v"
 
   local profile; profile="$(daemon_profile)"
-  if [[ -n "$profile" && -d "$APP" ]]; then
+  if [[ -n "$profile" && "$force" != 1 ]]; then
     local active
     active="$(daemon_status_json "$APP" "$profile" | json_field active_task_count)"
-    if [[ "${active:-0}" != "0" && "$force" != 1 ]]; then
-      die "daemon $profile has $active active task(s); retry when idle or pass --force"
-    fi
+    [[ "$active" =~ ^[0-9]+$ ]] || die "could not read the active task count of daemon $profile; retry or pass --force"
+    [[ "$active" == 0 ]] || die "daemon $profile has $active active task(s); retry when idle or pass --force"
   fi
 
   local ts old_version backup
@@ -172,14 +228,11 @@ cmd_install() {
 
   stop_official_updater "$BACKUP_DIR/Multica-${old_version:-unknown}-$ts-updater-cache"
   quit_app
-  if [[ -d "$APP" ]]; then
-    mv "$APP" "$backup"
-    echo "$backup" > "$DESKTOP_HOME/last-backup"
-    log "kept $APP (${old_version:-unknown}) at $backup"
-  fi
-  ditto "$new" "$APP"
-  xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
+  assert_updater_quiet
   disable_automatic_updates "$ts"
+  swap_in "$new" "$v" "$backup"
+  [[ -d "$backup" ]] && { echo "$backup" > "$DESKTOP_HOME/last-backup"; log "kept the previous app (${old_version:-unknown}) at $backup"; }
+  xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
   log "installed $v at $APP"
   [[ "$open_app" == 1 ]] && open "$APP"
   return 0
@@ -189,9 +242,9 @@ cmd_verify() {
   local v; v="$(resolve_version "${1:-}")"
   check_bundle "$APP" "$v"
   log "app $(app_version "$APP"), bundled CLI $(cli_version "$(bundled_cli "$APP")"), feed $(feed_owner "$APP")"
-  grep -q '"automaticUpdates": *false' "$USER_DATA/updater-preferences.json" 2>/dev/null \
-    || die "automatic updates are not off in $USER_DATA/updater-preferences.json"
-  if pgrep -f "ShipIt $SHIPIT_LABEL" >/dev/null 2>&1; then die "the official updater (ShipIt) is running"; fi
+  automatic_updates_off || die "automatic updates are not off in $USER_DATA/updater-preferences.json"
+  shipit_running && die "the official updater (ShipIt) is running"
+  staged_update_present && die "a staged update is waiting in $CACHES"
   running_app || die "Multica is not running"
 
   local i profile json got=""
@@ -220,10 +273,16 @@ cmd_rollback() {
   current="$(app_version "$APP")"
   stop_official_updater "$BACKUP_DIR/Multica-${current:-unknown}-$ts-updater-cache"
   quit_app
-  [[ -d "$APP" ]] && mv "$APP" "$BACKUP_DIR/Multica-${current:-unknown}-$ts-rolledback.app"
-  mv "$backup" "$APP"
+  assert_updater_quiet
+  disable_automatic_updates "$ts"
+  local aside="$BACKUP_DIR/Multica-${current:-unknown}-$ts-rolledback.app"
+  [[ -d "$APP" ]] && { mv "$APP" "$aside" || die "could not move $APP aside; nothing was restored"; }
+  if ! mv "$backup" "$APP"; then
+    [[ -d "$aside" ]] && mv "$aside" "$APP"
+    die "could not restore $backup; the current app was put back"
+  fi
   : > "$DESKTOP_HOME/last-backup"
-  log "restored $(app_version "$APP") from $backup; automatic updates stay off"
+  log "restored $(app_version "$APP") from $backup; automatic updates are off"
   [[ "$open_app" == 1 ]] && open "$APP"
   return 0
 }
@@ -231,7 +290,7 @@ cmd_rollback() {
 cmd_status() {
   log "app $(app_version "$APP") feed $(feed_owner "$APP") bundled CLI $(cli_version "$(bundled_cli "$APP")")"
   log "updater prefs $(tr -d ' \n' < "$USER_DATA/updater-preferences.json" 2>/dev/null || echo missing)"
-  log "ShipIt $(pgrep -f "ShipIt $SHIPIT_LABEL" >/dev/null 2>&1 && echo running || echo stopped)"
+  log "ShipIt $(shipit_running && echo running || echo stopped), staged update $(staged_update_present && echo present || echo none)"
   local profile; profile="$(daemon_profile)"
   if [[ -n "$profile" ]]; then
     log "daemon $profile cli_version $(daemon_status_json "$APP" "$profile" | json_field cli_version)"

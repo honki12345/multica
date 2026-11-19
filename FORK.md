@@ -185,6 +185,7 @@ The fork build cannot fall back to an official release:
 | Automatic update checks (`updater-preferences.ts` default) | on | off; a user can still turn them on under Settings → Updates |
 | Managed CLI repair download (`cli-bootstrap.ts`) | `multica-ai/multica/releases/latest` | `honki12345/multica/releases/latest` |
 | Bundled CLI | official binary | built from the same tag, `-X main.version=X.Y.Z-hoon.N` |
+| CLI that spawns the daemon (`daemon-manager.ts` `probeCliBinary`, `cli-version-policy.ts`) | first working one of bundled, managed, download, PATH | same order, but a packaged app skips any CLI whose version lacks `-hoon.N`, so an official managed or Homebrew CLI is never used |
 
 The app is ad-hoc signed and not notarized; it is for our own machines only.
 
@@ -205,17 +206,23 @@ $S verify  0.11.0-hoon.2    # app, bundled CLI and running daemon versions, feed
 $S status
 ```
 
-`install` order matters:
+`install` order matters. Each step stops the run, with the old app still in
+place, if it does not take effect:
 
-1. Stop the official updater first: `launchctl remove ai.multica.desktop.ShipIt`
-   and move `~/Library/Caches/ai.multica.desktop.ShipIt` and
-   `~/Library/Caches/@multicadesktop-updater` next to the backup. An official
-   app that already downloaded an update installs it the moment it quits.
-2. Quit the app (`osascript … quit`), then move it to
-   `~/Applications-backup/Multica-<old version>-<ts>.app`.
-3. Copy the new app, clear quarantine, write
-   `updater-preferences.json` `{"automaticUpdates": false}`, open the app.
-4. The app sees that the running daemon's version differs from its bundled CLI
+1. Refuse while the app daemon has active tasks, or when its status cannot be
+   read (`--force` skips this).
+2. Stop the official updater: `launchctl remove ai.multica.desktop.ShipIt`,
+   wait for ShipIt to exit, and move `~/Library/Caches/ai.multica.desktop.ShipIt`
+   and `~/Library/Caches/@multicadesktop-updater` next to the backup. An
+   official app that already downloaded an update installs it the moment it
+   quits.
+3. Quit the app (`osascript … quit`) and check that ShipIt did not start again.
+4. Write `updater-preferences.json` `{"automaticUpdates": false}`.
+5. Copy the new app next to `/Applications/Multica.app`, check it, then move
+   the old app to `~/Applications-backup/Multica-<old version>-<ts>.app` and
+   the copy into place (a failed move puts the old app back). Clear
+   quarantine and open the app.
+6. The app sees that the running daemon's version differs from its bundled CLI
    and restarts the daemon once it is idle.
 
 `~/Library/Application Support/Multica` (login, windows, settings) and
@@ -239,6 +246,12 @@ xattr -dr com.apple.quarantine /Applications/Multica.app
 $S rollback   # puts back the app recorded in ~/.local/share/multica-desktop/last-backup
 ```
 
-Automatic updates stay off after a rollback; turn them on under Settings →
-Updates only if the official app should update itself again.
+Rollback stops ShipIt and writes `automaticUpdates: false` before it reopens
+the restored app, because an official app defaults to updating itself. Turn
+updates on under Settings → Updates only if the official app should update
+itself again.
+
+The build needs `pnpm` on PATH (electron-builder runs it to collect node
+modules); without a global pnpm the script enables corepack's shim in
+`~/.local/share/multica-desktop/corepack-bin`.
 
