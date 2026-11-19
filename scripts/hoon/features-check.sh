@@ -148,6 +148,21 @@ except yaml.YAMLError as exc:
     error("registry is not valid YAML: %s" % str(exc).replace("\n", " "))
     finish("?")
 
+# A " #" inside a plain (unquoted) scalar starts a YAML comment and silently
+# cuts the value short (drop_when: ... PR #10119 ... became "... PR"). A cut
+# and an intended trailing comment look the same to YAML, so the registry
+# allows full-line comments only: ask the parser where each plain scalar ends
+# and fail on a "#" after it on the same line.
+registry_text = raw.stdout.decode("utf-8")
+registry_lines = registry_text.splitlines()
+for node_ev in yaml.parse(registry_text):
+    if not isinstance(node_ev, yaml.ScalarEvent) or node_ev.style is not None:
+        continue
+    end = node_ev.end_mark
+    rest = registry_lines[end.line][end.column:] if end.line < len(registry_lines) else ""
+    if rest.lstrip().startswith("#"):
+        error("registry line %d: '#' after an unquoted value (YAML cuts it there); quote the value or move the comment to its own line" % (end.line + 1))
+
 tree = set(git("ls-tree", "-r", "--name-only", HEAD).stdout.decode("utf-8").splitlines())
 base_tree = set(git("ls-tree", "-r", "--name-only", BASE_REF).stdout.decode("utf-8").splitlines())
 changed = {}

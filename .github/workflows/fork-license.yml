@@ -42,3 +42,6 @@ jobs:
 
       - name: Check feature registry
         run: bash scripts/hoon/features-check.sh
+
+      - name: Upstream triage self-test
+        run: bash scripts/hoon/upstream-triage.test.sh
