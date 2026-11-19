@@ -11,8 +11,9 @@ function target(
   anchor: PromptAnchor | null,
   atEnd = false,
   prompts: readonly boolean[] = ROWS,
+  hasOlder = false,
 ) {
-  return findPromptTarget({ prompts, anchor, atEnd, direction });
+  return findPromptTarget({ prompts, anchor, atEnd, hasOlder, direction });
 }
 
 describe("findPromptTarget", () => {
@@ -46,9 +47,19 @@ describe("findPromptTarget", () => {
     expect(target("next", { index: 3, startVisible: false }, true)).toBeNull();
   });
 
-  it("starts from the newest row when no row is measured", () => {
+  it("climbs to the oldest loaded row when earlier sent messages are not loaded yet", () => {
+    // Row 0 coming into view is what makes the list fetch the older page.
+    expect(target("previous", { index: 3, startVisible: true }, false, [false, false, false, true], true))
+      .toEqual({ kind: "row", index: 0 });
+    expect(target("previous", { index: 2, startVisible: true }, false, [false, false, false], true))
+      .toEqual({ kind: "row", index: 0 });
+  });
+
+  it("starts from the newest row going back when no row is measured", () => {
     expect(target("previous", null)).toEqual({ kind: "row", index: 5 });
-    expect(target("next", null)).toEqual({ kind: "end" });
-    expect(target("next", null, true)).toBeNull();
+  });
+
+  it("does not jump to the end going forward when no row is measured", () => {
+    expect(target("next", null)).toBeNull();
   });
 });

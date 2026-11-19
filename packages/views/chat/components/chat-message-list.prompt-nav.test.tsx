@@ -94,14 +94,20 @@ function layOut(list: HTMLElement, { topRow, offset = 0, atEnd = false }: { topR
   });
 }
 
-function renderChats(chats: { messages: ChatMessage[]; floating?: boolean }[]) {
+function renderChats(chats: { messages: ChatMessage[]; floating?: boolean; hasOlder?: boolean }[]) {
   const qc = new QueryClient();
   const view = render(
     <I18nProvider locale="en" resources={{ en: { chat: enChat } }}>
       <QueryClientProvider client={qc}>
-        {chats.map(({ messages, floating }, i) => {
+        {chats.map(({ messages, floating, hasOlder }, i) => {
           const list = (
-            <ChatMessageList messages={messages} pendingTask={null} availability="online" firstItemIndex={1000} />
+            <ChatMessageList
+              messages={messages}
+              pendingTask={null}
+              availability="online"
+              firstItemIndex={1000}
+              hasOlderMessages={hasOlder}
+            />
           );
           return floating ? (
             <div key={i} data-mc="chat-window">
@@ -193,6 +199,15 @@ describe("ChatMessageList previous/next sent message", () => {
     press(document.body, "[");
     expect(scrollCalls.get("page0")).toEqual([{ index: 2, align: "start" }]);
     expect(scrollCalls.get("float0")).toHaveLength(1);
+  });
+
+  it("climbs to the oldest loaded row so the older page loads when no earlier sent message is loaded", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "wawaua"), hasOlder: true }]);
+    layOut(lists[0]!, { topRow: 4 });
+
+    press(document.body, "[");
+
+    expect(scrollCalls.get("p0")).toEqual([{ index: 0, align: "start" }]);
   });
 
   it("ignores the chord while an IME composition is in progress", () => {

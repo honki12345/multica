@@ -358,6 +358,7 @@ export function ChatMessageList({
     scrollEl: scrollContainerEl,
     enabled: active && hasReachedLiveEnd,
     prompts,
+    hasOlder: hasOlderMessages,
     firstIndex,
     scrollToRow: scrollToPrompt,
     scrollToLiveEnd: jumpToLiveEnd.jump,

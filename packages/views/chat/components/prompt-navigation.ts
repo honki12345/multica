@@ -17,6 +17,7 @@ export function findPromptTarget({
   prompts,
   anchor,
   atEnd,
+  hasOlder,
   direction,
 }: {
   /** One entry per list row; `true` for a message the reader sent. */
@@ -24,6 +25,8 @@ export function findPromptTarget({
   anchor: PromptAnchor | null;
   /** The list already shows its live end and cannot scroll further down. */
   atEnd: boolean;
+  /** Older messages exist above the loaded ones. */
+  hasOlder: boolean;
   direction: PromptDirection;
 }): PromptTarget | null {
   if (direction === "previous") {
@@ -33,10 +36,13 @@ export function findPromptTarget({
     for (let i = Math.min(from, prompts.length - 1); i >= 0; i--) {
       if (prompts[i]) return { kind: "row", index: i };
     }
-    return null;
+    // Bringing the oldest loaded row into view is what loads the page above it.
+    return hasOlder && prompts.length > 0 ? { kind: "row", index: 0 } : null;
   }
-  if (atEnd) return null;
-  for (let i = (anchor?.index ?? prompts.length - 1) + 1; i < prompts.length; i++) {
+  // Nothing measured means the rows for the current position are not rendered
+  // yet (a held key outrunning Virtuoso); jumping to the end would skip prompts.
+  if (atEnd || !anchor) return null;
+  for (let i = anchor.index + 1; i < prompts.length; i++) {
     if (prompts[i]) return { kind: "row", index: i };
   }
   return { kind: "end" };

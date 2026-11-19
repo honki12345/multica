@@ -66,6 +66,7 @@ export function usePromptNavigation({
   scrollEl,
   enabled,
   prompts,
+  hasOlder,
   firstIndex,
   scrollToRow,
   scrollToLiveEnd,
@@ -74,13 +75,14 @@ export function usePromptNavigation({
   enabled: boolean;
   /** One entry per row, `true` for a message the reader sent. */
   prompts: readonly boolean[];
+  hasOlder: boolean;
   /** Virtuoso's `firstItemIndex`, the offset of row 0's absolute index. */
   firstIndex: number;
   scrollToRow: (index: number) => void;
   scrollToLiveEnd: () => void;
 }): void {
-  const latest = useRef({ prompts, firstIndex, scrollToRow, scrollToLiveEnd });
-  latest.current = { prompts, firstIndex, scrollToRow, scrollToLiveEnd };
+  const latest = useRef({ prompts, hasOlder, firstIndex, scrollToRow, scrollToLiveEnd });
+  latest.current = { prompts, hasOlder, firstIndex, scrollToRow, scrollToLiveEnd };
 
   useEffect(() => {
     if (!enabled || !scrollEl) return;
@@ -99,6 +101,7 @@ export function usePromptNavigation({
         prompts: current.prompts,
         anchor: measureAnchor(scrollEl, current.firstIndex),
         atEnd: isAtLiveEnd(scrollEl),
+        hasOlder: current.hasOlder,
         direction,
       });
       if (!target) return;
