@@ -89,13 +89,17 @@ calabii-02) on the PR head, and the result is posted as one PR comment.
 3. Post one PR comment: head SHA, machine, each command with exit code and
    pass/fail counts, and for any failure judged pre-existing, the same test
    failing on the clean upstream base tag.
-4. Merge with `gh pr merge --match-head-commit <that SHA>`. A new head needs a
-   new run and a new comment.
+4. Merge only when that comment shows zero failures other than ones proven
+   pre-existing upstream (the same test also fails on the clean upstream base
+   tag). Any new failure blocks the merge; `--match-head-commit` pins the SHA
+   but does not check results. Merge with
+   `gh pr merge --match-head-commit <that SHA>`. A new head needs a new run and
+   a new comment.
 
 ## License check
 
-`scripts/hoon/license-check.sh` is one of the local checks above (described
-for CI in `.github/workflows/fork-license.yml`). The base is the newest upstream
+`scripts/hoon/license-check.sh` is one of the local checks above (also documented
+in `.github/workflows/fork-license.yml`). The base is the newest upstream
 `vX.Y.Z` tag merged into the head (upstream tags are fetched into
 `refs/upstream-tags/`).
 

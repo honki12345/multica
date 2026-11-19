@@ -155,6 +155,6 @@ This repository is the honki12345 fork of Multica. These rules apply on top of e
 
 - **Verification is local; GitHub Actions is not used.** Do not enable Actions, do not wait on `gh pr checks`, and do not report "Actions disabled" as a blocker or a human task. Workflow files under `.github/workflows/` describe the checks; run them yourself.
 - **Every PR into `main` gets one local verification comment before merge.** Run the checks in FORK.md "Verification" on the PR head (this Mac or calabii-02), then post one PR comment with the full 40-character head SHA, the machine, each command with its exit code and pass/fail counts, and the evidence for any failure judged pre-existing upstream (the same test failing on the clean upstream tag).
-- **Merge only that SHA.** Merge with `gh pr merge --match-head-commit <sha>` using the SHA from the comment. If the head moves, rerun the checks and post a new comment.
+- **Merge only a green comment, only that SHA.** Merge only when the comment shows zero failures other than ones proven pre-existing upstream (the same test also fails on the clean upstream base tag); a new failure blocks the merge. Merge with `gh pr merge --match-head-commit <sha>` using the SHA from the comment. If the head moves, rerun the checks and post a new comment.
 - A PR that adds, changes or drops a fork feature updates `fork/features.yml` in the same PR.
 - Never push to or open PRs against upstream `multica-ai/multica`.
