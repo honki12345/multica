@@ -424,6 +424,14 @@
         "label": "Ask Multica",
         "description": "Start a new chat in the floating chat window."
       },
+      "chatPreviousPrompt": {
+        "label": "Previous sent message",
+        "description": "Scroll the open chat to the message you sent before the one in view."
+      },
+      "chatNextPrompt": {
+        "label": "Next sent message",
+        "description": "Scroll the open chat to the next message you sent, then to the latest reply."
+      },
       "findInIssue": {
         "label": "Find in issue",
         "description": "Search within the open issue detail."

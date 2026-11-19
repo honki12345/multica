@@ -1,3 +1,4 @@
+// Modified by honki12345, 2026: cover the chat previous/next sent-message defaults (CALA-281).
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createShortcutChord,
@@ -113,6 +114,33 @@ describe("keyboard shortcut definitions", () => {
     expect(action.allowInEditable).toBe(true);
     expect(shortcutMatchesEvent(chord, keyEvent("J", { metaKey: true, shiftKey: true }), "macos")).toBe(true);
     expect(shortcutMatchesEvent(chord, keyEvent("j", { metaKey: true }), "macos")).toBe(false);
+  });
+
+  it("steps between sent chat messages with Mod+Alt+[ and ] everywhere, composer included", () => {
+    const previous = createShortcutChord("[", { primary: true, alt: true });
+    const next = createShortcutChord("]", { primary: true, alt: true });
+    expect(SHORTCUT_ACTION_BY_ID.chatPreviousPrompt.defaultShortcut).toEqual(previous);
+    expect(SHORTCUT_ACTION_BY_ID.chatNextPrompt.defaultShortcut).toEqual(next);
+    for (const id of ["chatPreviousPrompt", "chatNextPrompt"] as const) {
+      expect(SHORTCUT_ACTION_BY_ID[id].allowInEditable).toBe(true);
+      for (const platform of ["macos", "windows", "linux"] as const) {
+        for (const runtime of ["web", "desktop"] as const) {
+          expect(
+            isShortcutAllowedForAction(id, SHORTCUT_ACTION_BY_ID[id].defaultShortcut!, platform, runtime),
+            `${id} default must stay assignable on ${platform}/${runtime}`,
+          ).toBe(true);
+        }
+      }
+    }
+    // macOS Option turns [ into a curly quote; the physical key still matches.
+    expect(
+      shortcutMatchesEvent(previous, keyEvent("\u201c", { code: "BracketLeft", metaKey: true, altKey: true }), "macos"),
+    ).toBe(true);
+    expect(
+      shortcutMatchesEvent(next, keyEvent("]", { code: "BracketRight", ctrlKey: true, altKey: true }), "windows"),
+    ).toBe(true);
+    // Go back / Go forward keep the chord without Alt.
+    expect(shortcutMatchesEvent(previous, keyEvent("[", { code: "BracketLeft", metaKey: true }), "macos")).toBe(false);
   });
 
   it("keeps the plain inbox archive key out of editable controls", () => {

@@ -1,3 +1,4 @@
+// Modified by honki12345, 2026: add chat previous/next sent-message shortcuts (CALA-281).
 import {
   getShortcutPlatform,
   getShortcutRuntime,
@@ -12,6 +13,8 @@ export type ShortcutActionId =
   | "toggleRightSidebar"
   | "toggleChat"
   | "newChat"
+  | "chatPreviousPrompt"
+  | "chatNextPrompt"
   | "findInIssue"
   | "archiveInboxItem"
   | "unsubscribeArchiveInboxItem"
@@ -103,6 +106,22 @@ export const SHORTCUT_ACTIONS: readonly ShortcutActionDefinition[] = [
     id: "newChat",
     category: "general",
     defaultShortcut: createShortcutChord("J", { primary: true, shift: true }),
+    allowInEditable: true,
+  },
+  // Step between the messages you sent in the open chat (opencode's
+  // `mod+alt+[` / `]`). Alt on the history brackets keeps them next to Go back /
+  // Go forward without taking them; neither variant is reserved anywhere.
+  // `allowInEditable` because the caret usually sits in the chat composer.
+  {
+    id: "chatPreviousPrompt",
+    category: "general",
+    defaultShortcut: createShortcutChord("[", { primary: true, alt: true }),
+    allowInEditable: true,
+  },
+  {
+    id: "chatNextPrompt",
+    category: "general",
+    defaultShortcut: createShortcutChord("]", { primary: true, alt: true }),
     allowInEditable: true,
   },
   { id: "findInIssue", category: "general", defaultShortcut: primary("F"), allowInEditable: true },
