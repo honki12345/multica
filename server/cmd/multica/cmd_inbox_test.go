@@ -251,6 +251,8 @@ func TestInboxListRejectsBadValuesBeforeAnyRequest(t *testing.T) {
 		flags map[string]string
 		want  string
 	}{
+		{map[string]string{"type": "mentions"}, `invalid --type "mentions"; valid groups: mention, comment, assign, review, change, run, system; or a notification type:`},
+		{map[string]string{"type": "mentions", "archived": "true"}, `invalid --type "mentions"`},
 		{map[string]string{"received": "yesterday"}, `invalid --received "yesterday"; valid values: today, last_7_days, last_30_days`},
 		{map[string]string{"priority": "high,hgih"}, `invalid --priority "hgih"; valid values: urgent, high, medium, low, none`},
 		{map[string]string{"due": "tomorrow"}, `invalid --due "tomorrow"; valid values: overdue, today, this_week, next_7_days, none`},

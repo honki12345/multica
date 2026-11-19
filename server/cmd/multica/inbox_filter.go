@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/url"
 	"regexp"
 	"slices"
@@ -477,6 +478,10 @@ const inboxUnreadUsage = "Only unread: the issue's shown notification by default
 // the one filter it takes.
 var inboxSnoozedRefusedFlags = []string{"project", "type", "unread", "since", "actor", "received", "status", "priority", "assignee", "label", "due", "agent", "not", "ungrouped"}
 
+// inboxKnownTypes are the exact notification types --type accepts besides
+// the groups; a typo fails instead of listing nothing.
+var inboxKnownTypes = slices.Sorted(slices.Values(append(slices.Collect(maps.Keys(inboxTypeGroups)), inboxSystemTypes...)))
+
 // inboxNegatableFlagNames are the --not values, in help order; each is the
 // web's dimension name except --due (dueDate).
 var inboxNegatableFlagNames = []string{"type", "actor", "status", "priority", "project", "assignee", "label", "due"}
@@ -541,7 +546,13 @@ func parseInboxListFlags(cmd *cobra.Command, since time.Time, archived bool) (in
 	var f inboxFilters
 	f.Since = since
 	f.UnreadOnly, _ = cmd.Flags().GetBool("unread")
-	f.Types = inboxFlagValues(cmd, "type")
+	for _, v := range inboxFlagValues(cmd, "type") {
+		if !slices.Contains(inboxTypeGroupNames, v) && !slices.Contains(inboxKnownTypes, v) {
+			return f, fmt.Errorf("invalid --type %q; valid groups: %s; or a notification type: %s",
+				v, strings.Join(inboxTypeGroupNames, ", "), strings.Join(inboxKnownTypes, ", "))
+		}
+		f.Types = append(f.Types, v)
+	}
 	f.Received, _ = cmd.Flags().GetString("received")
 	if f.Received != "" {
 		if err := inboxAllowed("received", f.Received, inboxReceivedFilters); err != nil {

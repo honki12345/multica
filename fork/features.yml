@@ -425,7 +425,7 @@ features:
           - Run `multica inbox list --since 1d --output json`.
           - Run `multica inbox list --snoozed --output json`.
         expect:
-          - Each command exits 0; count matches the web Inbox badge.
+          - Each command exits 0; `workspaces[].count` for this workspace matches the web Inbox badge (`unread` counts raw notifications).
           - No notification changes read state.
     drop_when: an upstream release tag that contains multica-ai/multica#10861 is merged into main (the cherry-picks become no-ops in that merge; `inbox_filter.go` stays with inbox-list-filters).
 
@@ -453,6 +453,8 @@ features:
     watch:
       - path: server/pkg/db/queries/inbox_archive.sql
         why: ListArchivedInboxPage filter parameters archivedInboxListQuery sends (types, notification_types, negated, due_dates + today)
+      - path: server/cmd/multica/cmd_inbox_manage_test.go
+        why: upstream's list tests; cmd_inbox_test.go fixtures gained issue_id/issue_label_ids so upstream's cases pass under the grouped default, and the absorb merge will conflict there
       - path: packages/core/inbox/filters.ts
         why: InboxFilters / filterInboxItems, the semantics inbox_filter.go ports; a change there must update the parity fixture
       - path: packages/core/inbox/group.ts
