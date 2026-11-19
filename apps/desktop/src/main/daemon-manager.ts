@@ -1,3 +1,4 @@
+// Modified by honki12345, 2026: packaged fork builds refuse official (non -hoon.N) CLIs.
 import { app, ipcMain, BrowserWindow, shell, dialog, type MessageBoxOptions } from "electron";
 import { execFile } from "child_process";
 import {
@@ -23,6 +24,7 @@ import type {
 } from "../shared/daemon-types";
 import { daemonStatusAlive } from "../shared/daemon-types";
 import { ensureManagedCli, managedCliPath } from "./cli-bootstrap";
+import { acceptsCliVersion } from "./cli-version-policy";
 import { decideVersionAction } from "./version-decision";
 import { createDaemonQuitHandler } from "./daemon-quit";
 import { quitConfirmationOptions, quitFailureOptions } from "./daemon-quit-dialogs";
@@ -515,6 +517,12 @@ async function probeCliBinary(
     });
     const parsed = JSON.parse(stdout) as { version?: string };
     if (typeof parsed.version === "string" && parsed.version.length > 0) {
+      if (!acceptsCliVersion(parsed.version, app.isPackaged)) {
+        console.warn(
+          `[daemon] ignoring ${source} CLI at ${bin}: ${parsed.version} is not a fork (-hoon.N) build`,
+        );
+        return null;
+      }
       return parsed.version;
     }
     console.warn(

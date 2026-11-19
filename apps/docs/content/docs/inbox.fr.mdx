@@ -3,6 +3,8 @@ title: "Boîte de réception et abonnements"
 description: "Un seul endroit pour les assignations, mentions, commentaires et échecs d'agents qui demandent votre suivi."
 ---
 
+{/* Modified by honki12345, 2026: document the web Inbox filters and grouping on `multica inbox list` (CALA-248). */}
+
 import { Callout } from "fumadocs-ui/components/callout";
 import { InboxDemo } from "@/components/demos/inbox-demo";
 
@@ -62,15 +64,34 @@ Les notifications appartiennent aux membres de l'espace de travail. Pour la list
 
 ## Lire depuis le CLI
 
-Utilisez votre connexion CLI existante pour lister les notifications actives sans les marquer comme lues :
+Utilisez votre connexion CLI existante pour lister les notifications actives sans les marquer comme lues. Les filtres sont ceux du menu de filtres de la boîte de réception et sélectionnent les mêmes lignes :
 
 ```sh
-multica inbox list --project <project-id> --type mentioned --output json
+multica inbox list --unread --type mention
+multica inbox list --project <project-id> --status todo,in_progress --not status --output json
+multica inbox list --assignee none --due overdue,today
 ```
 
-`--project` accepte un UUID complet ou un préfixe d'ID unique, y compris l'ID court affiché par `multica project list`. Les préfixes sont résolus via la liste des projets avant de lire la boîte de réception ; un préfixe sans correspondance ou ambigu produit une erreur.
+| Option | Valeurs |
+| --- | --- |
+| `--unread` | uniquement les tâches dont la notification affichée est non lue |
+| `--type` | `mention`, `comment`, `assign`, `review`, `change`, `run`, `system`, ou un type exact comme `mentioned` |
+| `--actor` | nom, e-mail ou ID d'un membre ou d'un agent, `member:<id>`, `agent:<id>`, `system` |
+| `--received` | `today`, `last_7_days`, `last_30_days` (jours calendaires locaux) |
+| `--status`, `--priority` | clés de statut de tâche ; `urgent`, `high`, `medium`, `low`, `none` |
+| `--project` | UUID de projet ou préfixe d'ID unique, `none` |
+| `--assignee` | nom, e-mail ou ID d'un membre, d'un agent ou d'une équipe, `<type>:<id>`, `none` |
+| `--label` | nom, UUID ou préfixe d'ID unique d'étiquette |
+| `--due` | `overdue`, `today`, `this_week`, `next_7_days`, `none` |
+| `--agent` | `running` (un agent travaille ou attend sur la tâche), `idle` |
+| `--not <option>` | transforme `type`, `actor`, `status`, `priority`, `project`, `assignee`, `label` ou `due` en « n'est pas » |
+| `--ungrouped` | liste chaque notification correspondante au lieu d'une ligne par tâche |
 
-Les deux filtres sont facultatifs et s'appliquent localement après récupération de la boîte de réception active. Le JSON contient les ID de notification, de tâche, de projet et, si disponible, de commentaire, ainsi que le type, le titre, l'état lu et la date de création. La sortie par défaut est un tableau. Une exécution d'agent autorisée utilise son identifiant d'exécution pour lire les notifications du propriétaire du runtime, sans revenir à la connexion d'une personne.
+Répétez une option ou séparez les valeurs par des virgules pour accepter l'une d'elles ; des options différentes doivent toutes correspondre. Une valeur mal écrite produit une erreur qui liste les valeurs acceptées, de même qu'une option de tâche à laquelle un serveur trop ancien ne peut pas répondre. `--project` accepte un UUID complet ou un préfixe d'ID unique, y compris l'ID court affiché par `multica project list` ; un préfixe sans correspondance ou ambigu produit une erreur. Les filtres enregistrés dans la boîte de réception web restent dans ce navigateur : passez-les de nouveau en options.
+
+Comme dans la liste de la boîte de réception, la sortie compte une ligne par tâche, la plus récente d'abord, et une tâche revenue d'un report compte à partir de son retour. La ligne est la notification la plus récente de la tâche qui satisfait `--type`, `--actor` et `--received` ; `--unread` et les options de tâche s'appliquent ensuite à cette ligne. Une notification sans tâche ne correspond jamais à une option de tâche, `--not` compris.
+
+Les filtres s'appliquent localement après une lecture de la boîte de réception active (`--agent` lit aussi la liste des tâches d'agent). Le JSON contient les ID de notification, de tâche, de projet et, si disponible, de commentaire, ainsi que le type, le titre, l'état lu et la date de création. La sortie par défaut est un tableau. Une exécution d'agent autorisée utilise son identifiant d'exécution pour lire les notifications du propriétaire du runtime, sans revenir à la connexion d'une personne.
 
 ## Traiter les notifications
 

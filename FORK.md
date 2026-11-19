@@ -7,8 +7,10 @@ Multica; the upstream project lives at https://github.com/multica-ai/multica.
 
 > **Agents and contributors:** a PR that adds, changes or drops a fork feature
 > must update [`fork/features.yml`](fork/features.yml) in the same PR. The fork
-> CI (`scripts/hoon/features-check.sh`) fails when a changed file belongs to no
-> feature. See "Fork feature registry" below.
+> check (`scripts/hoon/features-check.sh`) fails when a changed file belongs to
+> no feature. See "Fork feature registry" below. Checks run locally and are
+> reported as a PR comment; this fork does not use GitHub Actions (see
+> "Verification").
 
 ## Upstream base
 
@@ -68,10 +70,36 @@ would replace our binary with the official one. Image tags and
 — functional changes are allowed there, but the Multica product name, logo
 assets and displayed copyright/attribution stay as upstream ships them.
 
-## License check (CI)
+## Verification (local, no GitHub Actions)
 
-`.github/workflows/fork-license.yml` runs `scripts/hoon/license-check.sh` on
-every PR into `main` and every push to `main`. The base is the newest upstream
+This fork does not use GitHub Actions. Do not enable it or treat a missing
+`gh pr checks` result as a blocker. The workflow files stay in the tree as the
+description of what to run; every check is run locally (calabii-macstudio or
+calabii-02) on the PR head, and the result is posted as one PR comment.
+
+1. Check out the PR head in a clean tree and record the full 40-character SHA.
+2. Run, as applicable to the change:
+   - `bash scripts/hoon/license-check.sh` and `bash scripts/hoon/features-check.sh`
+     (after `git fetch --no-tags upstream '+refs/tags/v*:refs/upstream-tags/v*'`)
+   - Go tests for the touched packages (`cd server && go test -p 2 <pkgs>`);
+     DB-backed packages against a throwaway `pgvector/pgvector:pg17` on calabii-02
+   - web: `pnpm typecheck` and `pnpm vitest related <changed files> --run`
+     (no full `vitest run`)
+   - the fork's own script tests (`scripts/hoon/*.test.sh`) when scripts change
+3. Post one PR comment: head SHA, machine, each command with exit code and
+   pass/fail counts, and for any failure judged pre-existing, the same test
+   failing on the clean upstream base tag.
+4. Merge only when that comment shows zero failures other than ones proven
+   pre-existing upstream (the same test also fails on the clean upstream base
+   tag). Any new failure blocks the merge; `--match-head-commit` pins the SHA
+   but does not check results. Merge with
+   `gh pr merge --match-head-commit <that SHA>`. A new head needs a new run and
+   a new comment.
+
+## License check
+
+`scripts/hoon/license-check.sh` is one of the local checks above (also documented
+in `.github/workflows/fork-license.yml`). The base is the newest upstream
 `vX.Y.Z` tag merged into the head (upstream tags are fetched into
 `refs/upstream-tags/`).
 
@@ -118,8 +146,8 @@ gate read that file; do not repeat its contents here.
 ### Rule for every change
 
 Adding, changing or dropping a fork feature updates `fork/features.yml` in the
-same PR. `scripts/hoon/features-check.sh` runs in the fork CI
-(`fork-license.yml`) and fails the PR when the registry is out of step.
+same PR. `scripts/hoon/features-check.sh` is one of the local checks in
+"Verification" and fails the PR when the registry is out of step.
 
 | Check | Result |
 |---|---|
@@ -255,3 +283,88 @@ from a `pg_dump` taken before the deploy instead of rolling back blindly.
 
 `scripts/hoon/release.sh status` prints the current image keys, binary version,
 containers and last deploy record.
+
+## Desktop app (Mac mini)
+
+The desktop app (`/Applications/Multica.app` on `calabii-macmini`) bundles its
+own UI and its own `multica` CLI, which runs that machine's daemon (profile
+`desktop-calabii-macstudio.tail37cc38.ts.net-9330`). A web deploy does not
+change it; rebuild the app from the same fork tag after each release.
+
+The fork build cannot fall back to an official release:
+
+| Path | Official build | Fork build |
+|---|---|---|
+| App updates (`electron-builder.yml` `publish`, packaged as `app-update.yml`) | `multica-ai/multica` releases | `honki12345/multica` releases. The Mac mini build (`--dir`) ships no `app-update.yml` at all, so electron-updater fails to load a feed and a manual check reports an error; a zip/dmg build points at the fork, which publishes no desktop assets |
+| Automatic update checks (`updater-preferences.ts` default) | on | off; a user can still turn them on under Settings → Updates |
+| Managed CLI repair download (`cli-bootstrap.ts`) | `multica-ai/multica/releases/latest` | `honki12345/multica/releases/latest` |
+| Bundled CLI | official binary | built from the same tag, `-X main.version=X.Y.Z-hoon.N` |
+| CLI that spawns the daemon (`daemon-manager.ts` `probeCliBinary`, `cli-version-policy.ts`) | first working one of bundled, managed, download, PATH | same order, but a packaged app skips any CLI whose version lacks `-hoon.N`, so an official managed or Homebrew CLI is never used |
+
+The app is ad-hoc signed and not notarized; it is for our own machines only.
+
+### Build and install (run on the Mac mini)
+
+`scripts/hoon/desktop-app.sh` (tests: `bash scripts/hoon/desktop-app.test.sh`).
+Build on the Mac mini, not the Mac Studio, which also runs the server and the
+gateway.
+
+```bash
+# once: get the script from the fork
+git clone --depth 1 --branch v0.11.0-hoon.2 https://github.com/honki12345/multica.git ~/.local/share/multica-desktop/src/0.11.0-hoon.2
+S=~/.local/share/multica-desktop/src/0.11.0-hoon.2/scripts/hoon/desktop-app.sh
+
+$S build   v0.11.0-hoon.2   # pnpm install + package, ~/.local/share/multica-desktop/apps/<version>/Multica.app
+$S install 0.11.0-hoon.2    # refuses while the app daemon has active tasks (--force overrides)
+$S verify  0.11.0-hoon.2    # app, bundled CLI and running daemon versions, feed owner, updater off, ShipIt stopped
+$S status
+```
+
+`install` order matters. Each step stops the run, with the old app still in
+place, if it does not take effect:
+
+1. Refuse while the app daemon has active tasks, or when its status cannot be
+   read (`--force` skips this).
+2. Stop the official updater: `launchctl remove ai.multica.desktop.ShipIt`,
+   wait for ShipIt to exit, and move `~/Library/Caches/ai.multica.desktop.ShipIt`
+   and `~/Library/Caches/@multicadesktop-updater` next to the backup. An
+   official app that already downloaded an update installs it the moment it
+   quits.
+3. Quit the app (`osascript … quit`) and check that ShipIt did not start again.
+4. Write `updater-preferences.json` `{"automaticUpdates": false}`.
+5. Copy the new app next to `/Applications/Multica.app`, check it, then move
+   the old app to `~/Applications-backup/Multica-<old version>-<ts>.app` and
+   the copy into place (a failed move puts the old app back). Clear
+   quarantine and open the app.
+6. The app sees that the running daemon's version differs from its bundled CLI
+   and restarts the daemon once it is idle.
+
+`~/Library/Application Support/Multica` (login, windows, settings) and
+`~/.multica` are kept, so the app stays signed in to the same server.
+
+### Gatekeeper
+
+A build made on the machine itself carries no quarantine attribute and opens
+directly. A copy downloaded or AirDropped from another Mac does: clear it
+before the first launch.
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Multica.app
+```
+
+(Or right-click → Open once and confirm.)
+
+### Rollback
+
+```bash
+$S rollback   # puts back the app recorded in ~/.local/share/multica-desktop/last-backup
+```
+
+Rollback stops ShipIt and writes `automaticUpdates: false` before it reopens
+the restored app, because an official app defaults to updating itself. Turn
+updates on under Settings → Updates only if the official app should update
+itself again.
+
+The build needs `pnpm` on PATH (electron-builder runs it to collect node
+modules); without a global pnpm the script enables corepack's shim in
+`~/.local/share/multica-desktop/corepack-bin`.

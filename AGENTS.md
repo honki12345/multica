@@ -1,3 +1,4 @@
+<!-- Modified by honki12345, 2026: append the fork rules section at the end (see FORK.md). -->
 # Repository Instructions
 
 This codebase is yours: what it's for and how it's built are your call, and you'll keep building on it.
@@ -147,3 +148,13 @@ Workspace-scoped queries filter by `workspace_id`; membership gates access and `
 - When a change alters user-visible behavior, a setting, a default, a shortcut, or an entry point, `rg` `apps/docs/content/docs` for the feature's name and the terms of the old behavior; a newly added label is not in the docs yet. In the same PR, update every affected page and its locale siblings (`inbox.mdx`, `inbox.zh.mdx`, ...). Text the change makes wrong is always fixed here; if the docs only lack the new behavior, you may link a docs follow-up issue from the PR description instead.
 - New global pre-workspace routes use a single word or `/{noun}/{verb}`, not hyphenated root names. Update `server/internal/handler/reserved_slugs.json`, run `pnpm generate:reserved-slugs`, and commit `packages/core/paths/reserved-slugs.ts` when changing reserved slugs.
 - Use atomic conventional commits and the repository PR template. Follow the [pull request requirements](CONTRIBUTING.md#pull-request-requirements): Problem, Goal, Proposal (high-level design understandable without much background), Alternatives (optional), and Screenshots. Attach screenshots or a screen recording for UI or interaction changes (missing both means rejection by default). For releases, follow [.github/RELEASING.md](.github/RELEASING.md); default to a patch bump unless specified otherwise.
+
+## Fork rules (honki12345/multica)
+
+This repository is the honki12345 fork of Multica. These rules apply on top of everything above and win where they conflict. Details live in [FORK.md](FORK.md).
+
+- **Verification is local; GitHub Actions is not used.** Do not enable Actions, do not wait on `gh pr checks`, and do not report "Actions disabled" as a blocker or a human task. Workflow files under `.github/workflows/` describe the checks; run them yourself.
+- **Every PR into `main` gets one local verification comment before merge.** Run the checks in FORK.md "Verification" on the PR head (this Mac or calabii-02), then post one PR comment with the full 40-character head SHA, the machine, each command with its exit code and pass/fail counts, and the evidence for any failure judged pre-existing upstream (the same test failing on the clean upstream tag).
+- **Merge only a green comment, only that SHA.** Merge only when the comment shows zero failures other than ones proven pre-existing upstream (the same test also fails on the clean upstream base tag); a new failure blocks the merge. Merge with `gh pr merge --match-head-commit <sha>` using the SHA from the comment. If the head moves, rerun the checks and post a new comment.
+- A PR that adds, changes or drops a fork feature updates `fork/features.yml` in the same PR.
+- Never push to or open PRs against upstream `multica-ai/multica`.
