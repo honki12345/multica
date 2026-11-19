@@ -163,6 +163,41 @@ Files that are fork upkeep rather than a feature (`NOTICE`, `FORK.md`,
 Quote a value that contains ` #` (`drop_when: "... PR #10119 ..."`). Unquoted,
 YAML reads the rest as a comment; `features-check.sh` fails on it.
 
+## Upstream triage
+
+`scripts/hoon/upstream-triage.sh <from-tag> <to-ref>` reads what upstream
+changed between two refs and says what it means for this fork. It sorts every
+non-merge commit against the registry:
+
+| Class | Rule | What to do |
+|---|---|---|
+| A | touches a file in an active feature's `files` | conflict or behaviour risk; ⚔️ marks files `git merge-tree` reports as conflicting with `--fork-ref` |
+| B | touches a `watch` path, or a planned feature's `files` | surrounding change; run that feature's scenarios (screen comparison input) |
+| C | PR number in `upstream_equivalent.prs`, a `symbols` entry that is new since `<from-tag>`, or a `keywords` phrase in the subject, PR title, PR labels or release-notes line | candidate: upstream may ship our feature; check `drop_when` |
+| D | migration, `.env.example`, compose, Dockerfile or selfhost script, or a new env key (`.env.example`, `${VAR}` in compose, `os.Getenv` in Go) absent at `<from-tag>` | backup and config check before deploy |
+| E | `feat` subject naming chat, inbox, daemon, hermes, cli or autopilot | candidate: worth absorbing |
+| F | none of the above | |
+
+A commit can be in several classes. It also builds the CLI at both refs and
+diffs the `--help` command trees (needs Go; falls back to the new cobra `Use:`
+lines in `server/cmd/multica`). C and E are keyword matches only: the report
+ends with the instruction for the absorb run to read the PR bodies and settle
+them. The script calls no LLM, prints the same output for the same refs, and
+always exits 0 (`triage_status=error` on failure).
+
+```bash
+scripts/hoon/upstream-triage.sh v0.10.0 v0.11.0 --fork-ref v0.10.0-hoon.1 --json out.json > report.md
+bash scripts/hoon/upstream-triage.test.sh   # throwaway repos, no network
+```
+
+The report ends with `--- triage keys` and one `triage_*=` key per line
+(counts, feature ids, migration range, new env keys, new CLI commands). The
+JSON has the same classification plus `screen_inputs`, the B paths per
+feature. Test overrides (`TRIAGE_RELEASE_NOTES_OVERRIDE`,
+`TRIAGE_PRS_OVERRIDE`, `TRIAGE_CLI_OVERRIDE`) are listed at the top of the
+script. It reads the registry from `--registry-ref` (default `HEAD`), so a
+triage of an old range uses today's registry.
+
 ## Deploy and rollback (self-host on calabii-macstudio)
 
 `scripts/hoon/release.sh` builds, swaps in, verifies, and rolls back the
