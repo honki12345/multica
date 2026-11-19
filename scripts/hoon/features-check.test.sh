@@ -188,9 +188,21 @@ expect "invalid YAML fails" 1 "$(run)" 'registry is not valid YAML'
 
 setup hash-cut
 edit 's#drop_when: upstream ships B.#drop_when: upstream ships B in PR \#12 and later.#'
-expect "unquoted value cut at ' #' fails" 1 "$(run)" "registry line [0-9]+: unquoted value is cut at ' #'"
+expect "unquoted value cut at ' #' fails" 1 "$(run)" "registry line [0-9]+: '#' after an unquoted value"
 edit 's#drop_when: upstream ships B in PR \#12 and later.#drop_when: "upstream ships B in PR \#12 and later."#'
 expect "...and quoting it passes" 0 "$(run)" 'errors=0'
+
+setup hash-cut-list-item
+edit 's#steps: \[Run B.\]#steps:\n          - Run B after PR \#12 lands.#'
+expect "a list item cut at ' #' fails" 1 "$(run)" "registry line [0-9]+: '#' after an unquoted value"
+
+setup hash-trailing-comment
+edit 's#status: active#status: active  \# until CALA-9#'
+expect "a trailing comment fails too (full-line comments only)" 1 "$(run)" "registry line [0-9]+: '#' after an unquoted value"
+
+setup hash-ok
+edit 's#drop_when: upstream ships B.#drop_when: see http://x.example/b\#frag\n    \# a full-line comment is fine#'
+expect "'#' without a space before it and full-line comments pass" 0 "$(run)" 'errors=0'
 
 setup reads-head
 printf 'garbage: [\n' > fork/features.yml

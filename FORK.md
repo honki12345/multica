@@ -123,7 +123,7 @@ same PR. `scripts/hoon/features-check.sh` runs in the fork CI
 
 | Check | Result |
 |---|---|
-| registry format (required keys, `kind`, `status`, unique `id`, quoted and existing `origin.commits`, non-empty scenario `steps`/`expect`, no unquoted value cut at ` #`) | fail |
+| registry format (required keys, `kind`, `status`, unique `id`, quoted and existing `origin.commits`, non-empty scenario `steps`/`expect`, no `#` after an unquoted value on its line) | fail |
 | an active feature's `files` entry is missing (an upstream file the feature deletes is fine); an active or planned feature's `watch` path matches nothing | fail |
 | a file that differs from the base tag (changed, added or deleted) is in no active feature's `files` and no `infrastructure` entry | fail |
 | an active or planned feature's `tests` entry names a Go test function or vitest file/case that does not exist | fail |
@@ -161,7 +161,9 @@ Files that are fork upkeep rather than a feature (`NOTICE`, `FORK.md`,
 `infrastructure`.
 
 Quote a value that contains ` #` (`drop_when: "... PR #10119 ..."`). Unquoted,
-YAML reads the rest as a comment; `features-check.sh` fails on it.
+YAML reads the rest as a comment. Comments go on their own line: a `#` after
+an unquoted value on the same line fails `features-check.sh`, because YAML
+cannot tell a cut value from a trailing comment.
 
 ## Upstream triage
 
