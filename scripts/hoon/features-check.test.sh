@@ -52,7 +52,7 @@ features:
     cards: [CALA-1]
     origin:
       type: ours
-      commits: [$FEATURE_SHA]
+      commits: ["$FEATURE_SHA"]
     files:
       - server/pkg/a.go
       - server/pkg/b.go
@@ -163,6 +163,24 @@ cat >> fork/features.yml <<'EOF'
 EOF
 git commit -qam planned
 expect "planned feature touching a changed file only warns" 0 "$(run)" 'planned feature c-planned: views/bar.tsx already differs'
+
+setup claimed-delete
+git rm -q server/pkg/near.go && edit 's#      - views/bar.test.tsx#      - views/bar.test.tsx\n      - server/pkg/near.go#; /path: server\/pkg\/near.go/,/neighbour/d; s#^    watch:#    watch: []#'
+expect "upstream file deleted by a feature passes" 0 "$(run)" 'errors=0'
+
+setup dropped
+git checkout -q refs/upstream-tags/v1.0.0 -- server/pkg/a.go views/bar.tsx
+git rm -q server/pkg/b.go server/pkg/b_test.go views/bar.test.tsx
+edit 's#status: active#status: dropped#; s#path: server/pkg/near.go#path: server/pkg/b.go#'
+expect "dropped feature whose files, watch and tests are gone passes" 0 "$(run)" 'errors=0'
+
+setup commits-string
+edit "s#commits: \[.*\]#commits: definitely-not-a-commit#"
+expect "origin.commits as a string fails" 1 "$(run)" 'origin.commits must be a list'
+
+setup empty-steps
+edit 's#steps: \[Run B.\]#steps: []#'
+expect "scenario with no steps fails" 1 "$(run)" 'each scenario needs name, steps and expect'
 
 setup bad-yaml
 printf 'version: 1\nfeatures: [\n' > fork/features.yml && git commit -qam broken

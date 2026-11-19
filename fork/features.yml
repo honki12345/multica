@@ -3,6 +3,7 @@
 # absorb gate all read this file; FORK.md points here instead of keeping its
 # own table. Schema and rules: FORK.md "Fork feature registry".
 # Checked by scripts/hoon/features-check.sh (CI: .github/workflows/fork-license.yml).
+# Quote commit ids: YAML reads an unquoted id such as 1234e56 as a number.
 version: 1
 
 # Fork upkeep, not features. Every file that differs from the upstream base tag
@@ -24,7 +25,7 @@ features:
     origin:
       type: upstream-cherry-pick
       upstream_pr: 10119
-      commits: [2707ff0c3, dcd2e0ccd]
+      commits: ["2707ff0c3", "dcd2e0ccd"]
     files:
       - server/cmd/multica/cmd_agent.go
       - server/cmd/multica/resident_task.go
@@ -84,7 +85,7 @@ features:
     cards: []
     origin:
       type: ours
-      commits: [1d5640104]
+      commits: ["1d5640104"]
       release: 0.9.0-resident.2
     files:
       - server/cmd/multica/cmd_agent.go
@@ -128,7 +129,7 @@ features:
     cards: []
     origin:
       type: ours
-      commits: [7637018c6]
+      commits: ["7637018c6"]
       release: 0.9.0-resident.3
     files:
       - server/internal/daemon/execenv/execenv.go
@@ -159,7 +160,7 @@ features:
     cards: []
     origin:
       type: ours
-      commits: [9204e1d53]
+      commits: ["9204e1d53"]
       release: 0.9.0-resident.4
     files:
       - server/pkg/agent/hermes.go
@@ -218,7 +219,7 @@ features:
     cards: [CALA-197, CALA-245]
     origin:
       type: ours
-      commits: [09e87daed]
+      commits: ["09e87daed"]
       release: 0.9.0-resident.5
     files:
       - server/cmd/multica/cmd_environment.go
@@ -259,7 +260,7 @@ features:
     cards: [CALA-197, CALA-245]
     origin:
       type: ours
-      commits: [eeef72c10]
+      commits: ["eeef72c10"]
       release: 0.9.0-resident.6
     files:
       - server/cmd/multica/cmd_daemon.go
@@ -289,7 +290,7 @@ features:
     cards: [CALA-72]
     origin:
       type: ours
-      commits: [6565efb51]
+      commits: ["6565efb51"]
     files:
       - packages/views/chat/components/chat-bar.tsx
       - packages/views/chat/components/chat-bar.test.tsx

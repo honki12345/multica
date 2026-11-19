@@ -11,12 +11,14 @@
 #
 # Failures (exit 1):
 #   a. Registry format: required keys, enums, unique ids, known commits.
-#   b. A `files` entry of an active feature is missing at <head>; a `watch`
-#      path or glob matches nothing.
+#   b. A `files` entry of an active feature is missing at <head> (unless it is
+#      an upstream file the feature deletes); a `watch` path or glob of an
+#      active or planned feature matches nothing.
 #   c. A file that differs from the base tag (changed, added or deleted) is
 #      claimed by no active feature's `files` and no `infrastructure` entry.
-#   d. A `tests` entry names a Go test function or vitest file/case that does
-#      not exist.
+#   d. A `tests` entry of an active or planned feature names a Go test
+#      function or vitest file/case that does not exist.
+# `dropped` features are format-checked only.
 # Warnings (exit 0):
 #   - An upstream file listed in an active feature's `files` is identical to
 #     the base tag (stale entry, or upstream took our change).
@@ -162,6 +164,10 @@ def str_list(value):
     return isinstance(value, list) and all(isinstance(v, str) and v for v in value)
 
 
+def nonempty_str_list(value):
+    return str_list(value) and len(value) > 0
+
+
 # a. format
 if not isinstance(doc, dict) or doc.get("version") != 1:
     error("registry must be a mapping with version: 1")
@@ -210,11 +216,14 @@ for n, f in enumerate(features):
         if origin["type"] == "upstream-cherry-pick" and not isinstance(origin.get("upstream_pr"), int):
             error("%s: an upstream cherry-pick needs origin.upstream_pr" % where)
         commits = origin.get("commits", [])
-        if status == "active" and not commits:
-            error("%s: an active feature needs origin.commits" % where)
-        for sha in commits if isinstance(commits, list) else []:
-            if git("cat-file", "-e", "%s^{commit}" % sha, check=False).returncode != 0:
-                error("%s: origin commit %s not found" % (where, sha))
+        if not str_list(commits):
+            error("%s: origin.commits must be a list of quoted commit ids" % where)
+        else:
+            if status == "active" and not commits:
+                error("%s: an active feature needs origin.commits" % where)
+            for sha in commits:
+                if git("cat-file", "-e", "%s^{commit}" % sha, check=False).returncode != 0:
+                    error("%s: origin commit %s not found" % (where, sha))
     if not str_list(f.get("files")) or not f.get("files"):
         error("%s: files must be a non-empty list of paths" % where)
     watch = f.get("watch", [])
@@ -233,7 +242,7 @@ for n, f in enumerate(features):
         error("%s: a go test needs a name" % where)
     scenarios = f.get("scenarios", [])
     if not isinstance(scenarios, list) or not all(
-        isinstance(s, dict) and isinstance(s.get("name"), str) and str_list(s.get("steps")) and str_list(s.get("expect"))
+        isinstance(s, dict) and isinstance(s.get("name"), str) and nonempty_str_list(s.get("steps")) and nonempty_str_list(s.get("expect"))
         for s in scenarios
     ):
         error("%s: each scenario needs name, steps and expect" % where)
@@ -252,12 +261,14 @@ for n, f in enumerate(features):
 active = [f for f in valid if f["status"] == "active"]
 planned = [f for f in valid if f["status"] == "planned"]
 
-# b. files and watch exist
+# b. files and watch exist. A deleted upstream file is a legitimate entry: the
+# feature owns the deletion. Dropped features are history; their files, watch
+# paths and tests may be gone.
 for f in active:
     for path in f["files"]:
-        if path not in tree:
+        if path not in tree and changed.get(path) != "D":
             error("feature %s: file not found at %s: %s" % (f["id"], HEAD, path))
-for f in valid:
+for f in active + planned:
     for w in f.get("watch", []):
         if not any(matches(w["path"], p) for p in tree):
             error("feature %s: watch matches no file: %s" % (f["id"], w["path"]))
@@ -285,7 +296,7 @@ for f in planned:
             warn("planned feature %s: %s already differs from %s; set status: active when it lands" % (f["id"], path, BASE))
 
 # d. tests exist
-for f in valid:
+for f in active + planned:
     for t in f.get("tests", []):
         if "go" in t:
             pkg = t["go"].rstrip("/")
