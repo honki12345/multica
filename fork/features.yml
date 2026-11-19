@@ -2,7 +2,7 @@
 # changes on top of upstream Multica. Upstream-triage, fork-verify and the
 # absorb gate all read this file; FORK.md points here instead of keeping its
 # own table. Schema and rules: FORK.md "Fork feature registry".
-# Checked by scripts/hoon/features-check.sh (CI: .github/workflows/fork-license.yml).
+# Checked by scripts/hoon/features-check.sh (run locally; see FORK.md "Verification").
 # Quote commit ids: YAML reads an unquoted id such as 1234e56 as a number.
 version: 1
 
@@ -12,6 +12,8 @@ infrastructure:
   - path: NOTICE
     why: modified-fork line (Apache 2.0 §4(d))
   - path: FORK.md
+  - path: AGENTS.md
+    why: fork rules section appended for coding agents (local verification, no GitHub Actions)
   - path: fork/**
   - path: scripts/hoon/**
   - path: .github/workflows/fork-license.yml

@@ -7,8 +7,10 @@ Multica; the upstream project lives at https://github.com/multica-ai/multica.
 
 > **Agents and contributors:** a PR that adds, changes or drops a fork feature
 > must update [`fork/features.yml`](fork/features.yml) in the same PR. The fork
-> CI (`scripts/hoon/features-check.sh`) fails when a changed file belongs to no
-> feature. See "Fork feature registry" below.
+> check (`scripts/hoon/features-check.sh`) fails when a changed file belongs to
+> no feature. See "Fork feature registry" below. Checks run locally and are
+> reported as a PR comment; this fork does not use GitHub Actions (see
+> "Verification").
 
 ## Upstream base
 
@@ -68,10 +70,36 @@ would replace our binary with the official one. Image tags and
 — functional changes are allowed there, but the Multica product name, logo
 assets and displayed copyright/attribution stay as upstream ships them.
 
-## License check (CI)
+## Verification (local, no GitHub Actions)
 
-`.github/workflows/fork-license.yml` runs `scripts/hoon/license-check.sh` on
-every PR into `main` and every push to `main`. The base is the newest upstream
+This fork does not use GitHub Actions. Do not enable it or treat a missing
+`gh pr checks` result as a blocker. The workflow files stay in the tree as the
+description of what to run; every check is run locally (calabii-macstudio or
+calabii-02) on the PR head, and the result is posted as one PR comment.
+
+1. Check out the PR head in a clean tree and record the full 40-character SHA.
+2. Run, as applicable to the change:
+   - `bash scripts/hoon/license-check.sh` and `bash scripts/hoon/features-check.sh`
+     (after `git fetch --no-tags upstream '+refs/tags/v*:refs/upstream-tags/v*'`)
+   - Go tests for the touched packages (`cd server && go test -p 2 <pkgs>`);
+     DB-backed packages against a throwaway `pgvector/pgvector:pg17` on calabii-02
+   - web: `pnpm typecheck` and `pnpm vitest related <changed files> --run`
+     (no full `vitest run`)
+   - the fork's own script tests (`scripts/hoon/*.test.sh`) when scripts change
+3. Post one PR comment: head SHA, machine, each command with exit code and
+   pass/fail counts, and for any failure judged pre-existing, the same test
+   failing on the clean upstream base tag.
+4. Merge only when that comment shows zero failures other than ones proven
+   pre-existing upstream (the same test also fails on the clean upstream base
+   tag). Any new failure blocks the merge; `--match-head-commit` pins the SHA
+   but does not check results. Merge with
+   `gh pr merge --match-head-commit <that SHA>`. A new head needs a new run and
+   a new comment.
+
+## License check
+
+`scripts/hoon/license-check.sh` is one of the local checks above (also documented
+in `.github/workflows/fork-license.yml`). The base is the newest upstream
 `vX.Y.Z` tag merged into the head (upstream tags are fetched into
 `refs/upstream-tags/`).
 
@@ -118,8 +146,8 @@ gate read that file; do not repeat its contents here.
 ### Rule for every change
 
 Adding, changing or dropping a fork feature updates `fork/features.yml` in the
-same PR. `scripts/hoon/features-check.sh` runs in the fork CI
-(`fork-license.yml`) and fails the PR when the registry is out of step.
+same PR. `scripts/hoon/features-check.sh` is one of the local checks in
+"Verification" and fails the PR when the registry is out of step.
 
 | Check | Result |
 |---|---|
