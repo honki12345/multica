@@ -148,6 +148,13 @@ except yaml.YAMLError as exc:
     error("registry is not valid YAML: %s" % str(exc).replace("\n", " "))
     finish("?")
 
+# A " #" inside an unquoted value starts a YAML comment and silently cuts the
+# value short (drop_when: "... PR #10119 ..." became "... PR").
+for n, line in enumerate(raw.stdout.decode("utf-8").splitlines(), 1):
+    m = re.match(r"^\s*(?:- )?[A-Za-z_]+:\s+([^\s\"'\[{|>#].*?)\s+#", line)
+    if m:
+        error("registry line %d: unquoted value is cut at ' #' (YAML comment); quote the value" % n)
+
 tree = set(git("ls-tree", "-r", "--name-only", HEAD).stdout.decode("utf-8").splitlines())
 base_tree = set(git("ls-tree", "-r", "--name-only", BASE_REF).stdout.decode("utf-8").splitlines())
 changed = {}

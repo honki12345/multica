@@ -76,7 +76,7 @@ features:
           - issue get returns the issue (no "not authenticated" / workspace error).
           - The comment is authored by the agent, not the resident owner's member account.
           - .multica_resident_task.json exists during the run and is gone after it.
-    drop_when: upstream PR #10119 (or an equivalent resident gateway mode) ships in an upstream release tag we merge; drop ours in that merge and re-base the resident follow-ups below on upstream's version.
+    drop_when: "upstream PR #10119 (or an equivalent resident gateway mode) ships in an upstream release tag we merge; drop ours in that merge and re-base the resident follow-ups below on upstream's version."
 
   - id: resident-quick-create-context
     summary: Quick Create runs on the resident gateway get the MULTICA_QUICK_CREATE_* context, so issue create stamps origin and --assignee-picker works.
@@ -120,7 +120,7 @@ features:
         expect:
           - The created issue has origin_type "quick_create" and origin_id = the quick-create task id.
           - Its assignee is the default picked for the run (the agent, or the squad for a squad run).
-    drop_when: upstream's resident mode passes quick-create context to resident tool shells itself (check together with #10119).
+    drop_when: "upstream's resident mode passes quick-create context to resident tool shells itself (check together with #10119)."
 
   - id: resident-no-hermes-home-overlay
     summary: In resident mode the daemon skips the per-task hermes-home overlay; the viewer runs on the owner's real Hermes home.

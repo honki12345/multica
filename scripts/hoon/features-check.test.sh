@@ -186,6 +186,12 @@ setup bad-yaml
 printf 'version: 1\nfeatures: [\n' > fork/features.yml && git commit -qam broken
 expect "invalid YAML fails" 1 "$(run)" 'registry is not valid YAML'
 
+setup hash-cut
+edit 's#drop_when: upstream ships B.#drop_when: upstream ships B in PR \#12 and later.#'
+expect "unquoted value cut at ' #' fails" 1 "$(run)" "registry line [0-9]+: unquoted value is cut at ' #'"
+edit 's#drop_when: upstream ships B in PR \#12 and later.#drop_when: "upstream ships B in PR \#12 and later."#'
+expect "...and quoting it passes" 0 "$(run)" 'errors=0'
+
 setup reads-head
 printf 'garbage: [\n' > fork/features.yml
 expect "uncommitted registry edits are not read" 0 "$(run)" 'errors=0'

@@ -123,7 +123,7 @@ same PR. `scripts/hoon/features-check.sh` runs in the fork CI
 
 | Check | Result |
 |---|---|
-| registry format (required keys, `kind`, `status`, unique `id`, quoted and existing `origin.commits`, non-empty scenario `steps`/`expect`) | fail |
+| registry format (required keys, `kind`, `status`, unique `id`, quoted and existing `origin.commits`, non-empty scenario `steps`/`expect`, no unquoted value cut at ` #`) | fail |
 | an active feature's `files` entry is missing (an upstream file the feature deletes is fine); an active or planned feature's `watch` path matches nothing | fail |
 | a file that differs from the base tag (changed, added or deleted) is in no active feature's `files` and no `infrastructure` entry | fail |
 | an active or planned feature's `tests` entry names a Go test function or vitest file/case that does not exist | fail |
@@ -159,6 +159,9 @@ bash scripts/hoon/features-check.test.sh   # throwaway repos, no network
 Files that are fork upkeep rather than a feature (`NOTICE`, `FORK.md`,
 `fork/**`, `scripts/hoon/**`, the fork workflow) are listed under
 `infrastructure`.
+
+Quote a value that contains ` #` (`drop_when: "... PR #10119 ..."`). Unquoted,
+YAML reads the rest as a comment; `features-check.sh` fails on it.
 
 ## Deploy and rollback (self-host on calabii-macstudio)
 
