@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: cherry-pick upstream multica-ai/multica#10861 (inbox management from the CLI) ahead of an upstream release (CALA-273).
+
 package execenv
 
 import (

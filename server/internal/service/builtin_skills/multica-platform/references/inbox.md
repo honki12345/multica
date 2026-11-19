@@ -1,3 +1,4 @@
+<!-- Modified by honki12345, 2026: describe the grouped list and web filters of `inbox list` (CALA-273). -->
 # Inbox
 
 The inbox holds a workspace member's notifications: assignments, mentions,
@@ -36,10 +37,13 @@ when it points at a comment, `read` and `created_at`. Listing never changes
 read state. `issue_identifier` and `actor` stay empty when their lookup fails;
 the row is still valid.
 
-The active list has one row per notification, while the app shows one row per
-issue, so several rows can share an issue. The archived list has one row per
-issue and is read page by page to the end, so an issue archived long ago is
-still found by `--issue`.
+The active list has one row per issue, newest first, as the app shows it;
+`--unread` asks about the row shown for each issue. `--ungrouped` lists every
+notification instead, so several rows can share an issue. The archived list
+has one row per issue and is read page by page to the end, so an issue
+archived long ago is still found by `--issue`. The app's other filters are
+flags too (`--actor`, `--status`, `--priority`, `--assignee`, `--label`,
+`--due`, `--agent`, `--received`, `--not`); see `multica inbox list --help`.
 
 ## Change
 
