@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: cover the web Inbox filters and grouping on `inbox list` (CALA-248).
+
 package main
 
 import (
@@ -33,10 +35,10 @@ func TestInboxListFiltersAndCommentAnchors(t *testing.T) {
 			t.Error("lost workspace or task credential")
 		}
 		_, _ = w.Write([]byte(`[
-			{"id":"n1","type":"mentioned","title":"Need input","issue_id":"i1","issue_project_id":"aaaaaaaa-1111-1111-1111-111111111111","read":false,"created_at":"2026-11-16T08:00:00Z","details":{"comment_id":"c1","original_prompt":"not a list field"}},
-			{"id":"n2","type":"mentioned","title":"Another project","issue_project_id":"bbbbbbbb-2222-2222-2222-222222222222","read":true},
-			{"id":"n3","type":"new_comment","issue_project_id":"aaaaaaaa-1111-1111-1111-111111111111","details":{}},
-			{"id":"n4","type":"system","issue_project_id":null,"details":null}
+			{"id":"n1","type":"mentioned","title":"Need input","issue_id":"i1","issue_project_id":"aaaaaaaa-1111-1111-1111-111111111111","issue_label_ids":[],"read":false,"created_at":"2026-11-16T08:00:00Z","details":{"comment_id":"c1","original_prompt":"not a list field"}},
+			{"id":"n2","type":"mentioned","title":"Another project","issue_id":"i2","issue_project_id":"bbbbbbbb-2222-2222-2222-222222222222","issue_label_ids":[],"read":true},
+			{"id":"n3","type":"new_comment","issue_id":"i3","issue_project_id":"aaaaaaaa-1111-1111-1111-111111111111","issue_label_ids":[],"details":{}},
+			{"id":"n4","type":"system","issue_project_id":null,"issue_label_ids":[],"details":null}
 		]`))
 	}))
 	defer srv.Close()
@@ -183,9 +185,9 @@ func TestInboxListResolvesProjectID(t *testing.T) {
 				case "/api/inbox":
 					inboxRequests++
 					_ = json.NewEncoder(w).Encode([]map[string]any{
-						{"id": "n1", "type": "mentioned", "issue_project_id": projectA},
-						{"id": "n2", "type": "mentioned", "issue_project_id": projectB},
-						{"id": "n3", "type": "new_comment", "issue_project_id": projectB},
+						{"id": "n1", "type": "mentioned", "issue_id": "i1", "issue_project_id": projectA, "issue_label_ids": []string{}},
+						{"id": "n2", "type": "mentioned", "issue_id": "i2", "issue_project_id": projectB, "issue_label_ids": []string{}},
+						{"id": "n3", "type": "new_comment", "issue_id": "i3", "issue_project_id": projectB, "issue_label_ids": []string{}},
 					})
 				default:
 					t.Errorf("unexpected path: %s", r.URL)
@@ -224,5 +226,230 @@ func TestInboxListResolvesProjectID(t *testing.T) {
 				t.Fatalf("project/inbox requests=%d/%d, want %d/%d", projectRequests, inboxRequests, tc.projectRequests, tc.inboxRequests)
 			}
 		})
+	}
+}
+
+func TestInboxListRejectsBadValuesBeforeAnyRequest(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+	t.Setenv("MULTICA_SERVER_URL", srv.URL)
+	t.Setenv("MULTICA_WORKSPACE_ID", "ws-1")
+	t.Setenv("MULTICA_TOKEN", "mat_inbox-test")
+	for _, tc := range []struct {
+		flags map[string]string
+		want  string
+	}{
+		{map[string]string{"type": "mentions"}, `invalid --type "mentions"; valid groups: mention, comment, assign, review, change, run, system; or a notification type:`},
+		{map[string]string{"received": "yesterday"}, `invalid --received "yesterday"; valid values: today, last_7_days, last_30_days`},
+		{map[string]string{"priority": "high,hgih"}, `invalid --priority "hgih"; valid values: urgent, high, medium, low, none`},
+		{map[string]string{"due": "tomorrow"}, `invalid --due "tomorrow"; valid values: overdue, today, this_week, next_7_days, none`},
+		{map[string]string{"agent": "busy"}, `invalid --agent "busy"; valid values: running, idle`},
+		{map[string]string{"status": "In Review"}, `invalid status "In Review"`},
+		{map[string]string{"not": "sender", "actor": "system"}, `invalid --not "sender"; valid values: type, actor, status, priority, project, assignee, label, due`},
+		{map[string]string{"not": "label"}, `--not label needs --label values to exclude`},
+	} {
+		_, err := runInboxListTest(t, tc.flags)
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%v: error = %v, want %q", tc.flags, err, tc.want)
+		}
+	}
+	if requests != 0 {
+		t.Fatalf("invalid flags reached the server %d times", requests)
+	}
+}
+
+func TestInboxListResolvesNamesAndAgentState(t *testing.T) {
+	const projectA = "aaaaaaaa-1111-1111-1111-111111111111"
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("inbox list must only read: %s %s", r.Method, r.URL)
+		}
+		paths = append(paths, r.URL.Path)
+		switch r.URL.Path {
+		case "/api/workspaces/ws-1/members":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"user_id": "u-alice", "name": "Alice", "email": "alice@example.com"}, {"user_id": "u-carol", "name": "Carol"}})
+		case "/api/agents":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "a-bob", "name": "Bob"}, {"id": "a-ops", "name": "Ops: Bot"}})
+		case "/api/squads":
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		case "/api/labels":
+			_ = json.NewEncoder(w).Encode(map[string]any{"labels": []any{map[string]any{"id": "bbbbbbbb-0000-0000-0000-000000000001", "name": "Bug"}}})
+		case "/api/agent-task-snapshot":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"issue_id": "i1", "status": "running"},
+				{"issue_id": "i2", "status": "deferred"},
+				{"issue_id": "i3", "status": "deferred", "wakeup_id": "w-1"},
+				{"issue_id": "i4", "status": "completed"},
+			})
+		case "/api/inbox":
+			_, _ = w.Write([]byte(`[
+				{"id":"n1","type":"mentioned","issue_id":"i1","issue_project_id":"` + strings.ToUpper(projectA) + `","issue_assignee_type":"member","issue_assignee_id":"u-carol","issue_label_ids":["bbbbbbbb-0000-0000-0000-000000000001"],"actor_type":"member","actor_id":"u-alice","read":false,"created_at":"2026-11-19T03:00:00Z","details":{"comment_id":"c1"}},
+				{"id":"n1-old","type":"new_comment","issue_id":"i1","issue_project_id":"` + projectA + `","issue_assignee_type":"member","issue_assignee_id":"u-carol","issue_label_ids":["bbbbbbbb-0000-0000-0000-000000000001"],"actor_type":"agent","actor_id":"a-bob","read":true,"created_at":"2026-11-18T03:00:00Z","details":{"comment_id":"c0"}},
+				{"id":"n2","type":"status_changed","issue_id":"i2","issue_project_id":null,"issue_label_ids":[],"actor_type":"agent","actor_id":"a-bob","read":false,"created_at":"2026-11-19T02:00:00Z"},
+				{"id":"n3","type":"mentioned","issue_id":"i3","issue_project_id":null,"issue_label_ids":[],"actor_type":"member","actor_id":"u-alice","read":true,"created_at":"2026-11-19T01:00:00Z"},
+				{"id":"n4","type":"autopilot_paused","issue_id":null,"issue_label_ids":[],"read":false,"created_at":"2026-11-19T04:00:00Z"}
+			]`))
+		default:
+			t.Errorf("unexpected path: %s", r.URL)
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("MULTICA_SERVER_URL", srv.URL)
+	t.Setenv("MULTICA_WORKSPACE_ID", "ws-1")
+	t.Setenv("MULTICA_TOKEN", "mat_inbox-test")
+
+	ids := func(t *testing.T, flags map[string]string) string {
+		t.Helper()
+		flags["output"] = "json"
+		paths = nil
+		out, err := runInboxListTest(t, flags)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var rows []struct {
+			ID        string  `json:"id"`
+			CommentID *string `json:"comment_id"`
+		}
+		if err := json.Unmarshal([]byte(out), &rows); err != nil {
+			t.Fatal(err)
+		}
+		got := make([]string, 0, len(rows))
+		for _, r := range rows {
+			got = append(got, r.ID)
+		}
+		return strings.Join(got, ",")
+	}
+	for _, tc := range []struct {
+		name  string
+		flags map[string]string
+		want  string
+	}{
+		{"grouped newest first", map[string]string{}, "n4,n1,n2,n3"},
+		{"ungrouped keeps every notification", map[string]string{"ungrouped": "true"}, "n1,n1-old,n2,n3,n4"},
+		{"type group and raw type", map[string]string{"type": "comment"}, "n1-old"},
+		{"repeatable values by comma", map[string]string{"type": "mention,change"}, "n1,n2,n3"},
+		{"actor by name", map[string]string{"actor": "Bob"}, "n2,n1-old"},
+		{"actor by email, is not", map[string]string{"actor": "alice@example.com", "not": "actor"}, "n4,n2,n1-old"},
+		{"actor system", map[string]string{"actor": "system"}, ""},
+		{"assignee by name", map[string]string{"assignee": "carol"}, "n1"},
+		{"assignee key with a short ID", map[string]string{"assignee": "member:u-carol"}, "n1"},
+		{"actor name with a colon is a name", map[string]string{"actor": "Ops: Bot"}, ""},
+		{"assignee none", map[string]string{"assignee": "none"}, "n2,n3"},
+		{"label by name", map[string]string{"label": "bug"}, "n1"},
+		{"project UUID matches an upper-case row", map[string]string{"project": "aaaaaaaa-1111-1111-1111-111111111111"}, "n1"},
+		{"project none", map[string]string{"project": "none"}, "n2,n3"},
+		{"unread asks the shown row", map[string]string{"unread": "true", "actor": "Bob"}, "n2"},
+		{"agent running counts queued wakeups", map[string]string{"agent": "running"}, "n1,n3"},
+		{"agent idle", map[string]string{"agent": "idle"}, "n2"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ids(t, tc.flags); got != tc.want {
+				t.Fatalf("ids = %q, want %q", got, tc.want)
+			}
+		})
+	}
+	ids(t, map[string]string{"type": "mention"})
+	if strings.Join(paths, " ") != "/api/inbox" {
+		t.Fatalf("a filter that needs no lookup made extra requests: %v", paths)
+	}
+}
+
+func TestInboxListRefusesIssueFlagsAnOlderServerCannotAnswer(t *testing.T) {
+	legacy := `[{"id":"n1","type":"mentioned","issue_id":"i1","issue_status":"todo","read":false,"created_at":"2026-11-19T03:00:00Z"}]`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/inbox":
+			_, _ = w.Write([]byte(legacy))
+		case "/api/workspaces/ws-1/members":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"user_id": "u-carol", "name": "Carol"}})
+		default:
+			_ = json.NewEncoder(w).Encode([]any{})
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("MULTICA_SERVER_URL", srv.URL)
+	t.Setenv("MULTICA_WORKSPACE_ID", "ws-1")
+	t.Setenv("MULTICA_TOKEN", "mat_inbox-test")
+	for flag, value := range map[string]string{"priority": "high", "assignee": "none", "due": "none", "project": "none"} {
+		_, err := runInboxListTest(t, map[string]string{flag: value, "output": "json"})
+		if err == nil || !strings.Contains(err.Error(), "does not send the issue fields --"+flag) {
+			t.Errorf("--%s on an older server: %v", flag, err)
+		}
+	}
+	out, err := runInboxListTest(t, map[string]string{"status": "todo", "type": "mention", "output": "json"})
+	if err != nil || !strings.Contains(out, `"n1"`) {
+		t.Fatalf("status and type need no newer fields: out=%s err=%v", out, err)
+	}
+}
+
+func TestInboxListKeepsEachRowsOwnCommentAndCurrentServerShape(t *testing.T) {
+	const carol = "cccccccc-0000-0000-0000-000000000001"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/inbox":
+			// The current server: issue-less rows carry null issue fields and an empty label list.
+			_, _ = w.Write([]byte(`[
+				{"id":"mention","type":"mentioned","issue_id":"i1","issue_priority":"high","issue_assignee_type":"member","issue_assignee_id":"` + carol + `","issue_label_ids":[],"read":false,"created_at":"2026-11-19T03:00:00Z","details":{"comment_id":"c-new"}},
+				{"id":"older","type":"new_comment","issue_id":"i1","issue_priority":"high","issue_assignee_type":"member","issue_assignee_id":"` + carol + `","issue_label_ids":[],"read":false,"created_at":"2026-11-19T01:00:00Z","details":{"comment_id":"c-old"}},
+				{"id":"failed","type":"task_failed","issue_id":"i2","issue_priority":"low","issue_label_ids":[],"read":false,"created_at":"2026-11-19T02:00:00Z","details":{"task_id":"t-1"}},
+				{"id":"system","type":"autopilot_paused","issue_id":null,"issue_priority":null,"issue_label_ids":[],"read":false,"created_at":"2026-11-19T00:00:00Z"}
+			]`))
+		case "/api/workspaces/ws-1/members":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"user_id": carol, "name": "Carol"}})
+		default:
+			_ = json.NewEncoder(w).Encode([]any{})
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("MULTICA_SERVER_URL", srv.URL)
+	t.Setenv("MULTICA_WORKSPACE_ID", "ws-1")
+	t.Setenv("MULTICA_TOKEN", "mat_inbox-test")
+	list := func(flags map[string]string) map[string]any {
+		t.Helper()
+		flags["output"] = "json"
+		out, err := runInboxListTest(t, flags)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var rows []map[string]any
+		if err := json.Unmarshal([]byte(out), &rows); err != nil {
+			t.Fatal(err)
+		}
+		byID := map[string]any{}
+		for _, r := range rows {
+			byID[r["id"].(string)] = r["comment_id"]
+		}
+		return byID
+	}
+	// comment_id is the notification's own comment: something to reply to,
+	// never another notification's comment or a task ID.
+	if got := list(map[string]string{"type": "mention"}); len(got) != 1 || got["mention"] != "c-new" {
+		t.Fatalf("grouped mention row = %v", got)
+	}
+	if got := list(map[string]string{"type": "run"}); len(got) != 1 || got["failed"] != nil {
+		t.Fatalf("task_failed row = %v", got)
+	}
+	if got := list(map[string]string{"ungrouped": "true", "type": "comment"}); got["older"] != "c-old" {
+		t.Fatalf("ungrouped row = %v", got)
+	}
+	if got := list(map[string]string{"priority": "high"}); len(got) != 1 {
+		t.Fatalf("--priority refused or wrong on the current server shape: %v", got)
+	}
+	// "MEMBER:" is not a type prefix, so the whole value is looked up as a name.
+	if _, err := runInboxListTest(t, map[string]string{"assignee": "MEMBER:" + carol, "output": "json"}); err == nil || !strings.Contains(err.Error(), `matching "MEMBER:`) {
+		t.Fatalf("unknown prefix = %v", err)
+	}
+	if got := list(map[string]string{"assignee": "member:" + strings.ToUpper(carol)}); len(got) != 1 {
+		t.Fatalf("upper-case member UUID key = %v", got)
+	}
+	_, err := runInboxListTest(t, map[string]string{"assignee": "agent:" + carol[:8], "output": "json"})
+	if err == nil || !strings.Contains(err.Error(), "resolves to member:"+carol+", not agent") {
+		t.Fatalf("type mismatch error = %v", err)
 	}
 }

@@ -3,6 +3,8 @@ title: 收件箱与订阅
 description: 集中查看分配、提及、评论和智能体失败等需要跟进的动态。
 ---
 
+{/* Modified by honki12345, 2026: document the web Inbox filters and grouping on `multica inbox list` (CALA-248). */}
+
 import { Callout } from "fumadocs-ui/components/callout";
 import { InboxDemo } from "@/components/demos/inbox-demo";
 
@@ -62,15 +64,34 @@ import { InboxDemo } from "@/components/demos/inbox-demo";
 
 ## 用 CLI 读取
 
-复用现有 CLI 登录，列出当前通知，不会将通知标为已读：
+复用现有 CLI 登录，列出当前通知，不会将通知标为已读。筛选条件与收件箱筛选菜单相同，选出的行也相同：
 
 ```sh
-multica inbox list --project <project-id> --type mentioned --output json
+multica inbox list --unread --type mention
+multica inbox list --project <project-id> --status todo,in_progress --not status --output json
+multica inbox list --assignee none --due overdue,today
 ```
 
-`--project` 接受完整 UUID 或唯一 ID 前缀，包括 `multica project list` 显示的短 ID。前缀会先通过项目列表解析，再读取收件箱；无匹配或前缀有歧义时会报错。
+| 参数 | 取值 |
+| --- | --- |
+| `--unread` | 只看显示的通知为未读的任务 |
+| `--type` | `mention`、`comment`、`assign`、`review`、`change`、`run`、`system`，或 `mentioned` 这样的具体类型 |
+| `--actor` | 成员或智能体的名称、邮箱或 ID，`member:<id>`、`agent:<id>`、`system` |
+| `--received` | `today`、`last_7_days`、`last_30_days`（按本地日历日） |
+| `--status`、`--priority` | 任务状态键；`urgent`、`high`、`medium`、`low`、`none` |
+| `--project` | 项目 UUID 或唯一 ID 前缀，`none` |
+| `--assignee` | 成员、智能体或小队的名称、邮箱或 ID，`<type>:<id>`，`none` |
+| `--label` | 标签名称、UUID 或唯一 ID 前缀 |
+| `--due` | `overdue`、`today`、`this_week`、`next_7_days`、`none` |
+| `--agent` | `running`（有智能体正在该任务上运行或排队），`idle` |
+| `--not <参数>` | 把 `type`、`actor`、`status`、`priority`、`project`、`assignee`、`label` 或 `due` 改为“不是” |
+| `--ungrouped` | 列出每条匹配的通知，而不是每个任务一行 |
 
-两个筛选条件都可省略，在拉取当前收件箱后于本地应用。JSON 包含通知、任务、项目和可选的评论 ID，以及类型、标题、已读状态和创建时间。默认输出为表格。获授权的智能体运行使用任务凭证读取运行环境所有者的通知，不会回退到人的登录凭证。
+重复同一参数或用逗号分隔多个值，满足其一即可；不同参数必须同时满足。写错的值会报错并列出可用值；服务端版本过旧、无法回答的任务参数也会报错。`--project` 接受完整 UUID 或唯一 ID 前缀，包括 `multica project list` 显示的短 ID；无匹配或前缀有歧义时会报错。网页收件箱里保存的筛选只在那个浏览器中，需要用参数重新传入。
+
+与收件箱列表一样，输出为每个任务一行，最新的在前，从稍后提醒回来的任务按回来的时间排序。这一行是该任务中满足 `--type`、`--actor` 和 `--received` 的最新通知；`--unread` 和任务参数随后作用于这一行。没有任务的通知永远不匹配任务参数，`--not` 也一样。
+
+筛选在拉取一次当前收件箱后于本地应用（`--agent` 还会读取智能体任务列表）。JSON 包含通知、任务、项目和可选的评论 ID，以及类型、标题、已读状态和创建时间。默认输出为表格。获授权的智能体运行使用任务凭证读取运行环境所有者的通知，不会回退到人的登录凭证。
 
 ## 处理通知
 

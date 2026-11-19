@@ -3,6 +3,8 @@ title: Inbox and subscriptions
 description: One place for assignments, mentions, comments, and agent failures that need your follow-up.
 ---
 
+{/* Modified by honki12345, 2026: document the web Inbox filters and grouping on `multica inbox list` (CALA-248). */}
+
 import { Callout } from "fumadocs-ui/components/callout";
 import { InboxDemo } from "@/components/demos/inbox-demo";
 
@@ -62,15 +64,34 @@ Inbox notifications belong to workspace members. For the active notification lis
 
 ## Read from the CLI
 
-Use your existing CLI login to list your active notifications without marking them read:
+Use your existing CLI login to list your active notifications without marking them read. The filters are the ones in the Inbox filter menu and select the same rows:
 
 ```sh
-multica inbox list --project <project-id> --type mentioned --output json
+multica inbox list --unread --type mention
+multica inbox list --project <project-id> --status todo,in_progress --not status --output json
+multica inbox list --assignee none --due overdue,today
 ```
 
-`--project` accepts a full UUID or a unique ID prefix, including the short ID from `multica project list`. Prefixes are resolved through the project list before reading the inbox; no match or an ambiguous prefix produces an error.
+| Flag | Values |
+| --- | --- |
+| `--unread` | only issues whose shown notification is unread |
+| `--type` | `mention`, `comment`, `assign`, `review`, `change`, `run`, `system`, or an exact type such as `mentioned` |
+| `--actor` | member or agent name, email or ID, `member:<id>`, `agent:<id>`, `system` |
+| `--received` | `today`, `last_7_days`, `last_30_days` (local calendar days) |
+| `--status`, `--priority` | issue status keys; `urgent`, `high`, `medium`, `low`, `none` |
+| `--project` | project UUID or unique ID prefix, `none` |
+| `--assignee` | name, email or ID of a member, agent or squad, `<type>:<id>`, `none` |
+| `--label` | label name, UUID or unique ID prefix |
+| `--due` | `overdue`, `today`, `this_week`, `next_7_days`, `none` |
+| `--agent` | `running` (an agent is running or queued on the issue), `idle` |
+| `--not <flag>` | turns `type`, `actor`, `status`, `priority`, `project`, `assignee`, `label` or `due` into "is not" |
+| `--ungrouped` | list every matching notification instead of one row per issue |
 
-Both filters are optional and apply locally after fetching the active inbox. JSON includes notification, issue, project and optional comment IDs, plus the type, title, read status and creation time. The default output is a table. An authorized agent run reads the runtime owner's notifications using its task credential; it never falls back to a person's login.
+Repeat a flag or separate values with commas to match any of them; different flags must all match. A misspelled value is an error that lists the accepted ones, and so is an issue flag the server is too old to answer. `--project` accepts a full UUID or a unique ID prefix, including the short ID from `multica project list`; no match or an ambiguous prefix produces an error. Filters stored in the web Inbox stay in that browser, so pass them again as flags.
+
+As in the Inbox list, the output has one row per issue, newest first, with an issue back from a snooze counted from when it came back. The row is the issue's newest notification that passes `--type`, `--actor` and `--received`; `--unread` and the issue flags are then asked of that row. A notification without an issue never matches an issue flag, `--not` included.
+
+Filters apply locally after one read of the active inbox (`--agent` also reads the agent task list). JSON includes notification, issue, project and optional comment IDs, plus the type, title, read status and creation time. The default output is a table. An authorized agent run reads the runtime owner's notifications using its task credential; it never falls back to a person's login.
 
 ## Handle notifications
 
