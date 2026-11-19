@@ -3,6 +3,8 @@ title: 收件箱與訂閱
 description: 集中檢視分配、提及、評論和 AI 代理失敗等需要跟進的動態。
 ---
 
+{/* Modified by honki12345, 2026: document the web Inbox filters and grouping on `multica inbox list` (CALA-248). */}
+
 import { Callout } from "fumadocs-ui/components/callout";
 import { InboxDemo } from "@/components/demos/inbox-demo";
 
@@ -62,15 +64,34 @@ import { InboxDemo } from "@/components/demos/inbox-demo";
 
 ## 用 CLI 讀取
 
-沿用現有 CLI 登入，列出目前通知，不會將通知標為已讀：
+沿用現有 CLI 登入，列出目前通知，不會將通知標為已讀。篩選條件與收件箱篩選選單相同，選出的列也相同：
 
 ```sh
-multica inbox list --project <project-id> --type mentioned --output json
+multica inbox list --unread --type mention
+multica inbox list --project <project-id> --status todo,in_progress --not status --output json
+multica inbox list --assignee none --due overdue,today
 ```
 
-`--project` 接受完整 UUID 或唯一 ID 前綴，包括 `multica project list` 顯示的短 ID。前綴會先透過專案列表解析，再讀取收件箱；沒有符合項目或前綴有歧義時會顯示錯誤。
+| 參數 | 取值 |
+| --- | --- |
+| `--unread` | 只看顯示的通知為未讀的任務 |
+| `--type` | `mention`、`comment`、`assign`、`review`、`change`、`run`、`system`，或 `mentioned` 這類具體類型 |
+| `--actor` | 成員或 AI 代理的名稱、電子郵件或 ID，`member:<id>`、`agent:<id>`、`system` |
+| `--received` | `today`、`last_7_days`、`last_30_days`（依本地日曆日） |
+| `--status`、`--priority` | 任務狀態鍵；`urgent`、`high`、`medium`、`low`、`none` |
+| `--project` | 專案 UUID 或唯一 ID 前綴，`none` |
+| `--assignee` | 成員、AI 代理或小隊的名稱、電子郵件或 ID，`<type>:<id>`，`none` |
+| `--label` | 標籤名稱、UUID 或唯一 ID 前綴 |
+| `--due` | `overdue`、`today`、`this_week`、`next_7_days`、`none` |
+| `--agent` | `running`（有 AI 代理正在該任務上執行或排隊），`idle` |
+| `--not <參數>` | 把 `type`、`actor`、`status`、`priority`、`project`、`assignee`、`label` 或 `due` 改為「不是」 |
+| `--ungrouped` | 列出每則符合的通知，而不是每個任務一列 |
 
-兩個篩選條件都可省略，在取得目前收件箱後於本機套用。JSON 包含通知、任務、專案和可選的評論 ID，以及類型、標題、已讀狀態和建立時間。預設輸出為表格。獲授權的 AI 代理執行使用任務憑證讀取執行環境擁有者的通知，不會退回使用人的登入憑證。
+重複同一參數或用逗號分隔多個值，符合其一即可；不同參數必須同時符合。寫錯的值會顯示錯誤並列出可用值；伺服器版本過舊、無法回答的任務參數也會顯示錯誤。`--project` 接受完整 UUID 或唯一 ID 前綴，包括 `multica project list` 顯示的短 ID；沒有符合項目或前綴有歧義時會顯示錯誤。網頁收件箱裡儲存的篩選只在那個瀏覽器中，需要用參數重新傳入。
+
+與收件箱列表一樣，輸出為每個任務一列，最新的在前，從稍後提醒回來的任務依回來的時間排序。這一列是該任務中符合 `--type`、`--actor` 和 `--received` 的最新通知；`--unread` 和任務參數隨後套用在這一列。沒有任務的通知永遠不符合任務參數，`--not` 也一樣。
+
+篩選在取得一次目前收件箱後於本機套用（`--agent` 也會讀取 AI 代理任務列表）。JSON 包含通知、任務、專案和可選的評論 ID，以及類型、標題、已讀狀態和建立時間。預設輸出為表格。獲授權的 AI 代理執行使用任務憑證讀取執行環境擁有者的通知，不會退回使用人的登入憑證。
 
 ## 處理通知
 

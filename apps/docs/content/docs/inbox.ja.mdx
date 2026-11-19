@@ -3,6 +3,8 @@ title: インボックスと購読
 description: 割り当て、メンション、コメント、エージェントの失敗など、フォローが必要な動きを 1 か所で確認します。
 ---
 
+{/* Modified by honki12345, 2026: document the web Inbox filters and grouping on `multica inbox list` (CALA-248). */}
+
 import { Callout } from "fumadocs-ui/components/callout";
 import { InboxDemo } from "@/components/demos/inbox-demo";
 
@@ -62,15 +64,34 @@ import { InboxDemo } from "@/components/demos/inbox-demo";
 
 ## CLI から読み取る
 
-既存の CLI ログインを使い、通知を既読にせずに現在の通知を一覧表示できます。
+既存の CLI ログインを使い、通知を既読にせずに現在の通知を一覧表示できます。フィルターはインボックスのフィルターメニューと同じで、同じ行を選びます。
 
 ```sh
-multica inbox list --project <project-id> --type mentioned --output json
+multica inbox list --unread --type mention
+multica inbox list --project <project-id> --status todo,in_progress --not status --output json
+multica inbox list --assignee none --due overdue,today
 ```
 
-`--project` は完全な UUID または一意の ID プレフィックスを受け付けます。`multica project list` に表示される短い ID も使えます。プレフィックスはインボックスの読み取り前にプロジェクト一覧から解決され、一致なしや曖昧な場合はエラーになります。
+| フラグ | 値 |
+| --- | --- |
+| `--unread` | 表示される通知が未読のタスクのみ |
+| `--type` | `mention`、`comment`、`assign`、`review`、`change`、`run`、`system`、または `mentioned` などの正確な種類 |
+| `--actor` | メンバー・エージェントの名前、メール、ID、`member:<id>`、`agent:<id>`、`system` |
+| `--received` | `today`、`last_7_days`、`last_30_days`（ローカルの暦日） |
+| `--status`、`--priority` | タスクのステータスキー、`urgent`、`high`、`medium`、`low`、`none` |
+| `--project` | プロジェクトの UUID または一意の ID プレフィックス、`none` |
+| `--assignee` | メンバー・エージェント・スクワッドの名前、メール、ID、`<type>:<id>`、`none` |
+| `--label` | ラベル名、UUID または一意の ID プレフィックス |
+| `--due` | `overdue`、`today`、`this_week`、`next_7_days`、`none` |
+| `--agent` | `running`（タスクでエージェントが実行中または待機中）、`idle` |
+| `--not <フラグ>` | `type`、`actor`、`status`、`priority`、`project`、`assignee`、`label`、`due` を「除外」に切り替え |
+| `--ungrouped` | タスクごとに 1 行ではなく、一致する通知をすべて表示 |
 
-両方のフィルターは省略可能で、現在のインボックスの取得後にローカルで適用されます。JSON には通知、タスク、プロジェクト、および存在する場合はコメントの ID と、種類、タイトル、既読状態、作成日時が含まれます。既定の出力は表です。許可されたエージェント実行はタスクの認証情報でランタイム所有者の通知を読み取り、ユーザーのログイン情報にはフォールバックしません。
+フラグを繰り返すか値をカンマで区切ると、いずれかに一致すれば対象になります。異なるフラグはすべて一致する必要があります。値の誤りは、使える値を示すエラーになります。サーバーが古く答えられないタスクのフラグもエラーになります。`--project` は完全な UUID または一意の ID プレフィックスを受け付け、`multica project list` に表示される短い ID も使えます。一致なしや曖昧な場合はエラーになります。Web のインボックスに保存したフィルターはそのブラウザにだけあるため、フラグで指定し直します。
+
+インボックスの一覧と同じく、タスクごとに 1 行が新しい順に出力され、スヌーズから戻ったタスクは戻った時刻で並びます。行は `--type`、`--actor`、`--received` を満たすそのタスクの最新の通知で、`--unread` とタスクのフラグはその行に対して判定されます。タスクのない通知は、`--not` を含めタスクのフラグに一致しません。
+
+フィルターは現在のインボックスを 1 回取得したあとローカルで適用されます（`--agent` はエージェントのタスク一覧も読み取ります）。JSON には通知、タスク、プロジェクト、および存在する場合はコメントの ID と、種類、タイトル、既読状態、作成日時が含まれます。既定の出力は表です。許可されたエージェント実行はタスクの認証情報でランタイム所有者の通知を読み取り、ユーザーのログイン情報にはフォールバックしません。
 
 ## 通知の処理
 
