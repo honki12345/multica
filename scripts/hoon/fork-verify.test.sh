@@ -71,17 +71,23 @@ check("vitest: file not run fails", fv.parse_vitest_json(data, None, "packages/v
 root = T / "task-root"
 root.mkdir()
 ls_out = "terminal result\n.\n..\n.managed_env.json\n.multica_resident_task.json\n.task_lock\n.task_owner\nlogs\nworkdir"
-status = '{"status": "running", "cli_version": "0.11.0-hoon.1", "pid": 1}'
-outputs = ['{"identifier": "FV-1", "id": "x"}', status, status, status,
+status = 'terminal result\n- **output:**   "cli_version": "0.11.0-hoon.1",\n  "status": "running",\n- **exit_code:** 0'
+outputs = ['terminal result\n- **output:**   "identifier": "FV-1",\n  "status": "backlog",', status, status, status,
            "Checked out https://github.com/honki12345/multica → /w/multica (branch: agent/fv-resident/abc)", "No environments.", ls_out]
 comments = [{"author_type": "agent", "author_id": "agent-1", "content": "done"}]
 got = {fid: v for fid, _, v, _ in fv.judge_resident(outputs, "0.11.0-hoon.1", "FV-1", root, comments, "agent-1")}
 check("resident: healthy run passes all four", got == {k: fv.PASS for k in ("resident-hermes-gateway", "resident-no-hermes-home-overlay",
                                                                              "resident-daemon-local-commands", "resident-daemon-status")})
 stopped = list(outputs)
-stopped[2] = '{"status": "stopped", "cli_version": "0.11.0-hoon.1"}'
+stopped[2] = status.replace("running", "stopped")
 got = {fid: v for fid, _, v, _ in fv.judge_resident(stopped, "0.11.0-hoon.1", "FV-1", root, comments, "agent-1")}
 check("resident: one stopped daemon status fails", got["resident-daemon-status"] == fv.FAIL)
+missing = list(outputs)
+del missing[3]
+got = {fid: v for fid, _, v, _ in fv.judge_resident(missing, "0.11.0-hoon.1", "FV-1", root, comments, "agent-1")}
+check("resident: fewer than three daemon status outputs fails", got["resident-daemon-status"] == fv.FAIL)
+got = {fid: v for fid, _, v, _ in fv.judge_resident(outputs, "0.11.0-hoon.2", "FV-1", root, comments, "agent-1")}
+check("resident: daemon of another version fails", got["resident-daemon-status"] == fv.FAIL)
 overlay = list(outputs)
 overlay[-1] = ls_out + "\nhermes-home"
 got = {fid: v for fid, _, v, _ in fv.judge_resident(overlay, "0.11.0-hoon.1", "FV-1", root, comments, "agent-1")}

@@ -379,12 +379,14 @@ def api_json(base, path, token, ws_id, method="GET", body=None):
 
 # ---------- resident runtime (test gateway + test daemon) ----------
 
+# Run messages keep only the first ~480 chars of each tool output, so the JSON
+# commands grep the fields the judge reads.
 RESIDENT_ISSUE = """fork-verify resident scenario. Run each command below from your task working directory, one per terminal call, in this order:
 
-1. `multica issue get {issue} --output json`
-2. `multica daemon status --output json`
-3. `multica daemon status --output json`
-4. `multica daemon status --output json`
+1. `multica issue get {issue} --output json | grep -E '"(identifier|status)"'`
+2. `multica daemon status --output json | grep -E '"(status|cli_version)"'`
+3. `multica daemon status --output json | grep -E '"(status|cli_version)"'`
+4. `multica daemon status --output json | grep -E '"(status|cli_version)"'`
 5. `multica repo checkout {repo}`
 6. `multica environment list`
 7. `ls -a ..`
@@ -452,15 +454,17 @@ class Resident:
         owner = dict(self.base_env(), MULTICA_RESIDENT_OWNER="1", MULTICA_CLI_PATH=str(self.cli_bin), MULTICA_SERVER_URL=self.stack.api)
         self.procs["owner"] = subprocess.Popen(["hermes", "gateway", "run", "--external-supervisor"], cwd=str(self.home), env=owner,
                                                stdout=open(self.logdir / "hermes-owner.log", "w"), stderr=subprocess.STDOUT)
-        for _ in range(60):
-            if (hh / "gateway.sock").exists():
+        for _ in range(90):
+            # A long HERMES_HOME puts the socket in a temp dir and leaves a
+            # gateway.sock.path pointer instead (unix socket path length).
+            if (hh / "gateway.sock").exists() or (hh / "gateway.sock.path").exists():
                 break
             if self.procs["owner"].poll() is not None:
                 self.ready_reason = "시험 Hermes gateway가 바로 종료됨(%s)" % (self.logdir / "hermes-owner.log")
                 return False
             time.sleep(1)
         else:
-            self.ready_reason = "시험 Hermes gateway가 60초 안에 뜨지 않음"
+            self.ready_reason = "시험 Hermes gateway가 90초 안에 제어 소켓을 만들지 않음"
             return False
         port = 19514 + 1 + sum(b"fork-verify") % 1000
         with socket.socket() as s:
@@ -546,7 +550,7 @@ def judge_resident(outputs, version, ident, root_after, comments, agent_id):
     """Checks per feature for the resident issue run. Pure: inputs are what the run produced."""
     out = []
     joined = "\n".join(outputs)
-    got_issue = any('"identifier": "%s"' % ident in o for o in outputs)
+    got_issue = any(re.search(r'"identifier":\s*"%s"' % re.escape(ident), o) for o in outputs)
     by_agent = [c for c in comments if c.get("author_type") == "agent" and c.get("author_id") == agent_id]
     ls = [o for o in outputs if ".task_lock" in o or ".task_owner" in o]
     ctx_during = any(".multica_resident_task.json" in o for o in ls)
@@ -569,9 +573,13 @@ def judge_resident(outputs, version, ident, root_after, comments, agent_id):
     out.append(("resident-daemon-local-commands", "repo checkout from a resident tool shell", PASS if (checkout and env_ok) else FAIL,
                 "repo checkout=%s, environment list=%s%s" % ("성공" if checkout else "실패", "성공" if env_ok else "실패",
                                                              ", MULTICA_DAEMON_PORT 오류 있음" if port_err else "")))
-    statuses = re.findall(r'"status":\s*"(running|stopped|[a-z_]+)"[^{}]*?"cli_version":\s*"([^"]*)"|"cli_version":\s*"([^"]*)"[^{}]*?"status":\s*"([a-z_]+)"', joined)
-    pairs = [(a or d, b or c) for a, b, c, d in statuses]
-    pairs = [p for p in pairs if p[0] in ("running", "stopped")]
+    statuses = []
+    for o in outputs:
+        st = re.findall(r'"status":\s*"([a-z_]+)"', o)
+        ver = re.findall(r'"cli_version":\s*"([^"]+)"', o)
+        if ver:
+            statuses.append((st[-1] if st else "?", ver[-1]))
+    pairs = statuses
     running = [p for p in pairs if p[0] == "running" and p[1] == version]
     ok = len(pairs) >= 3 and len(running) == len(pairs)
     out.append(("resident-daemon-status", "daemon status from a resident tool shell", PASS if ok else FAIL,

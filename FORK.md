@@ -233,6 +233,63 @@ feature. Test overrides (`TRIAGE_RELEASE_NOTES_OVERRIDE`,
 script. It reads the registry from `--registry-ref` (default `HEAD`), so a
 triage of an old range uses today's registry.
 
+## Fork verification
+
+`scripts/hoon/fork-verify.sh <ref>` checks that every active feature in the
+registry still works on a candidate (normally the absorb branch
+`merge/vX.Y.Z`), against real data and next to the production screens. It
+writes `out/fork-verify/<ref>/report.md` (one row per feature: pass, fail,
+unverified, n/a; then every check with its evidence) and exits 1 when anything
+failed.
+
+| Layer | What runs | Where |
+|---|---|---|
+| test | each feature's `tests`: `go test -run` per package (`-p 2`), vitest files/cases (`--maxWorkers=2`); `real_agent` tests only with `--real-agent` | this Mac, on an export of the candidate |
+| scenario | `server`/`cli`/`daemon` scenarios for real: a resident test issue (`issue get`, three `daemon status`, `repo checkout`, `environment list`, `ls -a ..`), a steer (comment with `--steer` during `sleep 60`, the same turn must answer `CODE=PINEAPPLE`), Quick Create through `POST /api/issues/quick-create`, and the inbox CLI reads | candidate stack + a test daemon and test Hermes gateway on this Mac |
+| screen | `web-ui` scenarios: production and candidate web in the same headless browser at each `widths` entry; `production \| candidate \| diff` sheets and the pixel share that changed in the bottom bar; DOM selectors and the chat-bar probe (chip count, no `+N`, wheel scroll, click opens the window) | this Mac (`playwright-cli`) |
+
+The candidate stack runs on **calabii-02** (amd64, idle): the candidate's
+backend and web images are built there from `git archive` (about 6 minutes,
+both in parallel), the newest pre-deploy backup
+(`~/.local/share/multica-selfhost/backups/*.dump`) is restored into its own
+`pgvector/pgvector:pg17`, and the backend applies the candidate's migrations to
+that copy on boot, so a new migration runs on production-shaped data. Every
+container, volume, network and image is named `fv-<sha7>-*` and removed at the
+end. This Mac only opens an SSH tunnel; it never runs the stack, Supabase or a
+browser container.
+
+Safety:
+
+- **Production is read only.** The screen layer uses the runtime owner's PAT
+  from `~/.multica/config.json` in a throwaway browser context that aborts
+  every non-GET `/api`·`/auth` request and stubs the realtime socket. The
+  report counts the blocked writes. The candidate replays the GET responses
+  production returned in the same run, so both draw the same data; the chat
+  list and pending tasks are a synthetic fixture on both sides, so no real chat
+  title appears. Sidebar, page body and chat messages are blurred.
+- **Test identity only.** The candidate database gets a new user
+  `fork-verify@example.invalid` with an empty workspace `fork-verify` and a
+  random PAT. The backend runs with `APP_ENV=development` and a random
+  `MULTICA_DEV_VERIFICATION_CODE`, never printed.
+- **Test runtime only.** The test daemon (profile `fork-verify`, its own health
+  port, auto-update and auto-reload off) and the test Hermes gateway
+  (`MULTICA_RESIDENT_OWNER=1`) run under a temporary `HOME`/`HERMES_HOME`.
+  They share only the Hermes dependency install (`~/.hermes/installs`) and take
+  the model key from the environment (`--hermes-env`). `~/.multica`, the
+  production daemon and the production gateway are untouched.
+
+```bash
+scripts/hoon/fork-verify.sh merge/v0.12.0 --screen-input triage.json   # B paths add captures
+scripts/hoon/fork-verify.sh v0.11.0-hoon.1 --skip test                 # scenarios and screens only
+bash scripts/hoon/fork-verify.test.sh                                   # judging logic, no stack
+```
+
+A feature whose `origin.commits` are not in the candidate is reported n/a, so
+an older tag can be verified with today's registry (`--registry-ref`). A
+scenario fork-verify has no runner for is reported unverified with that
+reason; add a runner in `fork-verify/fork_verify.py` when adding a feature
+whose scenario is not covered.
+
 ## Deploy and rollback (self-host on calabii-macstudio)
 
 `scripts/hoon/release.sh` builds, swaps in, verifies, and rolls back the
