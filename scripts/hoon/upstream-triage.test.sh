@@ -181,7 +181,68 @@ setup cli-off
 TRIAGE_RELEASE_NOTES_OVERRIDE="$T/notes" TRIAGE_PRS_OVERRIDE="$T/prs.json" TRIAGE_CLI_OVERRIDE=off \
   bash "$SCRIPT" v1.0.0 v1.1.0 --fork-ref fork --registry-ref fork > "$T/out" 2>&1
 expect_key "CLI build can be skipped" triage_cli_help skipped
-expect_key "...falling back to the source Use: list" triage_new_cli inbox,list
+expect_key "...and triage_new_cli stays empty instead of mixing in leaf names" triage_new_cli ""
+expect "...while the report keeps the source Use: list" "cmd_inbox.go\`: \`inbox\`, \`list\`"
+
+setup no-gh
+# PATH without the directory that holds gh, but with every other tool the script needs.
+mkdir -p "$T/bin-nogh"
+for tool in git python3 uv; do
+  p="$(command -v "$tool")" && ln -sf "$p" "$T/bin-nogh/$tool"
+done
+PATH="$T/bin-nogh:/usr/bin:/bin" TRIAGE_CLI_OVERRIDE=off bash "$SCRIPT" v1.0.0 v1.1.0 --fork-ref fork --registry-ref fork > "$T/out" 2>&1
+expect_key "missing gh still triages" triage_status ok
+expect_key "...with release notes marked lookup-failed" triage_release_notes lookup-failed
+expect_key "...and PR lookup marked lookup-failed" triage_pr_lookup lookup-failed
+
+setup gh-null-repo
+mkdir -p "$T/bin-fakegh"
+cat > "$T/bin-fakegh/gh" <<'GH'
+#!/bin/sh
+case "$1" in
+  release) echo 'release not found' >&2; exit 1 ;;
+  api) echo '{"data":{"repository":null},"errors":[{"type":"NOT_FOUND"}]}'; exit 1 ;;
+esac
+GH
+chmod +x "$T/bin-fakegh/gh"
+PATH="$T/bin-fakegh:$PATH" TRIAGE_CLI_OVERRIDE=off bash "$SCRIPT" v1.0.0 v1.1.0 --fork-ref fork --registry-ref fork > "$T/out" 2>&1
+expect_key "unreadable upstream repo still triages" triage_status ok
+expect_key "...with PR lookup marked lookup-failed" triage_pr_lookup lookup-failed
+expect_key "...and a missing release marked none" triage_release_notes none
+
+setup json-unwritable
+run v1.0.0 v1.1.0 --fork-ref fork --registry-ref fork --json "$T/no-such-dir/x.json" >/dev/null
+if [ "$(grep -c '^--- triage keys' "$T/out")" = 1 ]; then pass "a failed --json write leaves one key block"; else bad "a failed --json write leaves one key block"; fi
+expect_key "...marked error" triage_status error
+expect "...with the reason" "^triage_error=--json write failed: .*no-such-dir"
+
+setup user-git-config
+GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=diff.noprefix GIT_CONFIG_VALUE_0=true GIT_CONFIG_KEY_1=log.showSignature GIT_CONFIG_VALUE_1=true \
+  run v1.0.0 v1.1.0 --fork-ref fork --registry-ref fork >/dev/null
+expect_key "diff.noprefix and log.showSignature do not change the result" triage_new_env NEW_SECRET_KEY,OPTIONAL_KNOB,SERVER_ONLY_KEY
+
+setup odd-paths
+git checkout -q fork
+printf 'package pkg\nfunc Q() {}\n' > 'server/pkg/we"ird.go'
+printf 'package pkg\n' > 'server/pkg/sp ace.go'
+git add -A && git commit -qm "feat: odd paths"
+sed -i.bak 's#    files: \[server/pkg/core.go\]#    files: [server/pkg/core.go, "server/pkg/we\\"ird.go", server/pkg/sp ace.go]#' fork/features.yml && /bin/rm fork/features.yml.bak
+git commit -qam registry && git checkout -q main
+printf 'package pkg\nfunc Q() { _ = 1 }\n' > 'server/pkg/we"ird.go'
+printf 'package pkg\nimport "os"\nvar _ = os.Getenv("K_SPACE")\n' > 'server/pkg/sp ace.go'
+git add -A && git commit -qm "fix(pkg): odd paths upstream (#60)" && git tag v1.3.0
+run v1.2.0 v1.3.0 --fork-ref v1.2.0 --registry-ref fork >/dev/null
+expect "a quoted path is A" 'we"ird.go'
+expect "a path with a space is A" 'sp ace.go'
+expect_key "...and its added lines are read" triage_new_env K_SPACE
+
+setup keyword-boundary
+git commit -q --allow-empty -m "feat(views): list filtering everywhere (#61)" && git tag v1.4.0
+run v1.2.0 v1.4.0 --fork-ref v1.2.0 --registry-ref fork >/dev/null
+if grep -q 'list filtering everywhere.*list-filters' "$T/out"; then bad "a keyword does not match inside a longer word"; else pass "a keyword does not match inside a longer word"; fi
+git commit -q --allow-empty -m "feat(views): list filters (#62)" && git tag v1.5.0
+run v1.4.0 v1.5.0 --fork-ref v1.2.0 --registry-ref fork >/dev/null
+expect "...but matches its plural" 'list filters .*list-filters.*키워드'
 
 if rc="$(bash "$SCRIPT" 2>/dev/null)"; then bad "no arguments is a usage error"; else pass "no arguments is a usage error"; fi
 

@@ -78,7 +78,11 @@ fi
 
 export TR_FROM="$FROM" TR_TO="$TO" TR_FORK_REF="$FORK_REF" TR_REGISTRY_REF="$REGISTRY_REF" \
   TR_REGISTRY="$REGISTRY" TR_UPSTREAM_REPO="$UPSTREAM_REPO" TR_JSON_OUT="$JSON_OUT"
-"${PY[@]}" - <<'PY' || error_out "triage script crashed (exit $?)"
+# Buffer the report so a crash never leaves a half report plus an error block.
+report="$(mktemp "${TMPDIR:-/tmp}/upstream-triage.XXXXXX")" || error_out "mktemp failed"
+trap '/bin/rm -f "$report"' EXIT
+if ! "${PY[@]}" - > "$report" <<'PY'
+
 import json
 import os
 import re
@@ -115,15 +119,50 @@ HELP_ENTRY = re.compile(r"^  ([a-z0-9][a-z0-9-]*):\s")
 LIST_MAX = 3
 
 
+GIT_PIN = ["-c", "core.quotePath=false", "-c", "diff.noprefix=false", "-c", "diff.mnemonicPrefix=false",
+           "-c", "log.showSignature=false", "-c", "diff.external=", "-c", "color.ui=false"]
+
+
 def git(*args, check=True):
-    res = subprocess.run(["git", "-c", "core.quotePath=false", *args], capture_output=True)
+    res = subprocess.run(["git", *GIT_PIN, *args], capture_output=True)
     if check and res.returncode != 0:
         fail("git %s failed: %s" % (" ".join(args[:3]), res.stderr.decode(errors="replace").strip()))
     return res
 
 
+def run_tool(*cmd):
+    """Run an external tool; None when it is not installed."""
+    try:
+        return subprocess.run(list(cmd), capture_output=True)
+    except OSError:
+        return None
+
+
 def text(res):
     return res.stdout.decode("utf-8", errors="replace")
+
+
+C_ESCAPES = {"a": 7, "b": 8, "t": 9, "n": 10, "v": 11, "f": 12, "r": 13, '"': 34, "\\": 92}
+
+
+def unquote_path(s):
+    """Undo git's C-style quoting of a diff header path ("a/x\\"y.go")."""
+    if not (len(s) >= 2 and s[0] == s[-1] == '"'):
+        return s
+    raw, out, i = s[1:-1].encode("utf-8"), bytearray(), 0
+    while i < len(raw):
+        if raw[i] == 92 and i + 1 < len(raw):
+            nxt = chr(raw[i + 1])
+            if nxt in "01234567" and i + 3 < len(raw):
+                out.append(int(raw[i + 1:i + 4], 8))
+                i += 4
+                continue
+            out.append(C_ESCAPES.get(nxt, raw[i + 1]))
+            i += 2
+        else:
+            out.append(raw[i])
+            i += 1
+    return out.decode("utf-8", errors="replace")
 
 
 def fail(msg):
@@ -166,32 +205,38 @@ except (yaml.YAMLError, KeyError, TypeError, AttributeError) as exc:
     fail("registry %s is unreadable: %s" % (REGISTRY, str(exc).replace("\n", " ")))
 active = [f for f in features if f["status"] == "active"]
 
-# Commits, their files and added/removed lines (one pass each)
+# Commits and their files. -z keeps paths with spaces, tabs or quotes intact.
 commits = []
 by_sha = {}
-for line in text(git("log", "--no-merges", "--reverse", "--format=%x01%H%x02%s", "--name-status", "--no-renames", "%s..%s" % (FROM, TO))).split("\n"):
-    if line.startswith("\x01"):
-        sha, subject = line[1:].split("\x02", 1)
-        m = PR_RE.findall(subject)
-        c = {"sha": sha, "short": sha[:9], "subject": subject, "pr": int(m[-1]) if m else None,
-             "files": {}, "added": {}, "removed": {}, "labels": {}}
-        commits.append(c)
-        by_sha[sha] = c
-    elif line.strip() and commits:
-        status, path = line.split("\t", 1)
-        commits[-1]["files"][path] = status[0]
+log = git("log", "--no-merges", "--reverse", "-z", "--format=%x01%H%x02%s", "--name-status", "--no-renames",
+          "%s..%s" % (FROM, TO)).stdout.decode("utf-8", errors="replace")
+for chunk in log.split("\x01")[1:]:
+    head, _, rest = chunk.partition("\x00")
+    sha, subject = head.split("\x02", 1)
+    m = PR_RE.findall(subject)
+    c = {"sha": sha, "short": sha[:9], "subject": subject, "pr": int(m[-1]) if m else None,
+         "files": {}, "added": {}, "removed": {}, "labels": {}}
+    fields = rest.lstrip("\n").split("\x00")
+    for status, path in zip(fields[0::2], fields[1::2]):
+        if status:
+            c["files"][path] = status[0]
+    commits.append(c)
+    by_sha[sha] = c
 
+# Added and removed lines per file. The header path is matched against the
+# commit's -z file list, so quoting and trailing tabs in the header never decide it.
 cur_commit, cur_file, in_header = None, None, False
-for line in text(git("log", "--no-merges", "--format=%x01%H", "-p", "--unified=0", "--no-renames", "--no-color", "--no-ext-diff", "%s..%s" % (FROM, TO))).split("\n"):
+for line in text(git("log", "--no-merges", "--format=%x01%H", "-p", "--unified=0", "--no-renames",
+                     "--src-prefix=a/", "--dst-prefix=b/", "%s..%s" % (FROM, TO))).split("\n"):
     if line.startswith("\x01"):
         cur_commit, cur_file, in_header = by_sha.get(line[1:]), None, False
     elif line.startswith("diff --git "):
         cur_file, in_header = None, True
     elif in_header:
-        if line.startswith("--- ") and line[4:] != "/dev/null":
-            cur_file = line[4:].strip('"')[2:]
-        elif line.startswith("+++ ") and line[4:] != "/dev/null":
-            cur_file = line[4:].strip('"')[2:]
+        if cur_commit and line.startswith(("--- ", "+++ ")) and line[4:] != "/dev/null":
+            cand = unquote_path(line[4:].rstrip("\t"))[2:]
+            if cand in cur_commit["files"]:
+                cur_file = cand
         elif line.startswith("@@"):
             in_header = False
     elif cur_commit and cur_file and line[:1] in ("+", "-"):
@@ -217,12 +262,15 @@ if NOTES_OVERRIDE is not None:
 elif git("show-ref", "-q", "--verify", "refs/tags/" + TO, check=False).returncode != 0:
     body, notes_state = "", "skipped"
 else:
-    res = subprocess.run(["gh", "release", "view", TO, "-R", REPO, "--json", "url,publishedAt,body"], capture_output=True)
+    res = run_tool("gh", "release", "view", TO, "-R", REPO, "--json", "url,publishedAt,body")
     body = ""
-    if res.returncode == 0:
-        info = json.loads(res.stdout)
+    try:
+        info = json.loads(res.stdout) if res is not None and res.returncode == 0 else None
+    except ValueError:
+        info = None
+    if isinstance(info, dict):
         body, notes_url, notes_published, notes_state = info.get("body") or "", info.get("url") or "", info.get("publishedAt") or "", "ok"
-    elif b"release not found" in res.stderr:
+    elif res is not None and b"release not found" in res.stderr:
         notes_state = "none"
     else:
         notes_state = "lookup-failed"
@@ -245,16 +293,18 @@ if PRS_OVERRIDE is not None:
     prs = {int(k): v for k, v in json.load(open(PRS_OVERRIDE, encoding="utf-8")).items()}
     pr_state = "ok"
 elif pr_numbers:
-    owner, name = REPO.split("/", 1)
+    owner, _, name = REPO.partition("/")
     pr_state = "ok"
     for i in range(0, len(pr_numbers), 50):
         chunk = pr_numbers[i:i + 50]
         q = "query{repository(owner:%s,name:%s){%s}}" % (json.dumps(owner), json.dumps(name), " ".join(
             "p%d:pullRequest(number:%d){title labels(first:20){nodes{name}}}" % (n, n) for n in chunk))
-        res = subprocess.run(["gh", "api", "graphql", "-f", "query=" + q], capture_output=True)
+        res = run_tool("gh", "api", "graphql", "-f", "query=" + q)
         try:
             data = json.loads(res.stdout)["data"]["repository"]
-        except (ValueError, KeyError, TypeError):
+        except (AttributeError, ValueError, KeyError, TypeError):
+            data = None
+        if not isinstance(data, dict):
             pr_state = "lookup-failed"
             continue
         for n in chunk:
@@ -263,6 +313,8 @@ elif pr_numbers:
                 prs[n] = {"title": node["title"], "labels": sorted(l["name"] for l in node["labels"]["nodes"])}
             elif pr_state == "ok":
                 pr_state = "partial"
+    if pr_state == "lookup-failed" and prs:
+        pr_state = "partial"
 
 # Symbols and env keys that upstream already had at FROM do not count as new.
 symbols = {s for f in features for s in (f.get("upstream_equivalent") or {}).get("symbols") or []}
@@ -328,7 +380,7 @@ for c in commits:
             if s not in old_symbols and s in added_all:
                 ev.append("새 심볼 `%s`" % s)
         for k in ue.get("keywords") or []:
-            if re.search(r"(?<![a-z0-9])" + re.escape(k.lower()), haystack):
+            if re.search(r"(?<![a-z0-9])" + re.escape(k.lower()) + r"(?:s|es)?(?![a-z0-9])", haystack):
                 ev.append("키워드 `%s`" % k)
         if ev:
             cands.append({"feature": f["id"], "status": f["status"], "cards": f.get("cards") or [],
@@ -616,28 +668,7 @@ w("3. **A:** ⚔️충돌 파일은 양쪽 변경을 한 줄씩 요약하고 해
 w("4. **B:** 해당 개조의 `scenarios`를 화면·기능 시험(`fork-verify.sh`)으로 돌립니다.")
 w("5. **D:** 배포 전 백업, 새 env 키를 self-host 설정에 넣을지, 마이그레이션 전담 리뷰가 필요한지 정합니다.")
 
-w("")
-w("--- triage keys")
-keys = [
-    ("triage_status", "ok"), ("triage_from", FROM), ("triage_to", TO), ("triage_commits", len(commits)),
-    ("triage_merge", merge_state), ("triage_conflict_files", " ".join(conflict_files)),
-]
-keys += [("triage_%s" % k.lower(), len(with_label(k))) for k in "ABCDEF"]
-keys += [("triage_%s_features" % k.lower(), ",".join(feature_ids(k))) for k in "ABC"]
-keys += [
-    ("triage_migrations", len(new_migs)),
-    ("triage_migration_range", "%d-%d" % (new_migs[0]["number"], new_migs[-1]["number"]) if new_migs else ""),
-    ("triage_new_env", ",".join(new_env)),
-    ("triage_new_cli", ",".join(p.replace(" ", ".") for p in cli_new) if cli_state == "ok"
-     else ",".join(sorted({u.split()[0] for _, x in cli for u in x["uses"]}))),
-    ("triage_removed_cli", ",".join(p.replace(" ", ".") for p in cli_removed)),
-    ("triage_cli_help", cli_state),
-    ("triage_release_notes", notes_state), ("triage_pr_lookup", pr_state),
-]
-for k, v in keys:
-    w("%s=%s" % (k, v))
-print("\n".join(out))
-
+json_error = ""
 if JSON_OUT:
     data = {
         "from": FROM, "to": TO, "fork_ref": FORK_REF, "merge": merge_state, "conflict_files": conflict_files,
@@ -649,8 +680,38 @@ if JSON_OUT:
                                                             if x["feature"] == fid for p in x["files"]})}
                           for fid in feature_ids("B")],
     }
-    with open(JSON_OUT, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, ensure_ascii=False, indent=2, sort_keys=True)
-        fh.write("\n")
+    try:
+        with open(JSON_OUT, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2, sort_keys=True)
+            fh.write("\n")
+    except OSError as exc:
+        json_error = "%s: %s" % (JSON_OUT, exc.strerror or exc)
+
+w("")
+w("--- triage keys")
+keys = [
+    ("triage_status", "error" if json_error else "ok"), ("triage_from", FROM), ("triage_to", TO), ("triage_commits", len(commits)),
+    ("triage_merge", merge_state), ("triage_conflict_files", " ".join(conflict_files)),
+]
+keys += [("triage_%s" % k.lower(), len(with_label(k))) for k in "ABCDEF"]
+keys += [("triage_%s_features" % k.lower(), ",".join(feature_ids(k))) for k in "ABC"]
+keys += [
+    ("triage_migrations", len(new_migs)),
+    ("triage_migration_range", "%d-%d" % (new_migs[0]["number"], new_migs[-1]["number"]) if new_migs else ""),
+    ("triage_new_env", ",".join(new_env)),
+    ("triage_new_cli", ",".join(p.replace(" ", ".") for p in cli_new)),
+    ("triage_removed_cli", ",".join(p.replace(" ", ".") for p in cli_removed)),
+    ("triage_cli_help", cli_state),
+    ("triage_release_notes", notes_state), ("triage_pr_lookup", pr_state),
+]
+if json_error:
+    keys.insert(1, ("triage_error", "--json write failed: " + json_error))
+for k, v in keys:
+    w("%s=%s" % (k, v))
+print("\n".join(out))
 PY
+then
+  error_out "triage script crashed"
+fi
+cat "$report"
 exit 0
