@@ -123,14 +123,15 @@ same PR. `scripts/hoon/features-check.sh` runs in the fork CI
 
 | Check | Result |
 |---|---|
-| registry format (required keys, `kind`, `status`, unique `id`, known `origin.commits`) | fail |
-| an active feature's `files` entry is missing; a `watch` path matches nothing | fail |
+| registry format (required keys, `kind`, `status`, unique `id`, quoted and existing `origin.commits`, non-empty scenario `steps`/`expect`) | fail |
+| an active feature's `files` entry is missing (an upstream file the feature deletes is fine); an active or planned feature's `watch` path matches nothing | fail |
 | a file that differs from the base tag (changed, added or deleted) is in no active feature's `files` and no `infrastructure` entry | fail |
-| a `tests` entry names a Go test function or vitest file/case that does not exist | fail |
+| an active or planned feature's `tests` entry names a Go test function or vitest file/case that does not exist | fail |
 | an upstream file in `files` is identical to the base tag | warning |
 | a `planned` feature's file already differs from the base tag | warning |
 
-The registry is read from the committed tree (`HEAD` by default), so commit
+`dropped` features are format-checked only: their files, watch paths and tests
+may be gone. The registry is read from the committed tree (`HEAD` by default), so commit
 before running it. It needs PyYAML (`python3 -c 'import yaml'`) or `uv`.
 
 ```bash
