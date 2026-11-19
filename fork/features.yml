@@ -78,7 +78,7 @@ features:
           - issue get returns the issue (no "not authenticated" / workspace error).
           - The comment is authored by the agent, not the resident owner's member account.
           - .multica_resident_task.json exists during the run and is gone after it.
-    drop_when: upstream PR #10119 (or an equivalent resident gateway mode) ships in an upstream release tag we merge; drop ours in that merge and re-base the resident follow-ups below on upstream's version.
+    drop_when: "upstream PR #10119 (or an equivalent resident gateway mode) ships in an upstream release tag we merge; drop ours in that merge and re-base the resident follow-ups below on upstream's version."
 
   - id: resident-quick-create-context
     summary: Quick Create runs on the resident gateway get the MULTICA_QUICK_CREATE_* context, so issue create stamps origin and --assignee-picker works.
@@ -122,7 +122,7 @@ features:
         expect:
           - The created issue has origin_type "quick_create" and origin_id = the quick-create task id.
           - Its assignee is the default picked for the run (the agent, or the squad for a squad run).
-    drop_when: upstream's resident mode passes quick-create context to resident tool shells itself (check together with #10119).
+    drop_when: "upstream's resident mode passes quick-create context to resident tool shells itself (check together with #10119)."
 
   - id: resident-no-hermes-home-overlay
     summary: In resident mode the daemon skips the per-task hermes-home overlay; the viewer runs on the owner's real Hermes home.
@@ -141,8 +141,7 @@ features:
       - path: server/internal/daemon/execenv/hermes_sessions.go
         why: session store mount tied to the overlay
     upstream_equivalent:
-      symbols: [prepareHermesHomeTracked, hermes-home]
-      keywords: [hermes home overlay, resident]
+      keywords: [hermes home overlay, resident hermes home]
     tests: []
     tests_gap: no Go test pins the skipped overlay; the scenario below is the only check (fork-verify covers it).
     scenarios:
@@ -408,7 +407,7 @@ features:
     upstream_equivalent:
       prs: [10726]
       symbols: [filterInboxRows, inboxUnsupportedFlag]
-      keywords: [inbox list filter, inbox filter flags, inbox list --unread]
+      keywords: [inbox list, inbox filter flags, inbox list --unread]
     tests:
       - go: server/cmd/multica
         name: TestInboxFilterParityWithWeb
@@ -438,6 +437,21 @@ features:
           - The --unread count is the same before and after (nothing marked read).
           - '`multica inbox list --type mentions` fails with the list of valid groups.'
     drop_when: upstream `inbox list` gains the same filters and grouping (follow-up to multica-ai/multica#10714).
+
+  - id: chat-wakeup
+    summary: Wake a chat conversation (time, condition or recurring) so the agent runs again in that chat and replies there.
+    status: planned
+    kind: cli
+    cards: [CALA-135]
+    origin:
+      type: ours
+    files: [server/cmd/multica/cmd_chat.go]
+    watch:
+      - path: server/cmd/multica/cmd_issue_wakeup.go
+        why: issue wakeups, the model a chat wakeup extends
+    upstream_equivalent:
+      keywords: [chat wakeup, wake a chat, chat reminder]
+    drop_when: "upstream ships chat-scoped wakeups whose run and result stay in the chat (v0.11.0 #10770 does; set dropped when CALA-135 closes)."
 
   - id: chat-list-filter-sort
     summary: Filter and sort menus on the chat page's left chat list (mock-up first).

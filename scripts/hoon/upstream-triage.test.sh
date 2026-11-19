@@ -1,0 +1,269 @@
+#!/usr/bin/env bash
+# Tests for scripts/hoon/upstream-triage.sh against throwaway git repositories.
+#   bash scripts/hoon/upstream-triage.test.sh
+# No network: release notes, PR metadata and the CLI --help tree come from the
+# TRIAGE_*_OVERRIDE files.
+set -uo pipefail
+
+SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/upstream-triage.sh"
+fail=0
+pass() { printf 'ok   %s\n' "$1"; }
+bad() { printf 'FAIL %s\n' "$1"; fail=1; }
+
+T="$(mktemp -d "${TMPDIR:-/tmp}/upstream-triage-test.XXXXXX")"
+trap '/bin/rm -rf "$T"' EXIT
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
+
+# Upstream v1.0.0; the fork changes core.go and bar.tsx and registers one
+# active and one planned feature. Upstream then ships v1.1.0 with one commit
+# per triage class.
+setup() {
+  local d="$T/$1"
+  git init -q -b main "$d"
+  cd "$d" || exit 1
+  mkdir -p server/pkg server/migrations server/cmd/multica views fork
+  printf 'package pkg\nfunc Core() {}\n' > server/pkg/core.go
+  printf 'package pkg\n' > server/pkg/near.go
+  printf 'export const bar = 1;\n' > views/bar.tsx
+  printf 'export const list = 1;\n' > views/list.tsx
+  printf 'A=1\n' > .env.example
+  printf 'package main\nvar rootCmd = &cobra.Command{Use: "multica"}\n' > server/cmd/multica/main.go
+  printf 'package main\n' > server/cmd/multica/cmd_inbox.go
+  printf 'package pkg\nfunc OldHelper() {}\n' > server/pkg/old.go
+  git add -A && git commit -qm "chore: upstream base" && git tag v1.0.0
+  git checkout -q -b fork
+  printf 'package pkg\nfunc Core() { Ours() }\n' > server/pkg/core.go
+  printf 'export const bar = 2;\n' > views/bar.tsx
+  cat > fork/features.yml <<'EOF'
+version: 1
+features:
+  - id: core-ours
+    summary: Our core change.
+    status: active
+    kind: server
+    cards: [CALA-1]
+    origin: {type: ours, commits: []}
+    files: [server/pkg/core.go]
+    watch:
+      - {path: server/pkg/near.go, why: neighbour}
+    upstream_equivalent:
+      prs: [42]
+      symbols: [OursEverywhere, OldHelper]
+      keywords: [core ours]
+    drop_when: upstream ships core ours.
+  - id: list-filters
+    summary: Filters on the list.
+    status: planned
+    kind: web-ui
+    cards: [CALA-2]
+    origin: {type: ours}
+    files: [views/list.tsx]
+    upstream_equivalent:
+      keywords: [list filter]
+    drop_when: upstream ships list filters.
+EOF
+  git add -A && git commit -qm "feat: fork"
+  git checkout -q main
+  commit() { git add -A && git commit -qm "$1"; }
+  printf 'package pkg\nfunc Core() { Theirs() }\n' > server/pkg/core.go; commit "fix(core): reshape core (#41)"
+  printf 'package pkg\nfunc Near() {}\n' > server/pkg/near.go; commit "fix(pkg): touch the neighbour (#43)"
+  printf 'package pkg\nfunc OursEverywhere() {}\n' > server/pkg/eq.go; commit "fix(pkg): something unrelated by title (#44)"
+  printf 'package pkg\nfunc OldHelper() { _ = 1 }\n' > server/pkg/old.go; commit "fix(pkg): old helper grows (#45)"
+  printf 'x\n' > server/pkg/pr42.go; commit "fix(pkg): the one the registry tracks (#42)"
+  printf 'export const list = 2;\n' > views/list.tsx; commit "feat(views): add list filter menu (#46)"
+  printf 'create table t();\n' > server/migrations/101_t.up.sql
+  printf 'drop table t;\n' > server/migrations/101_t.down.sql
+  printf 'create index i on t();\n' > server/migrations/102_t_idx.up.sql; commit "feat(db): table t (#47)"
+  printf 'A=1\nNEW_SECRET_KEY=\n# OPTIONAL_KNOB=3\nA=1\n' > .env.example; commit "feat(weixin): new channel (#48)"
+  printf 'package main\nvar inboxCmd = &cobra.Command{Use: "inbox"}\nvar inboxListCmd = &cobra.Command{Use: "list"}\n' > server/cmd/multica/cmd_inbox.go; commit "feat(cli): add inbox list (#49)"
+  printf 'package pkg\nimport "os"\nvar _ = os.Getenv("SERVER_ONLY_KEY")\n' > server/pkg/env.go; commit "fix(pkg): read a server key (#50)"
+  printf '# docs\n' > README.md; commit "docs: readme (#51)"
+  git tag v1.1.0
+  printf 'export const bar = 3;\n' > views/bar.tsx; commit "fix(views): bar after the tag (#52)"
+  git tag v1.2.0
+  cat > "$T/notes" <<'EOF'
+## Changelog
+* 0000000 placeholder that matches nothing
+EOF
+  printf '{"41":{"title":"fix(core): reshape core","labels":[]},"46":{"title":"feat(views): add list filter menu","labels":["ui"]}}\n' > "$T/prs.json"
+  printf '{"from":["issue","issue list"],"to":["issue","issue list","inbox","inbox list"]}\n' > "$T/cli.json"
+}
+
+run() {
+  TRIAGE_RELEASE_NOTES_OVERRIDE="$T/notes" TRIAGE_PRS_OVERRIDE="$T/prs.json" TRIAGE_CLI_OVERRIDE="$T/cli.json" \
+    bash "$SCRIPT" "$@" > "$T/out" 2>&1
+  echo $?
+}
+key() { sed -n "s/^$1=//p" "$T/out"; }
+expect() { # $1=name $2=pattern (grep -E on the report)
+  if grep -qE -- "$2" "$T/out"; then pass "$1"; else bad "$1"; cat "$T/out"; fi
+}
+expect_key() { # $1=name $2=key $3=value
+  local got; got="$(key "$2")"
+  if [ "$got" = "$3" ]; then pass "$1"; else bad "$1 ($2: want '$3', got '$got')"; fi
+}
+row() { grep -E "^\| \`$(git rev-parse --short=9 ":/$1")\`" "$T/out"; }
+
+setup base
+rc="$(run v1.0.0 v1.1.0 --fork-ref fork --registry-ref fork --json "$T/out.json")"
+if [ "$rc" = 0 ]; then pass "exits 0"; else bad "exits 0 (got $rc)"; fi
+expect_key "status ok" triage_status ok
+expect_key "counts every non-merge commit in the range" triage_commits 11
+expect_key "fork merge conflicts on the shared file" triage_merge conflict
+expect_key "conflict files" triage_conflict_files server/pkg/core.go
+expect_key "A: our file changed upstream" triage_a 1
+expect_key "A names the feature" triage_a_features core-ours
+expect "A marks the conflicting file" "reshape core .*core-ours.*core.go ⚔️충돌"
+expect_key "B: watch path and a planned feature's file" triage_b 2
+expect_key "B names both features" triage_b_features core-ours,list-filters
+expect_key "C: tracked PR, new symbol, keyword" triage_c 3
+expect "C by tracked PR number" "the one the registry tracks.*PR #42이 레지스트리에 등록됨"
+expect "C by a symbol upstream did not have before" "something unrelated by title.*새 심볼 \`OursEverywhere\`"
+expect "C by keyword in the PR title" "add list filter menu.*\`list-filters\` \(CALA-2\).*키워드 \`list filter\`"
+if row "old helper grows" | grep -q 'core-ours'; then bad "a symbol already at <from> is not C"; else pass "a symbol already at <from> is not C"; fi
+expect_key "D: migration, .env.example and os.Getenv commits" triage_d 3
+expect_key "new up migrations only" triage_migrations 2
+expect_key "migration range" triage_migration_range 101-102
+expect_key "new env keys: .env.example (commented too) and os.Getenv" triage_new_env NEW_SECRET_KEY,OPTIONAL_KNOB,SERVER_ONLY_KEY
+expect_key "E: only feat commits naming our areas" triage_e 1
+expect "E carries the area" "add inbox list.*\| cli, inbox \|"
+expect_key "CLI tree diff" triage_new_cli inbox,inbox.list
+expect "CLI commit from the cobra Use: source" "cmd_inbox.go\`: \`inbox\`, \`list\`"
+expect_key "F: the rest" triage_f 2
+expect "F lists the docs commit" "^- \`[0-9a-f]{9}\` .*docs: readme"
+expect "F holds a commit no rule matches" "^- \`[0-9a-f]{9}\` .*old helper grows"
+expect "ends with the confirm-from-PR-body instruction" "C 후보:.*PR 본문"
+expect "release notes coverage gap reported" "릴리스 노트에 없는 커밋 11개"
+if python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert {s["feature"] for s in d["screen_inputs"]} == {"core-ours","list-filters"}; assert d["migrations"][0]["number"] == 101' "$T/out.json"; then
+  pass "JSON carries the B screen inputs and migrations"
+else
+  bad "JSON carries the B screen inputs and migrations"
+fi
+
+cp "$T/out" "$T/first"
+run v1.0.0 v1.1.0 --fork-ref fork --registry-ref fork --json "$T/out2.json" >/dev/null
+if cmp -s "$T/first" "$T/out" && cmp -s "$T/out.json" "$T/out2.json"; then pass "output is deterministic"; else bad "output is deterministic"; fi
+
+setup env-already
+git checkout -q -b pre v1.0.0 && printf 'A=1\nNEW_SECRET_KEY=\n' > .env.example && git commit -qam "chore: env" && git tag v1.0.5 && git checkout -q main
+run v1.0.5 v1.1.0 --fork-ref fork --registry-ref fork >/dev/null
+if [ "$(key triage_new_env)" = "OPTIONAL_KNOB,SERVER_ONLY_KEY" ]; then pass "env key present at <from> is not new"; else bad "env key present at <from> is not new ($(key triage_new_env))"; fi
+
+setup merged
+git checkout -q fork && git merge -q --no-edit -X ours v1.1.0 >/dev/null 2>&1; git checkout -q main
+run v1.0.0 v1.1.0 --fork-ref fork --registry-ref fork >/dev/null
+expect_key "already-merged target" triage_merge already-merged
+
+setup clean
+run v1.1.0 v1.2.0 --fork-ref v1.1.0 --registry-ref fork >/dev/null
+expect_key "clean merge" triage_merge clean
+expect_key "an active feature's file changed only by upstream is A, not B" triage_a 0
+expect_key "...and B through its own files is not counted for active" triage_b 0
+
+setup missing-ref
+run v1.0.0 v9.9.9 >/dev/null
+expect_key "unknown ref reports an error key" triage_status error
+expect "...with the reason" "ref v9.9.9 not found"
+rc="$(run v1.0.0 v9.9.9)"
+if [ "$rc" = 0 ]; then pass "...and still exits 0"; else bad "...and still exits 0 (got $rc)"; fi
+
+setup no-registry
+run v1.0.0 v1.1.0 --registry-ref main >/dev/null
+expect "missing registry reports an error" "registry fork/features.yml not found at main"
+
+setup no-notes
+: > "$T/notes"
+run v1.0.0 v1.1.0 --fork-ref fork --registry-ref fork >/dev/null
+expect_key "empty release notes override means none" triage_release_notes none
+
+setup cli-off
+TRIAGE_RELEASE_NOTES_OVERRIDE="$T/notes" TRIAGE_PRS_OVERRIDE="$T/prs.json" TRIAGE_CLI_OVERRIDE=off \
+  bash "$SCRIPT" v1.0.0 v1.1.0 --fork-ref fork --registry-ref fork > "$T/out" 2>&1
+expect_key "CLI build can be skipped" triage_cli_help skipped
+expect_key "...and triage_new_cli stays empty instead of mixing in leaf names" triage_new_cli ""
+expect "...while the report keeps the source Use: list" "cmd_inbox.go\`: \`inbox\`, \`list\`"
+
+setup no-gh
+# PATH without the directory that holds gh, but with every other tool the script needs.
+mkdir -p "$T/bin-nogh"
+for tool in git python3 uv; do
+  p="$(command -v "$tool")" && ln -sf "$p" "$T/bin-nogh/$tool"
+done
+PATH="$T/bin-nogh:/usr/bin:/bin" TRIAGE_CLI_OVERRIDE=off bash "$SCRIPT" v1.0.0 v1.1.0 --fork-ref fork --registry-ref fork > "$T/out" 2>&1
+expect_key "missing gh still triages" triage_status ok
+expect_key "...with release notes marked lookup-failed" triage_release_notes lookup-failed
+expect_key "...and PR lookup marked lookup-failed" triage_pr_lookup lookup-failed
+
+setup gh-null-repo
+mkdir -p "$T/bin-fakegh"
+cat > "$T/bin-fakegh/gh" <<'GH'
+#!/bin/sh
+case "$1" in
+  release) echo 'release not found' >&2; exit 1 ;;
+  api) echo '{"data":{"repository":null},"errors":[{"type":"NOT_FOUND"}]}'; exit 1 ;;
+esac
+GH
+chmod +x "$T/bin-fakegh/gh"
+PATH="$T/bin-fakegh:$PATH" TRIAGE_CLI_OVERRIDE=off bash "$SCRIPT" v1.0.0 v1.1.0 --fork-ref fork --registry-ref fork > "$T/out" 2>&1
+expect_key "unreadable upstream repo still triages" triage_status ok
+expect_key "...with PR lookup marked lookup-failed" triage_pr_lookup lookup-failed
+expect_key "...and a missing release marked none" triage_release_notes none
+
+setup json-unwritable
+run v1.0.0 v1.1.0 --fork-ref fork --registry-ref fork --json "$T/no-such-dir/x.json" >/dev/null
+if [ "$(grep -c '^--- triage keys' "$T/out")" = 1 ]; then pass "a failed --json write leaves one key block"; else bad "a failed --json write leaves one key block"; fi
+expect_key "...marked error" triage_status error
+expect "...with the reason" "^triage_error=--json write failed: .*no-such-dir"
+
+setup user-git-config
+GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=diff.noprefix GIT_CONFIG_VALUE_0=true GIT_CONFIG_KEY_1=log.showSignature GIT_CONFIG_VALUE_1=true \
+  run v1.0.0 v1.1.0 --fork-ref fork --registry-ref fork >/dev/null
+expect_key "diff.noprefix and log.showSignature do not change the result" triage_new_env NEW_SECRET_KEY,OPTIONAL_KNOB,SERVER_ONLY_KEY
+GIT_CONFIG_COUNT=4 GIT_CONFIG_KEY_0=color.diff GIT_CONFIG_VALUE_0=always GIT_CONFIG_KEY_1=color.grep GIT_CONFIG_VALUE_1=always \
+  GIT_CONFIG_KEY_2=grep.lineNumber GIT_CONFIG_VALUE_2=true GIT_CONFIG_KEY_3=grep.column GIT_CONFIG_VALUE_3=true \
+  run v1.0.0 v1.1.0 --fork-ref fork --registry-ref fork >/dev/null
+expect_key "forced diff/grep colour and grep line numbers do not change new env keys" triage_new_env NEW_SECRET_KEY,OPTIONAL_KNOB,SERVER_ONLY_KEY
+expect_key "...nor the symbol already present at <from>" triage_c 3
+
+setup subdir
+mkdir -p "$T/json-out"
+(cd server/pkg && TRIAGE_RELEASE_NOTES_OVERRIDE="$T/notes" TRIAGE_PRS_OVERRIDE="$T/prs.json" TRIAGE_CLI_OVERRIDE="$T/cli.json" \
+  bash "$SCRIPT" v1.0.0 v1.1.0 --fork-ref fork --registry-ref fork --json ../../x.json) > "$T/out" 2>&1
+expect_key "running from a subdirectory reads repo-relative paths" triage_migrations 2
+expect_key "...and keeps the conflict file" triage_conflict_files server/pkg/core.go
+if [ -s x.json ]; then pass "...and a relative --json path stays relative to the caller"; else bad "...and a relative --json path stays relative to the caller"; fi
+
+setup user-attributes
+printf '*.example -diff\n*.go -diff\n' > "$T/attrs"
+GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.attributesFile GIT_CONFIG_VALUE_0="$T/attrs" \
+  run v1.0.0 v1.1.0 --fork-ref fork --registry-ref fork >/dev/null
+expect_key "a user attributes file marking files binary does not hide env keys" triage_new_env NEW_SECRET_KEY,OPTIONAL_KNOB,SERVER_ONLY_KEY
+
+setup odd-paths
+git checkout -q fork
+printf 'package pkg\nfunc Q() {}\n' > 'server/pkg/we"ird.go'
+printf 'package pkg\n' > 'server/pkg/sp ace.go'
+git add -A && git commit -qm "feat: odd paths"
+sed -i.bak 's#    files: \[server/pkg/core.go\]#    files: [server/pkg/core.go, "server/pkg/we\\"ird.go", server/pkg/sp ace.go]#' fork/features.yml && /bin/rm fork/features.yml.bak
+git commit -qam registry && git checkout -q main
+printf 'package pkg\nfunc Q() { _ = 1 }\n' > 'server/pkg/we"ird.go'
+printf 'package pkg\nimport "os"\nvar _ = os.Getenv("K_SPACE")\n' > 'server/pkg/sp ace.go'
+git add -A && git commit -qm "fix(pkg): odd paths upstream (#60)" && git tag v1.3.0
+run v1.2.0 v1.3.0 --fork-ref v1.2.0 --registry-ref fork >/dev/null
+expect "a quoted path is A" 'we"ird.go'
+expect "a path with a space is A" 'sp ace.go'
+expect_key "...and its added lines are read" triage_new_env K_SPACE
+
+setup keyword-boundary
+git commit -q --allow-empty -m "feat(views): list filtering everywhere (#61)" && git tag v1.4.0
+run v1.2.0 v1.4.0 --fork-ref v1.2.0 --registry-ref fork >/dev/null
+if grep -q 'list filtering everywhere.*list-filters' "$T/out"; then bad "a keyword does not match inside a longer word"; else pass "a keyword does not match inside a longer word"; fi
+git commit -q --allow-empty -m "feat(views): list filters (#62)" && git tag v1.5.0
+run v1.4.0 v1.5.0 --fork-ref v1.2.0 --registry-ref fork >/dev/null
+expect "...but matches its plural" 'list filters .*list-filters.*키워드'
+
+if rc="$(bash "$SCRIPT" 2>/dev/null)"; then bad "no arguments is a usage error"; else pass "no arguments is a usage error"; fi
+
+[ "$fail" = 0 ] && echo "all upstream-triage tests passed"
+exit "$fail"
