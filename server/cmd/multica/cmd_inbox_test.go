@@ -1,4 +1,4 @@
-// Modified by honki12345, 2026: cover the web Inbox filters and grouping on `inbox list` (CALA-248).
+// Modified by honki12345, 2026: cover the web Inbox filters and grouping on `inbox list` (CALA-248, CALA-273).
 
 package main
 
@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -248,7 +251,6 @@ func TestInboxListRejectsBadValuesBeforeAnyRequest(t *testing.T) {
 		flags map[string]string
 		want  string
 	}{
-		{map[string]string{"type": "mentions"}, `invalid --type "mentions"; valid groups: mention, comment, assign, review, change, run, system; or a notification type:`},
 		{map[string]string{"received": "yesterday"}, `invalid --received "yesterday"; valid values: today, last_7_days, last_30_days`},
 		{map[string]string{"priority": "high,hgih"}, `invalid --priority "hgih"; valid values: urgent, high, medium, low, none`},
 		{map[string]string{"due": "tomorrow"}, `invalid --due "tomorrow"; valid values: overdue, today, this_week, next_7_days, none`},
@@ -360,7 +362,10 @@ func TestInboxListResolvesNamesAndAgentState(t *testing.T) {
 		})
 	}
 	ids(t, map[string]string{"type": "mention"})
-	if strings.Join(paths, " ") != "/api/inbox" {
+	// Only upstream's sender-name lookup for the FROM column may follow.
+	if len(paths) == 0 || paths[0] != "/api/inbox" || slices.ContainsFunc(paths, func(p string) bool {
+		return p == "/api/labels" || p == "/api/projects" || p == "/api/agent-task-snapshot"
+	}) {
 		t.Fatalf("a filter that needs no lookup made extra requests: %v", paths)
 	}
 }
@@ -456,5 +461,112 @@ func TestInboxListKeepsEachRowsOwnCommentAndCurrentServerShape(t *testing.T) {
 	_, err := runInboxListTest(t, map[string]string{"assignee": "agent:" + carol[:8], "output": "json"})
 	if err == nil || !strings.Contains(err.Error(), "resolves to member:"+carol+", not agent") {
 		t.Fatalf("type mismatch error = %v", err)
+	}
+}
+
+// Upstream's --unread asks each notification; grouped, the web asks the row
+// it shows. --ungrouped keeps upstream's meaning.
+func TestInboxListUnreadGroupedAndUngrouped(t *testing.T) {
+	now := time.Now().UTC()
+	at := func(d time.Duration) string { return now.Add(-d).Format(time.RFC3339) }
+	fakeInboxServer(t, map[string]func(http.ResponseWriter, *http.Request){
+		"GET /api/inbox": reply(`[
+			{"id":"` + inboxItemA + `","type":"status_changed","issue_id":"` + inboxIssue1 + `","issue_label_ids":[],"read":true,"created_at":"` + at(time.Hour) + `"},
+			{"id":"` + inboxItemB + `","type":"mentioned","issue_id":"` + inboxIssue1 + `","issue_label_ids":[],"read":false,"created_at":"` + at(2*time.Hour) + `"},
+			{"id":"` + inboxItemC + `","type":"mentioned","issue_id":"` + inboxIssue2 + `","issue_label_ids":[],"read":false,"created_at":"` + at(72*time.Hour) + `"}
+		]`),
+		"GET /api/issues": reply(`{"issues":[]}`),
+	})
+	for _, tc := range []struct {
+		name  string
+		flags map[string]string
+		want  string
+	}{
+		{"grouped asks the shown row", map[string]string{"unread": "true"}, inboxItemC},
+		{"ungrouped asks every notification", map[string]string{"unread": "true", "ungrouped": "true"}, inboxItemB + "," + inboxItemC},
+		{"type picks the shown row first", map[string]string{"unread": "true", "type": "mention"}, inboxItemB + "," + inboxItemC},
+		{"since is a notification filter", map[string]string{"since": "1d"}, inboxItemA},
+		{"since picks an older row of the issue", map[string]string{"since": "1d", "type": "mentioned"}, inboxItemB},
+		{"received preset", map[string]string{"received": "last_7_days", "issue": inboxIssue2}, inboxItemC},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.flags["output"] = "json"
+			out, err := runInboxCommand(t, registerInboxListFlags, func(cmd *cobra.Command, _ []string) error { return runInboxList(cmd, nil) }, nil, tc.flags)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var rows []struct {
+				ID string `json:"id"`
+			}
+			if err := json.Unmarshal([]byte(out), &rows); err != nil {
+				t.Fatal(err)
+			}
+			got := make([]string, 0, len(rows))
+			for _, r := range rows {
+				got = append(got, r.ID)
+			}
+			if strings.Join(got, ",") != tc.want {
+				t.Fatalf("ids = %v, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+// The archive is filtered by the server: every web filter goes into the page
+// query in the web's parameter names, beside upstream's exact type and issue.
+func TestInboxListArchivedSendsWebFilters(t *testing.T) {
+	var query url.Values
+	fakeInboxServer(t, map[string]func(http.ResponseWriter, *http.Request){
+		"GET /api/inbox/archived/page": func(w http.ResponseWriter, r *http.Request) {
+			query = r.URL.Query()
+			_, _ = w.Write([]byte(`{"items":[],"next_cursor":null,"has_more":false}`))
+		},
+	})
+	list := func(cmd *cobra.Command, _ []string) error { return runInboxList(cmd, nil) }
+	_, err := runInboxCommand(t, registerInboxListFlags, list, nil, map[string]string{
+		"archived": "true", "type": "mention,comment", "not": "type,status", "status": "done,todo", "priority": "high",
+		"actor": "system", "assignee": "none", "project": "none", "due": "overdue", "received": "today", "unread": "true", "output": "json",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]string{
+		"types": "comment,mention", "negated": "status,type", "statuses": "done,todo", "priorities": "high", "actors": "system",
+		"assignees": "none", "projects": "none", "due_dates": "overdue", "today": time.Now().Format(time.DateOnly), "unread_only": "true",
+	} {
+		if got := query.Get(name); got != want {
+			t.Errorf("%s = %q, want %q (query %v)", name, got, want, query)
+		}
+	}
+	if query.Has("notification_types") || !query.Has("received_after") {
+		t.Errorf("query = %v", query)
+	}
+}
+
+// Combinations the archive, the snoozed list or the two received windows
+// cannot answer as written fail before any request.
+func TestInboxListRefusesFilterCombinationsBeforeAnyRequest(t *testing.T) {
+	requests := fakeInboxServer(t, map[string]func(http.ResponseWriter, *http.Request){})
+	list := func(cmd *cobra.Command, _ []string) error { return runInboxList(cmd, nil) }
+	for _, tc := range []struct {
+		flags map[string]string
+		want  string
+	}{
+		{map[string]string{"since": "1d", "received": "today"}, "--received and --since cannot be combined"},
+		{map[string]string{"archived": "true", "agent": "running"}, "--agent does not apply to --archived"},
+		{map[string]string{"archived": "true", "ungrouped": "true"}, "--ungrouped does not apply to --archived"},
+		{map[string]string{"archived": "true", "type": "mention,new_comment"}, "either type groups (mention) or exact notification types"},
+		{map[string]string{"archived": "true", "type": "mentioned", "not": "type"}, "--archived --not type needs type groups"},
+		{map[string]string{"snoozed": "true", "status": "todo"}, "--status does not apply to --snoozed"},
+		{map[string]string{"snoozed": "true", "ungrouped": "true"}, "--ungrouped does not apply to --snoozed"},
+		{map[string]string{"snoozed": "true", "actor": "system"}, "--actor does not apply to --snoozed"},
+	} {
+		_, err := runInboxCommand(t, registerInboxListFlags, list, nil, tc.flags)
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%v: error = %v, want %q", tc.flags, err, tc.want)
+		}
+	}
+	if len(*requests) != 0 {
+		t.Fatalf("refused flags reached the server: %v", *requests)
 	}
 }
