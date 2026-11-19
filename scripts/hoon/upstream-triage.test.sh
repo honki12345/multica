@@ -226,6 +226,20 @@ GIT_CONFIG_COUNT=4 GIT_CONFIG_KEY_0=color.diff GIT_CONFIG_VALUE_0=always GIT_CON
 expect_key "forced diff/grep colour and grep line numbers do not change new env keys" triage_new_env NEW_SECRET_KEY,OPTIONAL_KNOB,SERVER_ONLY_KEY
 expect_key "...nor the symbol already present at <from>" triage_c 3
 
+setup subdir
+mkdir -p "$T/json-out"
+(cd server/pkg && TRIAGE_RELEASE_NOTES_OVERRIDE="$T/notes" TRIAGE_PRS_OVERRIDE="$T/prs.json" TRIAGE_CLI_OVERRIDE="$T/cli.json" \
+  bash "$SCRIPT" v1.0.0 v1.1.0 --fork-ref fork --registry-ref fork --json ../../x.json) > "$T/out" 2>&1
+expect_key "running from a subdirectory reads repo-relative paths" triage_migrations 2
+expect_key "...and keeps the conflict file" triage_conflict_files server/pkg/core.go
+if [ -s x.json ]; then pass "...and a relative --json path stays relative to the caller"; else bad "...and a relative --json path stays relative to the caller"; fi
+
+setup user-attributes
+printf '*.example -diff\n*.go -diff\n' > "$T/attrs"
+GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.attributesFile GIT_CONFIG_VALUE_0="$T/attrs" \
+  run v1.0.0 v1.1.0 --fork-ref fork --registry-ref fork >/dev/null
+expect_key "a user attributes file marking files binary does not hide env keys" triage_new_env NEW_SECRET_KEY,OPTIONAL_KNOB,SERVER_ONLY_KEY
+
 setup odd-paths
 git checkout -q fork
 printf 'package pkg\nfunc Q() {}\n' > 'server/pkg/we"ird.go'

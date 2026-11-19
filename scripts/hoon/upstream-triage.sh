@@ -68,6 +68,11 @@ error_out() {
   exit 0
 }
 
+# Paths in the report and the migration/CLI lookups are repo-relative.
+case "$JSON_OUT" in ""|/*) ;; *) JSON_OUT="$PWD/$JSON_OUT" ;; esac
+top="$(git rev-parse --show-toplevel 2>/dev/null)" || error_out "not inside a git repository"
+cd "$top" || error_out "cannot cd to $top"
+
 if python3 -c 'import yaml' 2>/dev/null; then
   PY=(python3)
 elif command -v uv >/dev/null 2>&1; then
@@ -119,7 +124,7 @@ HELP_ENTRY = re.compile(r"^  ([a-z0-9][a-z0-9-]*):\s")
 LIST_MAX = 3
 
 
-GIT_PIN = ["-c", "core.quotePath=false", "-c", "diff.noprefix=false", "-c", "diff.mnemonicPrefix=false",
+GIT_PIN = ["-c", "core.attributesFile=", "-c", "core.quotePath=false", "-c", "diff.noprefix=false", "-c", "diff.mnemonicPrefix=false",
            "-c", "log.showSignature=false", "-c", "diff.external=", "-c", "color.ui=false",
            "-c", "color.diff=false", "-c", "color.grep=false", "-c", "grep.lineNumber=false",
            "-c", "grep.column=false", "-c", "grep.fullName=false"]
