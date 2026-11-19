@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+# Tests for scripts/hoon/fork-verify.sh: the judging and planning functions in
+# fork-verify/fork_verify.py against fixed inputs, plus the wrapper's argument
+# handling and the candidate-commit check on a throwaway repository. No stack,
+# no browser, no network.
+#   bash scripts/hoon/fork-verify.test.sh
+set -uo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if python3 -c 'import yaml, PIL' 2>/dev/null; then
+  PY=(python3)
+else
+  PY=(uv run -q --no-project --with pyyaml --with pillow python3)
+fi
+
+T="$(mktemp -d "${TMPDIR:-/tmp}/fork-verify-test.XXXXXX")"
+trap '/bin/rm -rf "$T"' EXIT
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
+
+fail=0
+out="$(bash "$HERE/fork-verify.sh" 2>&1)"; rc=$?
+if [ "$rc" = 2 ] && printf '%s' "$out" | grep -q 'usage'; then echo "ok   no ref: usage, exit 2"; else echo "FAIL no ref: exit $rc"; fail=1; fi
+out="$(bash "$HERE/fork-verify.sh" no-such-ref-xyz --skip test,scenario,screen 2>&1)"; rc=$?
+if [ "$rc" = 2 ]; then echo "ok   unknown ref: exit 2"; else echo "FAIL unknown ref: exit $rc ($out)"; fail=1; fi
+
+FV_TMP="$T" "${PY[@]}" - "$HERE/fork-verify" <<'PY' || fail=1
+import json, os, subprocess, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import fork_verify as fv
+from PIL import Image, ImageDraw
+
+T = Path(os.environ["FV_TMP"])
+failed = []
+def check(name, cond):
+    print(("ok   " if cond else "FAIL ") + name)
+    if not cond:
+        failed.append(name)
+
+# --- verdict roll-up and exit code
+C = fv.Check
+check("feature verdict: any fail wins", fv.feature_verdict([C("a", "test", "x", fv.PASS, ""), C("a", "test", "y", fv.FAIL, "")]) == fv.FAIL)
+check("feature verdict: unverified beats pass", fv.feature_verdict([C("a", "test", "x", fv.PASS, ""), C("a", "screen", "y", fv.UNVERIFIED, "")]) == fv.UNVERIFIED)
+check("feature verdict: all n/a", fv.feature_verdict([C("a", "test", "x", fv.NA, "")]) == fv.NA)
+check("exit 1 on a fail", fv.exit_code([C("a", "test", "x", fv.FAIL, "")]) == 1)
+check("exit 0 with unverified only", fv.exit_code([C("a", "test", "x", fv.UNVERIFIED, ""), C("b", "test", "x", fv.PASS, "")]) == 0)
+
+# --- go test output
+go_out = """=== RUN   TestA
+--- PASS: TestA (0.01s)
+=== RUN   TestB
+    --- FAIL: TestB/sub (0.00s)
+--- FAIL: TestB (0.00s)
+--- SKIP: TestC (0.00s)
+"""
+r = fv.parse_go_test_output(go_out, ["TestA", "TestB", "TestC", "TestD"])
+check("go: pass/fail/skip/missing", r == {"TestA": "PASS", "TestB": "FAIL", "TestC": "SKIP", "TestD": None})
+
+# --- vitest json
+data = {"testResults": [{"name": "/x/packages/views/chat/components/chat-bar.test.tsx", "assertionResults": [
+    {"title": "shows a chip for every chat", "fullName": "ChatBar shows a chip for every chat", "status": "passed"},
+    {"title": "scrolls", "fullName": "ChatBar scrolls", "status": "failed"}]}]}
+check("vitest: named case passes", fv.parse_vitest_json(data, None, "packages/views/chat/components/chat-bar.test.tsx", "shows a chip for every chat")[0] == fv.PASS)
+check("vitest: named failing case fails", fv.parse_vitest_json(data, None, "packages/views/chat/components/chat-bar.test.tsx", "scrolls")[0] == fv.FAIL)
+check("vitest: missing case fails", fv.parse_vitest_json(data, None, "packages/views/chat/components/chat-bar.test.tsx", "nope")[0] == fv.FAIL)
+check("vitest: whole file with a failure fails", fv.parse_vitest_json(data, None, "packages/views/chat/components/chat-bar.test.tsx", None)[0] == fv.FAIL)
+check("vitest: file not run fails", fv.parse_vitest_json(data, None, "packages/views/layout/bottom-bar.test.tsx", None)[0] == fv.FAIL)
+
+# --- resident run judging
+root = T / "task-root"
+root.mkdir()
+ls_out = "terminal result\n.\n..\n.managed_env.json\n.multica_resident_task.json\n.task_lock\n.task_owner\nlogs\nworkdir"
+status = '{"status": "running", "cli_version": "0.11.0-hoon.1", "pid": 1}'
+outputs = ['{"identifier": "FV-1", "id": "x"}', status, status, status,
+           "Checked out https://github.com/honki12345/multica → /w/multica (branch: agent/fv-resident/abc)", "No environments.", ls_out]
+comments = [{"author_type": "agent", "author_id": "agent-1", "content": "done"}]
+got = {fid: v for fid, _, v, _ in fv.judge_resident(outputs, "0.11.0-hoon.1", "FV-1", root, comments, "agent-1")}
+check("resident: healthy run passes all four", got == {k: fv.PASS for k in ("resident-hermes-gateway", "resident-no-hermes-home-overlay",
+                                                                             "resident-daemon-local-commands", "resident-daemon-status")})
+stopped = list(outputs)
+stopped[2] = '{"status": "stopped", "cli_version": "0.11.0-hoon.1"}'
+got = {fid: v for fid, _, v, _ in fv.judge_resident(stopped, "0.11.0-hoon.1", "FV-1", root, comments, "agent-1")}
+check("resident: one stopped daemon status fails", got["resident-daemon-status"] == fv.FAIL)
+overlay = list(outputs)
+overlay[-1] = ls_out + "\nhermes-home"
+got = {fid: v for fid, _, v, _ in fv.judge_resident(overlay, "0.11.0-hoon.1", "FV-1", root, comments, "agent-1")}
+check("resident: hermes-home in the task root fails", got["resident-no-hermes-home-overlay"] == fv.FAIL)
+port = list(outputs)
+port[4] = "Error: MULTICA_DAEMON_PORT not set"
+got = {fid: v for fid, _, v, _ in fv.judge_resident(port, "0.11.0-hoon.1", "FV-1", root, comments, "agent-1")}
+check("resident: repo checkout port error fails", got["resident-daemon-local-commands"] == fv.FAIL)
+got = {fid: v for fid, _, v, _ in fv.judge_resident(outputs, "0.11.0-hoon.1", "FV-1", root, [{"author_type": "member", "author_id": "u"}], "agent-1")}
+check("resident: comment by the member, not the agent, fails", got["resident-hermes-gateway"] == fv.FAIL)
+(root / ".multica_resident_task.json").write_text("{}")
+got = {fid: v for fid, _, v, _ in fv.judge_resident(outputs, "0.11.0-hoon.1", "FV-1", root, comments, "agent-1")}
+check("resident: context file left after the run fails", got["resident-hermes-gateway"] == fv.FAIL)
+
+# --- shot planning
+features = [{"id": "chat-bar-all-chips", "kind": "web-ui", "scenarios": [
+    {"name": "every chip visible, strip scrolls", "path": "/<workspace-slug>/issues", "widths": [1440, 900],
+     "steps": ["Open", "Click the right-most chip."], "selectors": ['[data-slot="chat-bar"]']},
+    {"name": "bar hidden on a narrow window", "path": "/<workspace-slug>/issues", "widths": [700], "steps": ["Open the page."], "selectors": []}]},
+    {"id": "inbox-list-filters", "kind": "cli"}]
+shots = fv.plan_shots(features, "acme")
+check("shots: two widths + one narrow", [(s["width"], s["scenarioIndex"]) for s in shots] == [(1440, 0), (900, 0), (700, 1)])
+check("shots: slug substituted", all(s["path"] == "/acme/issues" for s in shots))
+check("shots: only the click scenario interacts", [s["interact"] for s in shots] == [True, True, False])
+si = {"screen_inputs": [{"feature": "chat-bar-all-chips", "paths": ["packages/views/chat/components/chat-input.tsx", "packages/core/chat/queries.ts",
+                                                                     "packages/views/layout/dashboard-layout.tsx"]},
+                        {"feature": "inbox-list-filters", "paths": ["packages/core/inbox/filters.ts"]}]}
+extra = [s for s in fv.plan_shots(features, "acme", si) if s["scenarioIndex"] == -1]
+check("screen input: B routes for web-ui features only, deduped", [s["path"] for s in extra] == ["/acme/chat"])
+
+# --- chat bar judging
+def res(cand, prod=None):
+    return {"cand": {"probe": cand, "error": None}, "prod": {"probe": prod or cand, "error": None}}
+full = {"bar": 1, "chips": 12, "overflowButtons": 0, "strip": True, "stripScrollable": True, "wheelScrolled": True,
+        "teamStatusKeptWidth": True, "windowOpen": True, "clickedChipInView": True}
+s1 = shots[0]
+check("chat bar: all chips, no +N, interactions ok", fv.judge_chat_bar(s1, res(full), 12)[0] == fv.PASS)
+folded = dict(full, overflowButtons=1)
+v, d = fv.judge_chat_bar(s1, res(folded), 12)
+check("chat bar: +N menu fails even when every chip shows", v == fv.FAIL and d.startswith("+N 버튼"))
+check("chat bar: missing chips fail", fv.judge_chat_bar(s1, res(dict(full, chips=4)), 12)[0] == fv.FAIL)
+check("chat bar: wheel not scrolling fails", fv.judge_chat_bar(s1, res(dict(full, wheelScrolled=False)), 12)[0] == fv.FAIL)
+check("chat bar: narrow window must hide the bar", fv.judge_chat_bar(shots[2], res({"bar": 1}), 12)[0] == fv.FAIL)
+check("chat bar: narrow window without bar passes", fv.judge_chat_bar(shots[2], res({"bar": 0}), 12)[0] == fv.PASS)
+
+# --- pixel diff and triptych
+a = Image.new("RGB", (200, 100), (255, 255, 255))
+b = a.copy()
+ImageDraw.Draw(b).rectangle([0, 0, 19, 9], fill=(0, 0, 0))
+check("diff ratio: 200 of 20000 pixels", abs(fv.diff_ratio(a, b) - 0.01) < 1e-9)
+check("diff ratio: identical is 0", fv.diff_ratio(a, a.copy()) == 0.0)
+check("diff ratio: region box", abs(fv.diff_ratio(a, b, (0, 0, 20, 10)) - 1.0) < 1e-9)
+check("diff ratio: tiny noise under tolerance ignored", fv.diff_ratio(a, Image.new("RGB", (200, 100), (250, 250, 250))) == 0.0)
+a.save(T / "a.png"); b.save(T / "b.png")
+fv.triptych(T / "a.png", T / "b.png", T / "c.png")
+im = Image.open(T / "c.png")
+check("triptych: three panels side by side", im.size == (200 * 3 + 16, 100 + 22))
+check("triptych: diff panel marks the change red", im.getpixel((2 * 208 + 5, 22 + 5)) == (230, 30, 30))
+
+# --- candidate commit check on a throwaway repo
+repo = T / "repo"
+subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+def commit(msg):
+    (repo / "f").write_text(msg)
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-qm", msg], check=True)
+    return subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+old = commit("base")
+feat = commit("feature")
+fv.REPO = repo
+check("in candidate: feature commit present", fv.feature_in_candidate({"origin": {"commits": [feat[:9]]}}, feat))
+check("in candidate: older candidate lacks it", not fv.feature_in_candidate({"origin": {"commits": [feat[:9]]}}, old))
+check("in candidate: no commits listed counts as present", fv.feature_in_candidate({"origin": {}}, old))
+
+check("version: hoon tag", fv.resolve_version("v0.11.0-hoon.1", "", "abc") == "0.11.0-hoon.1")
+check("version: branch falls back to a non-release string", fv.resolve_version("hoon/x", "", "abc123456") == "0.0.0-fv.abc123456")
+sys.exit(1 if failed else 0)
+PY
+[ "$fail" = 0 ] && echo "fork-verify.test: all passed" || { echo "fork-verify.test: FAILED"; exit 1; }

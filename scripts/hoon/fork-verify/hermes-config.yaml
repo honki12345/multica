@@ -1,0 +1,28 @@
+# Hermes config for the fork-verify test owner (HERMES_HOME in a temp dir).
+# The model goes through the local Abbado proxy; its key comes from the
+# environment (--hermes-env), never from this file.
+model:
+  default: __MODEL__
+  provider: custom:abbado
+  base_url: http://127.0.0.1:30779/v1
+  api_mode: chat_completions
+providers:
+  abbado:
+    api: http://127.0.0.1:30779/v1
+    api_key: ${ABBADO_HERMES_LOCAL_KEY}
+    transport: openai_chat
+    discover_models: false
+    models: [__MODEL__]
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+approvals:
+  mode: "off"
+telemetry:
+  enabled: false
+updates:
+  check: false
+gateway:
+  unmanaged_idle_exit_seconds: 0
+terminal:
+  env_passthrough: [MULTICA_RESIDENT_OWNER, MULTICA_CLI_PATH, MULTICA_SERVER_URL]
