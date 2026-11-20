@@ -432,6 +432,14 @@
         "label": "Next sent message or wakeup",
         "description": "Scroll the open chat to the next message you sent or the next wakeup, then to the latest reply."
       },
+      "listPreviousItem": {
+        "label": "Previous chat or notification",
+        "description": "Open the chat above the open one in the chat list, or the notification above in the inbox. Works while typing."
+      },
+      "listNextItem": {
+        "label": "Next chat or notification",
+        "description": "Open the chat below the open one in the chat list, or the notification below in the inbox. Works while typing."
+      },
       "findInIssue": {
         "label": "Find in issue",
         "description": "Search within the open issue detail."

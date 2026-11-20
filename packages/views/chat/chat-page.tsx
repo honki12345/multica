@@ -1,5 +1,7 @@
 "use client";
 
+// Modified by honki12345, 2026: the chat list takes the list-step keys on this page (CALA-328).
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Bot, MessageSquare, Plus } from "@multica/ui/icons";
 import { toast } from "sonner";
@@ -272,6 +274,7 @@ export function ChatPage() {
         activeSessionId={c.activeSessionId}
         onSelectSession={handleSelect}
         onArchive={handleArchive}
+        stepShortcut={isCurrentChatRoute}
       />
     </div>
   );

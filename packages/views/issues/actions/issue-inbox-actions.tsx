@@ -1,6 +1,8 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef, useState } from "react";
+// Modified by honki12345, 2026: the list-step keys open the notification above / below in the Inbox section (CALA-328).
+
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlarmClock, Archive, ChevronDown, CircleCheck } from "@multica/ui/icons";
 import { IconButton } from "@multica/ui/components/common/icon-button";
@@ -9,7 +11,9 @@ import { useWorkspaceId } from "@multica/core/hooks";
 import { useModalStore } from "@multica/core/modals";
 import type { InboxUnsubscribeScope } from "@multica/core/inbox/mutations";
 import { findSnoozedInboxIssue, snoozedInboxOptions } from "@multica/core/inbox/queries";
-import { nextInboxRow } from "@multica/core/inbox/open-row";
+import { inboxRowKey, nextInboxRow } from "@multica/core/inbox/open-row";
+import { useInboxSelectionStore } from "@multica/core/inbox/selection-store";
+import { useWorkspacePaths } from "@multica/core/paths";
 import {
   getShortcut,
   isEditableShortcutTarget,
@@ -18,6 +22,8 @@ import {
 } from "@multica/core/shortcuts";
 import { isImeComposing } from "@multica/core/utils";
 import { ActionShortcutKeycaps } from "../../common/shortcut-keycaps";
+import { useListStepShortcut } from "../../common/use-list-step-shortcut";
+import { inboxRowHref } from "../../inbox/components/inbox-display";
 import { InboxKeptActions, InboxNextButton, useKeptInboxRowText } from "../../inbox/components/inbox-kept-actions";
 import { InboxSnoozeMenu } from "../../inbox/components/inbox-snooze-menu";
 import { formatSnoozeTime } from "../../inbox/components/inbox-snooze-time";
@@ -31,6 +37,7 @@ import {
   useLeaveInboxRow,
   useRestoreInbox,
 } from "../../inbox/components/use-leave-inbox-row";
+import { useNavigation } from "../../navigation";
 import { useLocale, useT } from "../../i18n";
 
 /**
@@ -76,6 +83,27 @@ export function IssueInboxActions({
   const snoozed = item ? undefined : findSnoozedInboxIssue(snoozedList, issueId);
   const keptText = useKeptInboxRowText(wsId);
   const [snoozeOpen, setSnoozeOpen] = useState(false);
+
+  // The list-step keys open the row above / below in the section, as a click
+  // on it would, without taking this one out of the list.
+  const p = useWorkspacePaths();
+  const { push } = useNavigation();
+  const rememberSidebarIssue = useInboxSelectionStore((s) => s.rememberSidebarIssue);
+  const requestLanding = useInboxSelectionStore((s) => s.requestLanding);
+  const rowKeys = useMemo(() => rows.map(inboxRowKey), [rows]);
+  useListStepShortcut({
+    scope: "work-inbox",
+    enabled: !!row,
+    keys: rowKeys,
+    openKey: issueId,
+    onStep: (at) => {
+      const target = rows[at];
+      if (!target) return;
+      rememberSidebarIssue(wsId, target.issue_id ?? null);
+      if (target.issue_id) requestLanding(target.issue_id);
+      push(inboxRowHref(p, target));
+    },
+  });
 
   const archiveItem = () => {
     if (!item) return;

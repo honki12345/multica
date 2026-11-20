@@ -1,4 +1,4 @@
-// Modified by honki12345, 2026: add chat previous/next sent-message shortcuts (CALA-281).
+// Modified by honki12345, 2026: add chat previous/next sent-message shortcuts (CALA-281) and chat/inbox list step shortcuts (CALA-328).
 import {
   getShortcutPlatform,
   getShortcutRuntime,
@@ -15,6 +15,8 @@ export type ShortcutActionId =
   | "newChat"
   | "chatPreviousPrompt"
   | "chatNextPrompt"
+  | "listPreviousItem"
+  | "listNextItem"
   | "findInIssue"
   | "archiveInboxItem"
   | "unsubscribeArchiveInboxItem"
@@ -125,6 +127,23 @@ export const SHORTCUT_ACTIONS: readonly ShortcutActionDefinition[] = [
     defaultShortcut: createShortcutChord("]", { primary: true, alt: true }),
     allowInEditable: true,
   },
+  // Open the chat or notification above / below the open one in its list.
+  // Shift on the history brackets, as editors and macOS apps step between
+  // tabs. On web, macOS browsers keep this chord for their own tab switching.
+  // `allowInEditable` because the caret usually sits in the chat composer or
+  // a comment box.
+  {
+    id: "listPreviousItem",
+    category: "general",
+    defaultShortcut: createShortcutChord("[", { primary: true, shift: true }),
+    allowInEditable: true,
+  },
+  {
+    id: "listNextItem",
+    category: "general",
+    defaultShortcut: createShortcutChord("]", { primary: true, shift: true }),
+    allowInEditable: true,
+  },
   { id: "findInIssue", category: "general", defaultShortcut: primary("F"), allowInEditable: true },
   {
     id: "archiveInboxItem",
@@ -229,6 +248,17 @@ function isComposedOptionKey(key: string): boolean {
   return key === "Dead" || (key.length === 1 && key.charCodeAt(0) > 0x7e);
 }
 
+// Shift turns the bracket keys into braces, so ⇧⌘[ arrives as "{". Those
+// chords are named by the bracket, which the Shift modifier already records.
+const SHIFTED_BRACKETS: Record<string, string> = {
+  BracketLeft: "{",
+  BracketRight: "}",
+};
+
+function isShiftedBracket(event: KeyboardEvent): boolean {
+  return event.shiftKey && typeof event.code === "string" && SHIFTED_BRACKETS[event.code] === event.key;
+}
+
 function eventKey(
   event: KeyboardEvent,
   platform: ShortcutPlatform,
@@ -245,6 +275,7 @@ function eventKey(
   ) {
     return keyFromCode(event.code);
   }
+  if (physicalOption && isShiftedBracket(event)) return keyFromCode(event.code);
   if (NON_ACTIONABLE_KEYS.has(event.key)) return null;
   const key = KEY_LABELS[event.key] ?? event.key;
   if (key.length === 1 && /[a-z]/i.test(key)) return key.toUpperCase();

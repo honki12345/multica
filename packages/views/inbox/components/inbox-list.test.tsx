@@ -1,6 +1,8 @@
+// Modified by honki12345, 2026: cover the list-step keys (CALA-328).
 import { forwardRef, useImperativeHandle } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { configureShortcutPlatform } from "@multica/core/shortcuts";
 import type { InboxItem } from "@multica/core/types";
 import { InboxList } from "./inbox-list";
 
@@ -197,6 +199,92 @@ describe("InboxList keyboard navigation", () => {
 
     expect(onSelect).toHaveBeenCalledWith(items[1]);
     expect(document.activeElement).toBe(scroller);
+  });
+});
+
+
+describe("InboxList list-step keys (CALA-328)", () => {
+  /** The Inbox page's list: the selection follows every pick. */
+  function renderStepping(initial: string, { stepShortcut = true } = {}) {
+    const onSelect = vi.fn();
+    const ui = (selectedKey: string) => (
+      <InboxList
+        items={items}
+        view="inbox"
+        selectedKey={selectedKey}
+        onSelect={(picked: InboxItem) => {
+          onSelect(picked);
+          view.rerender(ui(picked.issue_id ?? picked.id));
+        }}
+        onAction={vi.fn()}
+        stepShortcut={stepShortcut}
+      />
+    );
+    const view = render(ui(initial));
+    const picked = () => onSelect.mock.calls.map(([picked]) => (picked as InboxItem).id);
+    return { picked };
+  }
+
+  function step(target: Element | Document, key: "[" | "]") {
+    return fireEvent.keyDown(target, {
+      key: key === "[" ? "{" : "}",
+      code: key === "[" ? "BracketLeft" : "BracketRight",
+      metaKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+  }
+
+  beforeEach(() => configureShortcutPlatform("macos"));
+  afterEach(() => {
+    // A press's cursor outlives the list for a second; a click ends it.
+    fireEvent.pointerDown(document);
+    configureShortcutPlatform(null);
+  });
+
+  it("moves the selection while focus is in the detail, and scrolls the row into view", () => {
+    const { picked } = renderStepping("issue-a");
+    const comment = document.createElement("div");
+    comment.contentEditable = "true";
+    // jsdom only focuses an element that has a tab stop.
+    comment.tabIndex = 0;
+    document.body.appendChild(comment);
+    comment.focus();
+    try {
+      step(comment, "]");
+      step(comment, "]");
+      step(comment, "[");
+      expect(picked()).toEqual(["b", "c", "b"]);
+      expect(scrollIntoView).toHaveBeenLastCalledWith({ index: 1 });
+      expect(document.activeElement).toBe(comment);
+    } finally {
+      comment.remove();
+    }
+  });
+
+  it("stops at either end and still claims the keys there", () => {
+    const { picked } = renderStepping("issue-c");
+    expect(step(document.body, "]")).toBe(false);
+    expect(picked()).toEqual([]);
+  });
+
+  it("counts every press of a burst, even before the selection has caught up", () => {
+    // The page applies a pick a render or more later; a list that has not
+    // seen the first pick yet must step on from it, not from the old row.
+    const onSelect = vi.fn();
+    render(
+      <InboxList items={items} view="inbox" selectedKey="issue-a" onSelect={onSelect} onAction={vi.fn()} stepShortcut />,
+    );
+    step(document.body, "]");
+    step(document.body, "]");
+    expect(onSelect.mock.calls.map(([picked]) => (picked as InboxItem).id)).toEqual(["b", "c"]);
+  });
+
+  it("stays off unless the page turns it on", () => {
+    const { picked } = renderStepping("issue-a", { stepShortcut: false });
+    expect(step(document.body, "]")).toBe(true);
+    expect(picked()).toEqual([]);
   });
 });
 

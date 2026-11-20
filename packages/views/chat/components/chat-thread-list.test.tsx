@@ -1,10 +1,11 @@
-// Modified by honki12345, 2026: cover dragging pinned chats into order (CALA-316).
+// Modified by honki12345, 2026: cover dragging pinned chats into order (CALA-316) and the list-step keys (CALA-328).
 
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VirtuosoMockContext } from "react-virtuoso";
 import { I18nProvider } from "@multica/core/i18n/react";
+import { configureShortcutPlatform } from "@multica/core/shortcuts";
 import type { Agent, ChatSession } from "@multica/core/types";
 import enChat from "../../locales/en/chat.json";
 import enIssues from "../../locales/en/issues.json";
@@ -605,5 +606,138 @@ describe("ChatThreadList pinned reorder", () => {
     } finally {
       rect.mockRestore();
     }
+  });
+});
+
+describe("ChatThreadList list-step keys (CALA-328)", () => {
+  // Pinned p1, p2 (newest pin first), then unpinned by activity u1, u2.
+  const stepSessions: ChatSession[] = [
+    makeSession({ id: "u2", updated_at: "2026-11-18T00:00:00Z" }),
+    makeSession({ id: "p2", pinned: true, pinned_at: "2026-11-02T00:00:00Z" }),
+    makeSession({ id: "u1", updated_at: "2026-11-19T00:00:00Z" }),
+    makeSession({ id: "p1", pinned: true, pinned_at: "2026-11-03T00:00:00Z" }),
+    makeSession({ id: "a1", status: "archived", updated_at: "2026-11-17T00:00:00Z" }),
+    makeSession({ id: "a2", status: "archived", updated_at: "2026-11-16T00:00:00Z" }),
+  ];
+
+  /** The Chat page's list: the open chat follows every selection. */
+  function renderStepping(initial: string | null, { stepShortcut = true } = {}) {
+    const onSelectSession = vi.fn();
+    const ui = (active: string | null) => (
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 560, itemHeight: 56 }}>
+        <I18nProvider locale="en" resources={TEST_RESOURCES}>
+          <ChatThreadList
+            sessions={stepSessions}
+            agents={[agent]}
+            activeSessionId={active}
+            onSelectSession={(session) => {
+              onSelectSession(session);
+              view.rerender(ui(session.id));
+            }}
+            onArchive={vi.fn()}
+            stepShortcut={stepShortcut}
+          />
+        </I18nProvider>
+      </VirtuosoMockContext.Provider>
+    );
+    const view = render(ui(initial));
+    const opened = () => onSelectSession.mock.calls.map(([session]) => (session as ChatSession).id);
+    return { onSelectSession, opened };
+  }
+
+  function step(target: Element | Document, key: "[" | "]") {
+    return fireEvent.keyDown(target, {
+      key: key === "[" ? "{" : "}",
+      code: key === "[" ? "BracketLeft" : "BracketRight",
+      metaKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+  }
+
+  beforeEach(() => configureShortcutPlatform("macos"));
+  afterEach(() => {
+    // A press's cursor outlives the list for a second; a click ends it.
+    fireEvent.pointerDown(document);
+    configureShortcutPlatform(null);
+  });
+
+  it("opens the chat below and above in the order the list shows, across the pinned boundary", () => {
+    const { opened } = renderStepping("p1");
+    step(document.body, "]");
+    step(document.body, "]");
+    step(document.body, "]");
+    step(document.body, "[");
+    expect(opened()).toEqual(["p2", "u1", "u2", "u1"]);
+  });
+
+  it("stops at either end and still claims the keys there", () => {
+    const { opened } = renderStepping("u2");
+    expect(step(document.body, "]")).toBe(false);
+    expect(opened()).toEqual([]);
+    step(document.body, "[");
+    step(document.body, "[");
+    step(document.body, "[");
+    expect(step(document.body, "[")).toBe(false);
+    expect(opened()).toEqual(["u1", "p2", "p1"]);
+  });
+
+  it("steps within the archive while the archived view is open", () => {
+    const { opened } = renderStepping("a1");
+    fireEvent.click(screen.getByRole("button", { name: /Archived/ }));
+    step(document.body, "]");
+    step(document.body, "]");
+    expect(opened()).toEqual(["a2"]);
+  });
+
+  it("enters the list at the top or the bottom when the open chat is not in it", () => {
+    const down = renderStepping(null);
+    step(document.body, "]");
+    expect(down.opened()).toEqual(["p1"]);
+    cleanup();
+    const up = renderStepping("missing");
+    step(document.body, "[");
+    expect(up.opened()).toEqual(["u2"]);
+  });
+
+  it("works while the caret is in a text field, which keeps focus", () => {
+    const { opened } = renderStepping("p1");
+    const composer = document.createElement("textarea");
+    document.body.appendChild(composer);
+    composer.focus();
+    try {
+      step(composer, "]");
+      expect(opened()).toEqual(["p2"]);
+      expect(document.activeElement).toBe(composer);
+    } finally {
+      composer.remove();
+    }
+  });
+
+  it("leaves the keys to the floating chat window and to a list that does not take them", () => {
+    const { opened } = renderStepping("p1");
+    const floating = document.createElement("div");
+    floating.setAttribute("data-mc", "chat-window");
+    const input = document.createElement("textarea");
+    floating.appendChild(input);
+    document.body.appendChild(floating);
+    try {
+      expect(step(input, "]")).toBe(true);
+      expect(opened()).toEqual([]);
+    } finally {
+      floating.remove();
+    }
+    cleanup();
+    const preview = renderStepping("p1", { stepShortcut: false });
+    expect(step(document.body, "]")).toBe(true);
+    expect(preview.opened()).toEqual([]);
+  });
+
+  it("leaves Go back / Go forward and the sent-message keys alone", () => {
+    const { opened } = renderStepping("p1");
+    fireEvent.keyDown(document.body, { key: "]", code: "BracketRight", metaKey: true });
+    fireEvent.keyDown(document.body, { key: "\u2018", code: "BracketRight", metaKey: true, altKey: true });
+    expect(opened()).toEqual([]);
   });
 });

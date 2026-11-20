@@ -1,5 +1,7 @@
 "use client";
 
+// Modified by honki12345, 2026: the notification list takes the list-step keys on this page (CALA-328).
+
 import {
   useState,
   useEffect,
@@ -138,7 +140,7 @@ export function InboxPage() {
   const showAutopilotQuotaRecoveryPrompt = useLimitRecoveryPrompt(
     "autopilot_quota",
   );
-  const { searchParams, replace } = useNavigation();
+  const { pathname, searchParams, replace } = useNavigation();
   const urlIssue = searchParams.get("issue") ?? "";
   const urlView: InboxView =
     searchParams.get("view") === ARCHIVED_VIEW_PARAM ? "archived" : "inbox";
@@ -860,6 +862,7 @@ export function InboxPage() {
         loadMoreError={archiveQuery.isFetchNextPageError}
         onSelect={handleSelect}
         onAction={isArchivedView ? handleUnarchive : handleArchive}
+        stepShortcut={pathname === wsPaths.inbox()}
         emptyLabel={
           hasActiveFilters && visibleItems.length === 0
             ? t(($) => $.filters.empty)

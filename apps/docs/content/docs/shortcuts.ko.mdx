@@ -3,7 +3,7 @@ title: 검색, 단축키, 환경설정
 description: ⌘K로 검색하고 명령을 실행하며, 키보드 단축키를 확인하고 바꾸고, 태스크 안에서 텍스트를 찾고, 테마·언어·시간대 같은 개인 설정을 조정합니다.
 ---
 
-{/* Modified by honki12345, 2026: document the previous/next sent-message chat shortcuts (CALA-281), wakeup stops (CALA-318). */}
+{/* Modified by honki12345, 2026: document the previous/next sent-message chat shortcuts (CALA-281), wakeup stops (CALA-318), the chat/inbox list step keys (CALA-328). */}
 
 import { Callout } from "fumadocs-ui/components/callout";
 import { Step, Steps } from "fumadocs-ui/components/steps";
@@ -39,6 +39,8 @@ import { Step, Steps } from "fumadocs-ui/components/steps";
 | Multica에 묻기 | `⇧⌘J` | `Ctrl+Shift+J` | 플로팅 채팅 창에서 새 채팅을 시작합니다. |
 | 이전에 보낸 메시지·웨이크업 | `⌥⌘[` | `Ctrl+Alt+[` | 채팅에서 지금 보이는 곳보다 앞서 내가 보낸 메시지나 웨이크업으로 에이전트가 돌아온 지점으로 스크롤합니다. 에이전트 답변은 건너뜁니다. 입력 중에도 동작합니다. |
 | 다음에 보낸 메시지·웨이크업 | `⌥⌘]` | `Ctrl+Alt+]` | 다음에 내가 보낸 메시지나 웨이크업으로 에이전트가 돌아온 지점으로, 마지막이면 최신 답변으로 스크롤합니다. 커서가 플로팅 채팅 창 안에 있으면 그 창을, 아니면 페이지의 채팅을 움직입니다. |
+| 위 채팅·알림 | `⇧⌘[` | `Ctrl+Shift+[` | 채팅 페이지 목록에서 열린 채팅 바로 위 채팅을, 인박스에서는 바로 위 알림을 엽니다. 입력 중에도 동작하고 커서는 제자리에 있습니다. macOS의 Chrome·Safari에서는 브라우저가 탭 전환에 이 키를 쓰므로 데스크톱 앱을 쓰거나 키를 바꾸세요. |
+| 아래 채팅·알림 | `⇧⌘]` | `Ctrl+Shift+]` | 바로 아래 채팅이나 알림을 엽니다. 목록 끝에서는 멈춥니다. |
 | 태스크에서 찾기 | `⌘F` | `Ctrl+F` | 아래 설명 참고. |
 | 알림 보관 | `E` | `E` | 인박스에서 연 태스크에서 그 알림을 보관하고 다음 알림을 엽니다. 보관된 알림을 보는 중에는 열어 둔 알림의 보관을 해제합니다. [인박스](/inbox#알림-처리)를 참고하세요. |
 | 알림 미루기 | `H` | `H` | 인박스에서 연 태스크를 미루고 다음 알림을 엽니다. 미뤄둔 태스크에서는 지금 되돌립니다. |

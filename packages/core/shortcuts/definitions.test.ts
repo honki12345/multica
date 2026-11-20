@@ -1,4 +1,4 @@
-// Modified by honki12345, 2026: cover the chat previous/next sent-message defaults (CALA-281).
+// Modified by honki12345, 2026: cover the chat previous/next sent-message defaults (CALA-281) and the chat/inbox list step keys (CALA-328).
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createShortcutChord,
@@ -141,6 +141,38 @@ describe("keyboard shortcut definitions", () => {
     ).toBe(true);
     // Go back / Go forward keep the chord without Alt.
     expect(shortcutMatchesEvent(previous, keyEvent("[", { code: "BracketLeft", metaKey: true }), "macos")).toBe(false);
+  });
+
+  it("steps the chat and inbox lists with Mod+Shift+[ and ] everywhere, composer included", () => {
+    const previous = createShortcutChord("[", { primary: true, shift: true });
+    const next = createShortcutChord("]", { primary: true, shift: true });
+    expect(SHORTCUT_ACTION_BY_ID.listPreviousItem.defaultShortcut).toEqual(previous);
+    expect(SHORTCUT_ACTION_BY_ID.listNextItem.defaultShortcut).toEqual(next);
+    for (const id of ["listPreviousItem", "listNextItem"] as const) {
+      expect(SHORTCUT_ACTION_BY_ID[id].allowInEditable).toBe(true);
+      for (const platform of ["macos", "windows", "linux"] as const) {
+        for (const runtime of ["web", "desktop"] as const) {
+          expect(
+            isShortcutAllowedForAction(id, SHORTCUT_ACTION_BY_ID[id].defaultShortcut!, platform, runtime),
+            `${id} default must stay assignable on ${platform}/${runtime}`,
+          ).toBe(true);
+        }
+      }
+    }
+    // Shift turns the brackets into braces; the chord is still the bracket key.
+    const shiftedLeft = keyEvent("{", { code: "BracketLeft", metaKey: true, shiftKey: true });
+    expect(shortcutFromEvent(shiftedLeft, "macos")).toEqual(previous);
+    expect(shortcutMatchesEvent(previous, shiftedLeft, "macos")).toBe(true);
+    expect(
+      shortcutMatchesEvent(next, keyEvent("}", { code: "BracketRight", ctrlKey: true, shiftKey: true }), "windows"),
+    ).toBe(true);
+    // Go back / Go forward keep the chord without Shift, in both directions.
+    expect(shortcutMatchesEvent(previous, keyEvent("[", { code: "BracketLeft", metaKey: true }), "macos")).toBe(false);
+    expect(shortcutMatchesEvent(SHORTCUT_ACTION_BY_ID.goBack.defaultShortcut, shiftedLeft, "macos")).toBe(false);
+    // A chord recorded under the brace before keeps firing.
+    expect(
+      shortcutMatchesEvent(createShortcutChord("{", { primary: true, shift: true }), shiftedLeft, "macos"),
+    ).toBe(true);
   });
 
   it("keeps the plain inbox archive key out of editable controls", () => {

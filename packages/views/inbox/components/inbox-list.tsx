@@ -1,8 +1,11 @@
 "use client";
 
+// Modified by honki12345, 2026: the list-step keys move the selection from anywhere on the page (CALA-328).
+
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -10,11 +13,13 @@ import {
 } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { isEditableShortcutTarget } from "@multica/core/shortcuts";
+import { inboxRowKey } from "@multica/core/inbox/open-row";
 import { isImeComposing } from "@multica/core/utils";
 import type { InboxItem } from "@multica/core/types";
 import type { InboxView } from "./inbox-view";
 import { InboxListItem } from "./inbox-list-item";
 import { VirtuosoSeed, VIRTUOSO_SEED_COUNT } from "../../common/virtuoso-seed";
+import { useListStepShortcut } from "../../common/use-list-step-shortcut";
 import { useRestoredScrollOffset, useRestoredScrollRef } from "../../platform";
 import { useT } from "../../i18n";
 
@@ -57,6 +62,7 @@ export function InboxList({
   emptyLabel,
   emptyAction,
   scrollRestoration = true,
+  stepShortcut = false,
 }: {
   items: InboxItem[];
   view: InboxView;
@@ -73,6 +79,12 @@ export function InboxList({
    * nor be captured as that route's `list` scroll offset.
    */
   scrollRestoration?: boolean;
+  /**
+   * Whether the list-step keys (`listPreviousItem` / `listNextItem`) move the
+   * selection from anywhere on the page, the detail and its editors
+   * included, unlike the arrow keys, which only move it from the list.
+   */
+  stepShortcut?: boolean;
 }) {
   const { t } = useT("inbox");
   // Virtuoso's `customScrollParent` wants the actual HTMLElement, not a ref.
@@ -156,6 +168,20 @@ export function InboxList({
     virtuosoRef.current?.scrollIntoView({ index: nextIndex });
     onSelect(nextItem);
   };
+
+  const itemKeys = useMemo(() => items.map(inboxRowKey), [items]);
+  useListStepShortcut({
+    scope: "inbox",
+    enabled: stepShortcut,
+    keys: itemKeys,
+    openKey: selectedKey || null,
+    onStep: (index) => {
+      const item = items[index];
+      if (!item) return;
+      virtuosoRef.current?.scrollIntoView({ index });
+      onSelect(item);
+    },
+  });
 
   const loadMore = useCallback(() => {
     if (!loadingMore && !loadMoreError) onLoadMore?.();
