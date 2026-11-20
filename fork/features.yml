@@ -616,6 +616,8 @@ features:
         name: puts the message back at the top when a row above it grows after it lands
       - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
         name: lets Jump to latest, pressed from the keyboard, take the list
+      - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
+        name: aims again when the message ends up outside the rendered rows
       - vitest: packages/views/chat/components/prompt-navigation.test.ts
         name: does nothing when no row is measured, instead of jumping to either end
       - vitest: packages/core/shortcuts/definitions.test.ts

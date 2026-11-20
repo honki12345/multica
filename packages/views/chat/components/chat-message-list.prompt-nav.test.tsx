@@ -250,6 +250,26 @@ describe("ChatMessageList previous/next sent message", () => {
     ]);
   });
 
+  it("aims again when the message ends up outside the rendered rows", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "uauaua") }]);
+    const list = lists[0]!;
+    layOut(list, { topRow: 4 });
+    press(document.body, "[");
+    layOut(list, { topRow: 2 });
+    frames();
+
+    // An older page lands above and the list settles with the message
+    // scrolled out of the rows Virtuoso keeps rendered.
+    layOut(list, { topRow: 0 });
+    list.querySelector('[data-item-index="1002"]')!.removeAttribute("data-item-index");
+    frames(3);
+
+    expect(promptMoves("p0")).toEqual([
+      { index: 2, align: "start" },
+      { index: 2, align: "start" },
+    ]);
+  });
+
   it("aims again when the jump stops short of the message", () => {
     const { lists } = renderChats([{ messages: conversation("p", "uauaua") }]);
     const list = lists[0]!;

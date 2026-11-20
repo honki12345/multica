@@ -134,24 +134,29 @@ export function usePromptNavigation({
       cursor = null;
       stopHold();
     };
-    // For a second after the jump, re-aims whenever the message has come to
-    // rest anywhere but the top: Virtuoso stopped on an estimate, or a row
-    // above grew. Re-aiming while it still moves would fight Virtuoso's own
-    // correction.
+    // For a second after the jump, re-aims whenever the list has come to rest
+    // without the message at the top: Virtuoso stopped on an estimate, a row
+    // above grew, or an older page landed and the message is no longer
+    // rendered. Re-aiming while the list still moves would fight Virtuoso's
+    // own correction.
     const hold = (row: number) => {
       stopHold();
       let frames = 0;
-      let lastTop: number | null = null;
+      let last: { top: number | null; scroll: number } | null = null;
       const tick = () => {
         holdFrame = 0;
         if (!scrollEl.isConnected || ++frames > HOLD_FRAMES) return;
-        const top = rowTop(scrollEl, row);
-        const resting = top !== null && lastTop !== null && Math.abs(top - lastTop) <= HOLD_SLACK;
-        if (resting && Math.abs(top) > HOLD_SLACK) {
+        const now = { top: rowTop(scrollEl, row), scroll: scrollEl.scrollTop };
+        const resting =
+          last !== null &&
+          Math.abs(now.scroll - last.scroll) <= HOLD_SLACK &&
+          (now.top === null) === (last.top === null) &&
+          (now.top === null || Math.abs(now.top - last.top!) <= HOLD_SLACK);
+        if (resting && (now.top === null || Math.abs(now.top) > HOLD_SLACK)) {
           latest.current.scrollToRow(row - latest.current.firstIndex);
-          lastTop = null;
+          last = null;
         } else {
-          lastTop = top;
+          last = now;
         }
         holdFrame = requestAnimationFrame(tick);
       };
