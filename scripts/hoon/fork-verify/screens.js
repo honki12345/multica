@@ -21,7 +21,14 @@ async page => {
     if (p === '/api/chat/sessions') return C.fixture.sessions;
     if (p === '/api/chat/pending-tasks') return C.fixture.pending;
     if (p === '/api/chat/pending-tasks/has-any') return { has_pending: C.fixture.pending.tasks.length > 0 };
-    if (/^\/api\/chat\/sessions\/[^/]+\/messages(\/page)?$/.test(p)) return p.endsWith('/page') ? { messages: [], has_more: false } : [];
+    const sm = /^\/api\/chat\/sessions\/([^/]+)\/(messages(?:\/page)?|pending-task|draft-restores|wakeups)$/.exec(p);
+    if (sm) {
+      const msgs = C.fixture.messages[sm[1]] || [];
+      if (sm[2] === 'messages') return msgs;
+      if (sm[2] === 'messages/page') return { messages: msgs, limit: 50, has_more: false, next_cursor: null };
+      if (!msgs.length) return null;
+      return sm[2] === 'pending-task' ? {} : sm[2] === 'draft-restores' ? { restores: [] } : [];
+    }
     if (/^\/api\/chat\/sessions\/[^/]+$/.test(p)) {
       const id = p.split('/').pop();
       return C.fixture.sessions.find((s) => s.id === id) || null;
@@ -138,6 +145,58 @@ async page => {
     return r;
   }
 
+  // Mod+Alt+[ / ] in an open chat: press back once per sent message, then forward
+  // back to the newest one, and read the top-most visible row after every press.
+  async function promptNavProbe(p, cfg) {
+    const r = { list: (await p.$$(cfg.listSelector)).length, rows: 0 };
+    const list = await p.$(cfg.listSelector);
+    if (!list) return r;
+    const read = () => list.evaluate((el) => {
+      const top = el.getBoundingClientRect().top;
+      let best = null;
+      for (const row of el.querySelectorAll('[data-item-index]')) {
+        const b = row.getBoundingClientRect();
+        if (b.bottom <= top + 2) continue;
+        if (!best || b.top < best.b.top) best = { row, b };
+      }
+      if (!best) return null;
+      const msg = best.row.querySelector('[data-mc="chat-message"]');
+      const kind = best.row.querySelector('[data-slot="chat-wakeup-divider"]') ? 'divider' : msg && msg.getAttribute('data-role') === 'user' ? 'user' : 'reply';
+      const m = /fv-prompt-\d+/.exec(best.row.textContent || '');
+      return { kind, token: kind === 'divider' ? 'divider' : m ? m[0] : null, index: Number(best.row.getAttribute('data-item-index')),
+        offset: Math.round(best.b.top - top), scroll: Math.round(el.scrollTop) };
+    });
+    // Hidden until Virtuoso has landed on the newest message; the keys are ignored before that.
+    for (let i = 0; i < 100 && await list.evaluate((el) => el.classList.contains('invisible')); i++) await p.waitForTimeout(100);
+    r.rows = (await list.$$('[data-mc="chat-message"]')).length;
+    const composer = await p.$(cfg.composerSelector);
+    if (composer) {
+      try { await composer.click({ timeout: 1500 }); } catch (e) { await composer.focus(); }
+    }
+    const focused = () => composer ? composer.evaluate((el) => el === document.activeElement || el.contains(document.activeElement)) : false;
+    r.composerFocused = await focused();
+    // The jump lands within a frame or two, then holds the row at the top for about a second.
+    const mod = (await p.evaluate(() => navigator.platform)).toLowerCase().includes('mac') ? 'Meta' : 'Control';
+    const press = async (key) => {
+      await p.keyboard.press(`${mod}+Alt+${key}`);
+      await p.waitForTimeout(250);
+      let last = null;
+      for (let t0 = Date.now(); Date.now() - t0 < 3000; await p.waitForTimeout(120)) {
+        const s = await read();
+        if (s && last && s.scroll === last.scroll && Math.abs(s.offset) <= 3) return s;
+        last = s;
+      }
+      return read();
+    };
+    const row = (s) => s ? { kind: s.kind, token: s.token, index: s.index, offset: s.offset } : { kind: null, token: null, index: null, offset: null };
+    r.back = [];
+    for (let i = 0; i < cfg.expect.length; i++) r.back.push(row(await press('[')));
+    r.forward = [];
+    for (let i = 1; i < cfg.expect.length; i++) r.forward.push(row(await press(']')));
+    r.focusKept = await focused();
+    return r;
+  }
+
   const shots = [];
   for (const shot of C.shots) {
     const out = { id: shot.id, width: shot.width, path: shot.path, sides: {} };
@@ -152,6 +211,10 @@ async page => {
         res.selectors = await selectorCounts(p, shot.selectors || []);
         res.region = await rectOf(p, C.regionSelector);
         await p.screenshot({ path: `${C.outDir}/${shot.id}.${side.name}.png` });
+        if (shot.probe === 'prompt-nav') {
+          res.probe = await promptNavProbe(p, shot.promptNav);
+          await p.screenshot({ path: `${C.outDir}/${shot.id}-open.${side.name}.png` });
+        }
         if (shot.probe === 'chat-bar') {
           res.probe = await chatBarProbe(p, shot.interact);
           if (shot.interact && res.probe.windowOpen) {
