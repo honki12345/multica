@@ -1,6 +1,6 @@
 "use client";
 
-// Modified by honki12345, 2026: drag pinned chats into order, saved on the server (CALA-316).
+// Modified by honki12345, 2026: drag pinned chats into order, saved on the server (CALA-316), rows for the focus region keys (CALA-332).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -552,6 +552,8 @@ export function ChatThreadList({
         style={drag.style}
         aria-current={isCurrent ? "true" : undefined}
         aria-describedby={drag.describedBy}
+        data-focus-row=""
+        {...(isCurrent ? { "data-focus-region-target": "" } : {})}
         tabIndex={0}
         onPointerDown={drag.onPointerDown}
         onClick={(e) => {

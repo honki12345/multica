@@ -1,5 +1,6 @@
 "use client";
 
+// Modified by honki12345, 2026: the floating window keeps its own focus regions (CALA-332).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
@@ -238,6 +239,7 @@ export function ChatWindow() {
   return (
     <motion.div
       data-mc="chat-window"
+      data-focus-scope=""
       ref={windowRef}
       inert={!isOpen}
       aria-hidden={!isOpen}

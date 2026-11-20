@@ -2,6 +2,8 @@
  * Multica shared base styles — imported by all apps
  * ============================================================================= */
 
+/* Modified by honki12345, 2026: ring on the focus region a key just moved into (CALA-332). */
+
 /* The UI locale is Chinese, Japanese or Korean. Han, kana and Hangul fill the
  * whole em square, so wrapped CJK text needs more leading than the Latin value
  * the type scale pairs with each size. Keyed to <html lang>, which both apps
@@ -523,4 +525,18 @@ html[data-sidebar-resizing="true"] {
 ::highlight(multica-find-active) {
   background-color: var(--find-match-active);
   color: var(--find-match-foreground);
+}
+
+/* The region (list, body, composer) a focus-region shortcut just moved
+ * keyboard focus into. Drawn inside the box so a full-bleed column is not
+ * clipped by its overflow, and only for keyboard moves: a click clears it. */
+[data-focus-flash] {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+  transition: outline-color 200ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-focus-flash] {
+    transition: none;
+  }
 }

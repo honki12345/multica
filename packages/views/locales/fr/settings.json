@@ -432,6 +432,26 @@
         "label": "Message envoyé ou réveil suivant",
         "description": "Faire défiler la discussion ouverte jusqu'au message suivant que vous avez envoyé ou au réveil suivant, puis jusqu'à la dernière réponse."
       },
+      "focusList": {
+        "label": "Aller à la liste",
+        "description": "Placer le focus clavier sur la liste à côté de la page : discussions, notifications de la boîte de réception ou barre latérale."
+      },
+      "focusBody": {
+        "label": "Aller au contenu",
+        "description": "Placer le focus clavier sur ce que vous lisez, pour que les flèches le fassent défiler."
+      },
+      "focusComposer": {
+        "label": "Aller au champ de message",
+        "description": "Placer le focus clavier sur le champ de message ou de commentaire."
+      },
+      "focusNextRegion": {
+        "label": "Volet suivant",
+        "description": "Placer le focus clavier sur l'élément suivant parmi la liste, le contenu et le champ de message."
+      },
+      "focusPreviousRegion": {
+        "label": "Volet précédent",
+        "description": "Placer le focus clavier sur l'élément précédent parmi la liste, le contenu et le champ de message."
+      },
       "findInIssue": {
         "label": "Rechercher dans la tâche",
         "description": "Rechercher dans la tâche ouverte."

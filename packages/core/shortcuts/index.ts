@@ -1,6 +1,8 @@
+// Modified by honki12345, 2026: export getShortcutDefault for runtime-specific defaults (CALA-332).
 export {
   SHORTCUT_ACTIONS,
   SHORTCUT_ACTION_BY_ID,
+  getShortcutDefault,
   createShortcutChord,
   shortcutFromEvent,
   shortcutChordEquals,

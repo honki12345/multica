@@ -1,5 +1,6 @@
 "use client";
 
+// Modified by honki12345, 2026: mark the comment composer as a keyboard focus region (CALA-332).
 import { useRef, useState, useEffect, useMemo } from "react";
 import { cn } from "@multica/ui/lib/utils";
 import { ContentEditor, type ContentEditorRef, useFileDropZone, FileDropOverlay, useLazyEditor, useUploadGate, useComposerSubmit } from "../../editor";
@@ -254,6 +255,7 @@ function CommentInput({ issueId, onSubmit, onAccepted, onEditAnnotation, annotat
     })}
     <div
       data-mc="comment-composer"
+      data-focus-region="composer"
       {...dropZoneProps}
       {...focusProps}
       className={cn(
@@ -286,6 +288,7 @@ function CommentInput({ issueId, onSubmit, onAccepted, onEditAnnotation, annotat
           !lazy.ready && "hidden",
         )}
         aria-busy={submitting || undefined}
+        data-focus-region-target={lazy.ready ? "" : undefined}
       >
         <ContentEditor
           ref={editorRef}
@@ -319,6 +322,8 @@ function CommentInput({ issueId, onSubmit, onAccepted, onEditAnnotation, annotat
       {!lazy.ready && (
         <div
           data-testid="comment-composer-shell"
+          data-focus-region-target=""
+          data-focus-activate=""
           role="button"
           tabIndex={0}
           aria-label={t(($) => $.comment.leave_comment_placeholder)}

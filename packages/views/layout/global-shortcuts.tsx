@@ -1,5 +1,6 @@
 "use client";
 
+// Modified by honki12345, 2026: mount the focus region keys (CALA-332).
 import { useEffect } from "react";
 import { useSidebar } from "@multica/ui/components/ui/sidebar";
 import {
@@ -19,6 +20,7 @@ import { isFloatingChatRouteSuppressed } from "../chat/floating-chat-visibility"
 import { useAppShell } from "./app-shell-context";
 import { openCreateIssueForPath } from "./global-actions";
 import { useNavigation } from "../navigation";
+import { useFocusRegionShortcuts } from "./use-focus-region-shortcuts";
 
 const GLOBAL_ACTIONS: readonly ShortcutActionId[] = [
   "openSearch",
@@ -48,6 +50,7 @@ export function shouldIgnoreGlobalShortcutEvent(event: KeyboardEvent): boolean {
 
 /** Executes configurable product-level shortcuts inside the dashboard shell. */
 export function GlobalShortcuts() {
+  useFocusRegionShortcuts();
   const { toggleSidebar } = useSidebar();
   const toggleNav = useAppShell()?.toggleNav ?? toggleSidebar;
   const navigation = useNavigation();
