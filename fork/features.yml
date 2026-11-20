@@ -371,7 +371,7 @@ features:
     cards: [CALA-300]
     origin:
       type: ours
-      commits: []
+      commits: ["165e7ed1b"]
     files:
       - packages/core/chat/store.ts
       - packages/core/chat/store.test.ts
