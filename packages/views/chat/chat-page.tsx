@@ -1,5 +1,7 @@
 "use client";
 
+// Modified by honki12345, 2026: picking a thread hands keyboard focus to the conversation (CALA-330).
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Bot, MessageSquare, Plus } from "@multica/ui/icons";
 import { toast } from "sonner";
@@ -151,10 +153,16 @@ export function ChatPage() {
     if (urlAgent) consumedAgentIntent.current = urlAgent;
   };
 
+  // Picking a thread means reading it: the conversation takes the keys from
+  // the row that was clicked, once it has landed (CALA-330). A deep link or a
+  // refresh leaves focus where it is.
+  const [conversationFocusRequested, setConversationFocusRequested] = useState(false);
+
   const handleSelect = (session: ChatSession) => {
     supersedeAgentIntent();
     c.handleSelectSession(session);
     setComposingNew(false);
+    setConversationFocusRequested(true);
   };
 
   // Single archive path for both entry points (thread-list row + conversation
@@ -360,6 +368,8 @@ export function ChatPage() {
           quickActionsPendingMessageId={quickActionsPending?.message_id ?? null}
           annotations={annotations}
           wakeups={wakeups}
+          focusRequested={conversationFocusRequested}
+          onFocusRequestApplied={() => setConversationFocusRequested(false)}
         />
       ) : (
         <EmptyState

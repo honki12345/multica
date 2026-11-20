@@ -1,6 +1,6 @@
 "use client";
 
-// Modified by honki12345, 2026: previous/next sent-message shortcuts (CALA-281), wakeup stops (CALA-318).
+// Modified by honki12345, 2026: previous/next sent-message shortcuts (CALA-281), wakeup stops (CALA-318), keyboard focus for scrolling (CALA-330).
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -31,6 +31,7 @@ import {
 } from "@multica/ui/icons";
 import { useScrollFade } from "@multica/ui/hooks/use-scroll-fade";
 import { isTaskMessageTaskId, taskMessagesOptions } from "@multica/core/chat/queries";
+import { isEditableShortcutTarget, isPortalLayerShortcutTarget } from "@multica/core/shortcuts";
 import { RichContent } from "../../rich-content";
 import { RichContentScrollRootProvider } from "../../rich-content/scroll-root";
 import { copyText } from "@multica/ui/lib/clipboard";
@@ -113,6 +114,14 @@ interface ChatMessageListProps {
   annotations?: Pick<ChatAnnotations, "cardRef" | "captureProps" | "popup" | "revealSourceRef">;
   /** The conversation's wakeups: dividers for wakeup turns, cards under the replies that made them. */
   wakeups?: ChatWakeup[];
+  /**
+   * The reader just picked this chat (a thread row, a history entry): once the
+   * list has landed, it takes keyboard focus so ↑/↓/PageUp/PageDown scroll the
+   * conversation instead of the list that opened it (CALA-330).
+   */
+  focusRequested?: boolean;
+  /** The request was handled — focus moved, or the caret was left in a text field. */
+  onFocusRequestApplied?: () => void;
 }
 
 // ─── Virtuoso chrome ─────────────────────────────────────────────────────
@@ -214,6 +223,8 @@ export function ChatMessageList({
   quickActionsPendingMessageId = null,
   annotations,
   wakeups,
+  focusRequested = false,
+  onFocusRequestApplied,
 }: ChatMessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrollContainerEl, setScrollContainerEl] = useState<HTMLDivElement | null>(null);
@@ -237,6 +248,26 @@ export function ChatMessageList({
   useEffect(() => {
     if (active && hasReachedLiveEnd) onRevealed?.();
   }, [active, hasReachedLiveEnd, onRevealed]);
+  // Applied once per request: a request still standing on a later render must
+  // not pull focus back after the reader tabbed out to the list.
+  const focusAppliedRef = useRef(false);
+  const onFocusRequestAppliedRef = useRef(onFocusRequestApplied);
+  onFocusRequestAppliedRef.current = onFocusRequestApplied;
+  useEffect(() => {
+    if (!focusRequested) {
+      focusAppliedRef.current = false;
+      return;
+    }
+    // A hidden list cannot hold focus; wait until it has landed.
+    if (focusAppliedRef.current || !active || !hasReachedLiveEnd || !scrollContainerEl) return;
+    focusAppliedRef.current = true;
+    const current = scrollContainerEl.ownerDocument.activeElement;
+    if (!isEditableShortcutTarget(current) && !isPortalLayerShortcutTarget(current)) {
+      // Focusing scrolls every scrollable ancestor to reveal the box (#3929).
+      scrollContainerEl.focus({ preventScroll: true });
+    }
+    onFocusRequestAppliedRef.current?.();
+  }, [focusRequested, active, hasReachedLiveEnd, scrollContainerEl]);
   // Soft edge fade hinting more content above/below. Kept small so it barely
   // grazes full-bleed previews (image / HTML) at the edges.
   const fadeStyle = useScrollFade(scrollRef, 16);
@@ -396,6 +427,10 @@ export function ChatMessageList({
       ref={setScrollContainerRef}
       data-tab-scroll-root
       {...{ [PROMPT_NAV_ATTR]: "" }}
+      // Focusable but not a Tab stop: clicking a message's text focuses the
+      // conversation, so the scroll keys reach it rather than whatever list
+      // row kept focus (CALA-330). No ring, as with the inbox list.
+      tabIndex={-1}
       style={fadeStyle}
       // The gutter lives on the scroll container, so it applies once to the
       // whole list — rows, header, footer — and the scrollbar still rides the
@@ -404,7 +439,7 @@ export function ChatMessageList({
       // container paints nothing for that whole window anyway — the rows are
       // not measured yet — so this costs no visible time and spares the
       // reader a frame of the wrong messages (see stick-to-bottom.ts).
-      className={cn("flex-1 overflow-y-auto", CHAT_GUTTER, !hasReachedLiveEnd && "invisible")}
+      className={cn("flex-1 overflow-y-auto outline-none", CHAT_GUTTER, !hasReachedLiveEnd && "invisible")}
     >
       {/* Already inside the gutter + column, so this pre-mount frame renders the
        *  skeleton BODY rather than <ChatMessageSkeleton>, which brings its own
