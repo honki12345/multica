@@ -226,11 +226,15 @@ export function ChatBar() {
       }
       const release = () => {
         clearTimeout(fallback);
-        window.removeEventListener("keyup", release, true);
+        window.removeEventListener("keyup", onKeyUp, true);
         releaseClickGuard();
       };
+      // Only the keys that end a drag click the button when they come up.
+      const onKeyUp = (keyEvent: KeyboardEvent) => {
+        if (KEYBOARD_DRAG.keyboardCodes?.end.includes(keyEvent.code)) release();
+      };
       const fallback = setTimeout(release, KEY_RELEASE_TIMEOUT_MS);
-      window.addEventListener("keyup", release, true);
+      window.addEventListener("keyup", onKeyUp, true);
     },
     [releaseClickGuard],
   );

@@ -98,19 +98,25 @@ export function useChatWindowAnchor(
     document.addEventListener("scroll", onScroll, true);
 
     // Dragging chips into another order moves the control without resizing
-    // the bar: follow it once the chips are moved, and again when they finish
-    // sliding into place.
+    // the bar: follow it once the strip's chips are reordered, and again when
+    // they finish sliding into place. Hover colours and a chip's own content
+    // (its running mark) change too, and must not move the window.
     const followMovedChips = () => {
       if (pressedAnchor()?.dataset.chatAnchor !== placedAt) return;
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(measure);
     };
     const onTransitionEnd = (event: TransitionEvent) => {
+      if (event.propertyName !== "transform") return;
       if (!(event.target instanceof Element) || !event.target.closest(CHAT_BAR_CHIPS_SELECTOR)) return;
       followMovedChips();
     };
     document.addEventListener("transitionend", onTransitionEnd, true);
-    const chipsObserver = new MutationObserver(followMovedChips);
+    const chipsObserver = new MutationObserver((records) => {
+      if (records.some((record) => record.target instanceof Element && record.target.matches(CHAT_BAR_CHIPS_SELECTOR))) {
+        followMovedChips();
+      }
+    });
     const barForChips = document.querySelector(CHAT_BAR_SELECTOR);
     if (barForChips) chipsObserver.observe(barForChips, { childList: true, subtree: true });
 

@@ -343,6 +343,10 @@ describe("ChatBar", () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
       fireEvent.keyDown(document, { code: "Space", key: " " });
+      // An arrow still held when Space drops the chip comes up first; Space
+      // clicks the button only when it comes up, which can be well later.
+      fireEvent.keyUp(document, { code: "ArrowRight", key: "ArrowRight" });
+      await new Promise((resolve) => setTimeout(resolve, 120));
       fireEvent.keyUp(chip, { code: "Space", key: " " });
       fireEvent.click(chip);
 

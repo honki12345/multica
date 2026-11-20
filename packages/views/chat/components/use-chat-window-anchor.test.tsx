@@ -182,12 +182,43 @@ describe("useChatWindowAnchor", () => {
 
     anchors.a = 850;
     act(() => {
-      view.container
-        .querySelector('[data-chat-anchor="a"]')!
-        .dispatchEvent(new Event("transitionend", { bubbles: true }));
+      const slid = new Event("transitionend", { bubbles: true });
+      Object.assign(slid, { propertyName: "transform" });
+      view.container.querySelector('[data-chat-anchor="a"]')!.dispatchEvent(slid);
       frames.splice(0).forEach((cb) => cb(0));
     });
     expect(rightOf(view)).toBe(1400 - 850 - WINDOW_WIDTH);
+  });
+
+  it("stays put when a chip is only hovered or its chat starts running", async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => frames.push(cb));
+    const anchors = { a: 700, b: 900 };
+    layOut(anchors);
+    const view = render(
+      <div data-slot="chat-bar">
+        <div data-slot="chat-bar-chips">
+          <Harness isOpen pressed="a" />
+        </div>
+      </div>,
+    );
+    expect(rightOf(view)).toBe(280);
+
+    // The chip is no longer where the window was placed, so any re-measure
+    // would show; only a reorder of the strip may trigger one.
+    anchors.a = 900;
+    const chip = view.container.querySelector('[data-chat-anchor="a"]')!;
+    await act(async () => {
+      const hover = new Event("transitionend", { bubbles: true });
+      Object.assign(hover, { propertyName: "background-color" });
+      chip.dispatchEvent(hover);
+      chip.appendChild(document.createElement("span"));
+      await Promise.resolve();
+    });
+    act(() => {
+      frames.splice(0).forEach((cb) => cb(0));
+    });
+    expect(rightOf(view)).toBe(280);
   });
 });
 
