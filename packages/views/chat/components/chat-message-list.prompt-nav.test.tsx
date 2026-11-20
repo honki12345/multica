@@ -179,14 +179,86 @@ afterEach(() => {
   configureShortcutPlatform(null);
 });
 
-describe("ChatMessageList previous/next sent message", () => {
-  it("brings the previous sent message to the top, skipping replies and wakeup turns", () => {
-    const { lists } = renderChats([{ messages: conversation("p", "uawaua") }]);
+describe("ChatMessageList previous/next sent message or wakeup", () => {
+  it("brings the previous sent message to the top, skipping replies", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "uaaaua") }]);
     layOut(lists[0]!, { topRow: 4 });
 
     press(document.body, "[");
 
     expect(scrollCalls.get("p0")).toEqual([{ index: 0, align: "start" }]);
+  });
+
+  it("stops at a wakeup turn the same way as at a sent message", () => {
+    const { view, lists } = renderChats([{ messages: conversation("p", "uawaua") }]);
+    layOut(lists[0]!, { topRow: 4 });
+
+    press(document.body, "[");
+
+    expect(scrollCalls.get("p0")).toEqual([{ index: 2, align: "start" }]);
+    const target = view.container.querySelector('[data-item-index="1002"]')!;
+    expect(target.querySelector('[data-slot="chat-wakeup-divider"]')).not.toBeNull();
+  });
+
+  it("counts every press of a burst through sent messages and wakeup turns alike", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "uawauawa") }]);
+    layOut(lists[0]!, { topRow: 6 });
+
+    press(document.body, "[");
+    press(document.body, "[");
+    press(document.body, "[");
+    press(document.body, "]");
+
+    expect(promptMoves("p0")).toEqual([
+      { index: 4, align: "start" },
+      { index: 2, align: "start" },
+      { index: 0, align: "start" },
+      { index: 2, align: "start" },
+    ]);
+  });
+
+  it("reaches a wakeup turn that is the first row of the chat, and stops there", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "wauaua") }]);
+    const list = lists[0]!;
+    layOut(list, { topRow: 2 });
+
+    press(document.body, "[");
+    expect(promptMoves("p0")).toEqual([{ index: 0, align: "start" }]);
+
+    fireEvent.wheel(list, { deltaY: -100 });
+    layOut(list, { topRow: 0 });
+    press(document.body, "[");
+    expect(promptMoves("p0")).toHaveLength(1);
+  });
+
+  it("stops at a wakeup turn at the bottom before going to the live end", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "uauawa") }]);
+    layOut(lists[0]!, { topRow: 2 });
+
+    press(document.body, "]");
+    press(document.body, "]");
+
+    expect(scrollCalls.get("p0")).toEqual([
+      { index: 4, align: "start" },
+      { index: "LAST", align: "end" },
+    ]);
+  });
+
+  it("holds a wakeup turn at the top when a row above it grows after it lands", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "uawaua") }]);
+    const list = lists[0]!;
+    layOut(list, { topRow: 4 });
+    press(document.body, "[");
+    layOut(list, { topRow: 2 });
+    frames(3);
+
+    layOut(list, { topRow: 2, offset: -300 });
+    frames(2);
+
+    expect(promptMoves("p0")).toEqual([
+      { index: 2, align: "start" },
+      { index: 2, align: "start" },
+    ]);
   });
 
   it("first returns to the start of a sent message cut off at the top", () => {
@@ -406,13 +478,13 @@ describe("ChatMessageList previous/next sent message", () => {
     expect(scrollCalls.get("float0")).toHaveLength(1);
   });
 
-  it("climbs to the oldest loaded row so the older page loads when no earlier sent message is loaded", () => {
-    const { lists } = renderChats([{ messages: conversation("p", "wawaua"), hasOlder: true }]);
+  it("climbs to the oldest loaded row so the older page loads when no earlier stop is loaded", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "aaaaua"), hasOlder: true }]);
     layOut(lists[0]!, { topRow: 4 });
 
     press(document.body, "[");
 
-    expect(scrollCalls.get("p0")).toEqual([{ index: 0, align: "start" }]);
+    expect(scrollCalls.get("task:task-p0")).toEqual([{ index: 0, align: "start" }]);
   });
 
   it("ignores the chord while an IME composition is in progress", () => {

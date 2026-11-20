@@ -3,7 +3,7 @@ title: Recherche, raccourcis et préférences
 description: Rechercher et exécuter des commandes avec ⌘K, consulter et modifier les raccourcis clavier, chercher du texte dans une tâche et régler vos préférences personnelles comme le thème, la langue et le fuseau horaire.
 ---
 
-{/* Modified by honki12345, 2026: document the previous/next sent-message chat shortcuts (CALA-281). */}
+{/* Modified by honki12345, 2026: document the previous/next sent-message chat shortcuts (CALA-281), wakeup stops (CALA-318). */}
 
 import { Callout } from "fumadocs-ui/components/callout";
 import { Step, Steps } from "fumadocs-ui/components/steps";
@@ -37,8 +37,8 @@ Choisir un résultat l'ouvre. Maintenez `⌘` (`Ctrl` sous Windows et Linux) en 
 | Afficher ou masquer la barre latérale droite | `⌘/` | `Ctrl+/` | Uniquement sur les pages qui en ont une, comme une tâche. |
 | Afficher ou masquer la fenêtre de discussion | `⌘J` | `Ctrl+J` | À l'ouverture, le curseur se place dans la zone de saisie. Voir [Discuter depuis n'importe quelle page](/chat#discuter-depuis-nimporte-quelle-page). |
 | Demander à Multica | `⇧⌘J` | `Ctrl+Maj+J` | Démarre une nouvelle discussion dans la fenêtre flottante. |
-| Message envoyé précédent | `⌥⌘[` | `Ctrl+Alt+[` | Dans une discussion, fait défiler jusqu'au message que vous avez envoyé avant celui affiché, en sautant les réponses. Fonctionne pendant la saisie. |
-| Message envoyé suivant | `⌥⌘]` | `Ctrl+Alt+]` | Fait défiler jusqu'au message suivant que vous avez envoyé, puis jusqu'à la dernière réponse. Agit sur la fenêtre flottante si votre curseur y est, sinon sur la discussion de la page. |
+| Message envoyé ou réveil précédent | `⌥⌘[` | `Ctrl+Alt+[` | Dans une discussion, fait défiler jusqu'au message que vous avez envoyé, ou au point où un réveil a fait revenir l'agent, avant celui affiché, en sautant les réponses. Fonctionne pendant la saisie. |
+| Message envoyé ou réveil suivant | `⌥⌘]` | `Ctrl+Alt+]` | Fait défiler jusqu'au message suivant que vous avez envoyé ou au réveil suivant, puis jusqu'à la dernière réponse. Agit sur la fenêtre flottante si votre curseur y est, sinon sur la discussion de la page. |
 | Rechercher dans la tâche | `⌘F` | `Ctrl+F` | Voir plus bas. |
 | Archiver la notification | `E` | `E` | Sur une tâche ouverte depuis la boîte de réception, archive sa notification et ouvre la suivante. Dans les notifications archivées, restaure celle qui est ouverte. Voir [Boîte de réception](/inbox#traiter-les-notifications). |
 | Reporter la notification | `H` | `H` | Sur une tâche ouverte depuis la boîte de réception, la reporte et ouvre la suivante. Sur une tâche reportée, la fait revenir maintenant. |

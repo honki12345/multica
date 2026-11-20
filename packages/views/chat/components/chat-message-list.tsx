@@ -1,6 +1,6 @@
 "use client";
 
-// Modified by honki12345, 2026: previous/next sent-message shortcuts (CALA-281).
+// Modified by honki12345, 2026: previous/next sent-message shortcuts (CALA-281), wakeup stops (CALA-318).
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -336,15 +336,10 @@ export function ChatMessageList({
     tailIsReply: tailItem?.kind === "live" || tailItem?.message.role === "assistant",
   });
 
-  // Wakeup turns render as dividers: the reader did not type them.
+  // Every turn's input is a stop: what the reader sent, and the divider where
+  // a wakeup brought the agent back (CALA-318).
   const prompts = useMemo(
-    () =>
-      renderItems.map(
-        (item) =>
-          item.kind === "message" &&
-          item.message.role === "user" &&
-          item.message.message_kind !== "wakeup",
-      ),
+    () => renderItems.map((item) => item.kind === "message" && item.message.role === "user"),
     [renderItems],
   );
   const scrollToPrompt = useCallback(
