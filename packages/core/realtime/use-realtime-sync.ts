@@ -1,5 +1,7 @@
 "use client";
 
+// Modified by honki12345, 2026: follow pinned_at on chat:session_updated so pinned-chat reorders reach other tabs (CALA-316).
+
 import { weixinKeys } from "../weixin/queries";
 
 
@@ -371,6 +373,7 @@ type ChatSessionUpdatedPayload = {
   title?: string;
   project_id?: string | null;
   pinned?: boolean;
+  pinned_at?: string | null;
   status?: "active" | "archived";
   updated_at?: string;
 };
@@ -406,6 +409,11 @@ export function applyChatSessionUpdatedToCache(
             title: payload.title ?? s.title,
             ...("project_id" in payload ? { project_id: payload.project_id } : {}),
             pinned: payload.pinned ?? s.pinned,
+            ...("pinned_at" in payload
+              ? { pinned_at: payload.pinned_at }
+              : payload.pinned === false
+                ? { pinned_at: null }
+                : {}),
             status: payload.status ?? s.status,
             updated_at: payload.updated_at ?? s.updated_at,
             ...(payload.status === "archived"
@@ -414,7 +422,9 @@ export function applyChatSessionUpdatedToCache(
           }
         : s,
     );
-    return payload.pinned === undefined && payload.status === undefined
+    return payload.pinned === undefined &&
+      payload.status === undefined &&
+      !("pinned_at" in payload)
       ? next
       : sortChatSessions(next);
   });

@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: return pinned_at on chat sessions so clients order pinned chats like the server (CALA-316).
+
 package handler
 
 import (
@@ -210,6 +212,7 @@ func (h *Handler) ListChatSessions(w http.ResponseWriter, r *http.Request) {
 				UnreadCount: int(s.UnreadCount),
 				LastMessage: buildChatLastMessage(s.LastMessageAt, s.LastMessageContent, s.LastMessageRole, s.LastMessageFailureReason, s.LastMessageKind),
 				Pinned:      s.PinnedAt.Valid,
+				PinnedAt:    timestampToNanoPtr(s.PinnedAt),
 				CreatedAt:   timestampToString(s.CreatedAt),
 				UpdatedAt:   timestampToString(s.UpdatedAt),
 			})
@@ -240,6 +243,7 @@ func (h *Handler) ListChatSessions(w http.ResponseWriter, r *http.Request) {
 				UnreadCount: int(s.UnreadCount),
 				LastMessage: buildChatLastMessage(s.LastMessageAt, s.LastMessageContent, s.LastMessageRole, s.LastMessageFailureReason, s.LastMessageKind),
 				Pinned:      s.PinnedAt.Valid,
+				PinnedAt:    timestampToNanoPtr(s.PinnedAt),
 				CreatedAt:   timestampToString(s.CreatedAt),
 				UpdatedAt:   timestampToString(s.UpdatedAt),
 			})
@@ -515,6 +519,7 @@ func (h *Handler) SetChatSessionPinned(w http.ResponseWriter, r *http.Request) {
 		ChatSessionID: resolvedSessionID,
 		Title:         updated.Title,
 		Pinned:        &pinned,
+		PinnedAt:      timestampToNanoPtr(updated.PinnedAt),
 		UpdatedAt:     timestampToString(updated.UpdatedAt),
 	})
 
@@ -2025,6 +2030,8 @@ type ChatSessionResponse struct {
 	// Pinned marks a chat the user has stuck to the top of the list. Populated
 	// by list endpoints and by the pin/unpin + single-session responses.
 	Pinned bool `json:"pinned"`
+	// PinnedAt orders pinned chats (newest first); null when not pinned.
+	PinnedAt *string `json:"pinned_at"`
 	// ChannelSource is present only for Chats created from an external channel.
 	// IsCurrentChannelRoute distinguishes the active route generation from an
 	// older Chat that remains readable and writable in Multica.
@@ -2142,6 +2149,7 @@ func chatSessionToResponse(s db.ChatSession) ChatSessionResponse {
 		Title:       s.Title,
 		Status:      s.Status,
 		Pinned:      s.PinnedAt.Valid,
+		PinnedAt:    timestampToNanoPtr(s.PinnedAt),
 		CreatedAt:   timestampToString(s.CreatedAt),
 		UpdatedAt:   timestampToString(s.UpdatedAt),
 	}

@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: order pinned chats by pinned_at like the server (CALA-316).
+
 import { infiniteQueryOptions, queryOptions, useQuery, type QueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { api } from "../api";
@@ -90,22 +92,40 @@ function sessionActivityTime(s: ChatSession): number {
   return new Date(s.last_message?.created_at ?? s.updated_at).getTime();
 }
 
+/** Pin time of a pinned row; null when an older server sent none. */
+function sessionPinTime(s: ChatSession): number | null {
+  if (!s.pinned || !s.pinned_at) return null;
+  const t = new Date(s.pinned_at).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
 /**
- * Orders the chat list the same way the server does: pinned chats first, then
- * everyone else by most-recent activity. Used both to render the list and to
- * re-sort the cache after an optimistic pin/unpin or a WS patch, so a mutated
+ * Orders the chat list the same way the server does: pinned chats first,
+ * newest pin first (the order the user dragged them into), then everyone else
+ * by most-recent activity. Used both to render the list and to re-sort the
+ * cache after an optimistic pin/unpin/reorder or a WS patch, so a mutated
  * flat cache never renders out of order. Returns a new array; stable for equal
- * keys (Array.prototype.sort is stable), so pinned rows keep their server
- * order when pin timestamps aren't carried in the list payload.
+ * keys (Array.prototype.sort is stable). A pinned row without a pin time (an
+ * older server) keeps its place among other such rows and sorts after the
+ * stamped ones, ordered by activity.
  */
 export function sortChatSessions(sessions: ChatSession[]): ChatSession[] {
   // Parse dates once per session, rather than on each comparison.
   return sessions
-    .map((session) => ({ session, activity: sessionActivityTime(session) }))
+    .map((session) => ({
+      session,
+      activity: sessionActivityTime(session),
+      pin: sessionPinTime(session),
+    }))
     .sort((a, b) => {
       const ap = a.session.pinned ? 1 : 0;
       const bp = b.session.pinned ? 1 : 0;
       if (ap !== bp) return bp - ap;
+      if (a.pin !== null || b.pin !== null) {
+        if (a.pin === null) return 1;
+        if (b.pin === null) return -1;
+        if (a.pin !== b.pin) return b.pin - a.pin;
+      }
       return b.activity - a.activity;
     })
     .map(({ session }) => session);

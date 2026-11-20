@@ -1,4 +1,5 @@
 // @vitest-environment node
+// Modified by honki12345, 2026: cover ordering pinned chats by pinned_at (CALA-316).
 import { describe, expect, it } from "vitest";
 
 import type { TaskMessagePayload } from "../types/events";
@@ -135,6 +136,32 @@ describe("sortChatSessions", () => {
 
     const sorted = sortChatSessions([b, a]);
     expect(sorted.map((s) => s.id)).toEqual(["a", "b"]);
+  });
+
+  it("orders pinned sessions by pin time, newest first, not by activity", () => {
+    const pinnedFirst = session({
+      id: "pinned-first",
+      pinned: true,
+      pinned_at: "2026-11-20T00:00:00.002Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    });
+    const pinnedSecond = session({
+      id: "pinned-second",
+      pinned: true,
+      pinned_at: "2026-11-20T00:00:00.001Z",
+      updated_at: "2026-06-01T00:00:00Z",
+    });
+
+    const sorted = sortChatSessions([pinnedSecond, pinnedFirst]);
+    expect(sorted.map((s) => s.id)).toEqual(["pinned-first", "pinned-second"]);
+  });
+
+  it("puts pinned sessions from an older server (no pin time) after stamped ones", () => {
+    const legacy = session({ id: "legacy", pinned: true, updated_at: "2026-06-01T00:00:00Z" });
+    const stamped = session({ id: "stamped", pinned: true, pinned_at: "2026-01-01T00:00:00Z" });
+
+    const sorted = sortChatSessions([legacy, stamped]);
+    expect(sorted.map((s) => s.id)).toEqual(["stamped", "legacy"]);
   });
 
   it("does not mutate the input array", () => {

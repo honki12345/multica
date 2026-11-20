@@ -3,6 +3,8 @@ title: 與 AI 代理對話
 description: 和 AI 代理一對一聊天，整段對話只有你能看到。AI 代理預設沒有任務上下文，也不會自己建任務；你明確要求時，它會以你的工作區權限代你操作。
 ---
 
+{/* Modified by honki12345, 2026: drag pinned chats into order (CALA-316). */}
+
 import { Callout } from "fumadocs-ui/components/callout";
 import { Step, Steps } from "fumadocs-ui/components/steps";
 import { ChatDemo } from "@/components/demos/chat-demo";
@@ -120,7 +122,7 @@ AI 代理執行時，介面會顯示當前階段和工具活動。展開**檢視
 
 對話支援重新命名、置頂、歸檔和刪除：
 
-- **置頂**把常用對話固定在列表前面；
+- **置頂**把常用對話固定在列表前面。上下拖曳置頂對話即可調整順序（也可以選取後按空白鍵，用方向鍵移動，再按空白鍵放下）；順序儲存在你的帳號中，所有裝置上都一樣；
 - **歸檔**把對話移到"已歸檔"並設為只讀；
 - **取消歸檔**後可以繼續傳送訊息；
 - **刪除**會永久移除對話及其中的訊息。

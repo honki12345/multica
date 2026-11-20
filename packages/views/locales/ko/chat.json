@@ -253,6 +253,7 @@
     "pin": "고정",
     "unpin": "고정 해제",
     "pinned": "고정됨",
+    "reorder_failed": "고정한 채팅 순서를 저장하지 못했습니다",
     "archive": "보관",
     "unarchive": "보관 해제",
     "archived_title": "보관됨",

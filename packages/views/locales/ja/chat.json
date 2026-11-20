@@ -253,6 +253,7 @@
     "pin": "ピン留め",
     "unpin": "ピン留めを解除",
     "pinned": "ピン留め済み",
+    "reorder_failed": "ピン留めしたチャットの並び順を保存できませんでした",
     "archive": "アーカイブ",
     "unarchive": "アーカイブ解除",
     "archived_title": "アーカイブ済み",

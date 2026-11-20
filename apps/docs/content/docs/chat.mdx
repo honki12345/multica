@@ -3,6 +3,8 @@ title: Chat with agents
 description: A one-to-one conversation with an agent that only you can see. The agent starts with no issue context and doesn't create issues on its own; when you explicitly ask, it acts with your workspace access.
 ---
 
+{/* Modified by honki12345, 2026: drag pinned chats into order (CALA-316). */}
+
 import { Callout } from "fumadocs-ui/components/callout";
 import { Step, Steps } from "fumadocs-ui/components/steps";
 import { ChatDemo } from "@/components/demos/chat-demo";
@@ -120,7 +122,7 @@ For ongoing schedules such as a daily report, use an [autopilot](/autopilots). A
 
 Conversations can be renamed, pinned, archived, and deleted:
 
-- **Pin** keeps frequently used conversations at the top of the list;
+- **Pin** keeps frequently used conversations at the top of the list. Drag a pinned conversation up or down to change their order (or focus it, press Space, move it with the arrow keys and press Space again); the order is saved to your account, so it is the same on every device;
 - **Archive** moves a conversation to Archived and makes it read-only;
 - **Unarchive** lets you send messages again;
 - **Delete** permanently removes the conversation and its messages.

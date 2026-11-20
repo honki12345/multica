@@ -3,6 +3,8 @@ title: 에이전트와 대화
 description: 에이전트와 일대일로 나누는 대화로, 나만 볼 수 있습니다. 에이전트는 기본적으로 태스크 컨텍스트가 없고 스스로 태스크를 만들지 않으며, 명시적으로 요청하면 내 워크스페이스 권한으로 대신 작업합니다.
 ---
 
+{/* Modified by honki12345, 2026: drag pinned chats into order (CALA-316). */}
+
 import { Callout } from "fumadocs-ui/components/callout";
 import { Step, Steps } from "fumadocs-ui/components/steps";
 import { ChatDemo } from "@/components/demos/chat-demo";
@@ -120,7 +122,7 @@ Multica에서 만든 직접 대화는 만든 사람만 읽을 수 있고, 다른
 
 대화는 이름 변경, 고정, 보관, 삭제할 수 있습니다.
 
-- **고정**하면 자주 쓰는 대화가 목록 앞쪽에 유지됩니다.
+- **고정**하면 자주 쓰는 대화가 목록 앞쪽에 유지됩니다. 고정한 대화는 위아래로 끌어 순서를 바꿀 수 있습니다(대화에 초점을 두고 Space, 화살표로 옮긴 뒤 다시 Space로도 됩니다). 순서는 계정에 저장되어 어느 기기에서나 같게 보입니다.
 - **보관**하면 대화가 "보관됨"으로 이동하고 읽기 전용이 됩니다.
 - **보관 해제**하면 메시지를 다시 보낼 수 있습니다.
 - **삭제**하면 대화와 그 안의 메시지가 영구적으로 제거됩니다.
