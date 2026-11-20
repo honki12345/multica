@@ -156,7 +156,7 @@ def parse_vitest_json(data, tree, rel_file, case):
     # A file that failed with no failing case (load error, failing hook) fails
     # every entry in it; a failing case only fails the entries it covers.
     broken = [f for f in files if f.get("status") != "passed"
-              and not any(a.get("status") == "failed" for a in f.get("assertionResults", []))]
+              and (f.get("message") or not any(a.get("status") == "failed" for a in f.get("assertionResults", [])))]
     if broken:
         return FAIL, "파일 상태 %s: %s" % (broken[0].get("status"), (broken[0].get("message") or "")[:200])
     if case:
@@ -247,9 +247,9 @@ def run_vitest(tree, features, env, logdir):
             data = json.loads(out.read_text())
         except (OSError, ValueError):
             data = {}
-        # A non-zero exit with no failing case or file (unhandled error, no JSON)
-        # fails everything in the run; otherwise each entry stands on its own.
-        explained = data.get("numFailedTests", 0) or data.get("numFailedTestSuites", 0)
+        # A non-zero exit that no failing case explains (unhandled error, no
+        # JSON) fails everything in the run; otherwise each entry stands alone.
+        explained = data.get("numFailedTests", 0) > 0
         for fid, f, case in items:
             v, d = parse_vitest_json(data, tree, f, case)
             if v == PASS and p.returncode != 0 and not explained:
@@ -371,7 +371,9 @@ class Stack:
                 self.tunnel.kill()
         # Stop a remote `up` still building (local ssh may have died first), then
         # remove by name; stack-remote.sh may already be gone with its directory.
-        p = self.ssh("for pid in $(pgrep -f '^bash [^ ]*stack-remote.sh up [^ ]*/{d} {n} '); do kill $pid; done; sleep 2; "
+        p = self.ssh("for pid in $(pgrep -f '^bash [^ ]*stack-remote.sh up [^ ]*/{d} {n} '); do "
+                     "pkill -TERM -P $pid; kill $pid; done; "
+                     "for i in $(seq 60); do pgrep -f 'docker build .*fv-{n}-' >/dev/null || break; sleep 2; done; "
                      "docker rm -f -v fv-{n}-web fv-{n}-backend fv-{n}-pg; docker volume rm -f fv-{n}-pgdata fv-{n}-uploads; "
                      "docker network rm fv-{n}-net; docker image rm -f fv-{n}-backend:candidate fv-{n}-web:candidate; "
                      "rm -rf ~/{d}; true".format(n=self.name, d=self.rdir), timeout=300)

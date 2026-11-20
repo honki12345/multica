@@ -69,6 +69,8 @@ check("vitest: file that failed to load fails", fv.parse_vitest_json({"testResul
 hook = {"testResults": [{"name": "/x/a.test.ts", "status": "failed", "message": "afterAll hook failed", "assertionResults": [{"title": "t", "fullName": "t", "status": "passed"}]}]}
 check("vitest: failed file with passing cases fails (hook error)", fv.parse_vitest_json(hook, None, "a.test.ts", "t")[0] == fv.FAIL)
 mixed = {"testResults": [{"name": "/x/a.test.ts", "status": "failed", "assertionResults": [{"title": "ok", "fullName": "ok", "status": "passed"}, {"title": "bad", "fullName": "bad", "status": "failed"}]}]}
+both = {"testResults": [{"name": "/x/a.test.ts", "status": "failed", "message": "afterAll hook failed", "assertionResults": [{"title": "ok", "fullName": "ok", "status": "passed"}, {"title": "bad", "fullName": "bad", "status": "failed"}]}]}
+check("vitest: file-level error fails passing cases even next to a failing case", fv.parse_vitest_json(both, None, "a.test.ts", "ok")[0] == fv.FAIL)
 check("vitest: a passing case next to a failing one still passes", fv.parse_vitest_json(mixed, None, "a.test.ts", "ok")[0] == fv.PASS)
 check("vitest: all skipped fails", fv.parse_vitest_json({"testResults": [{"name": "/x/a.test.ts", "status": "passed", "assertionResults": [{"title": "t", "status": "skipped"}]}]}, None, "a.test.ts", None)[0] == fv.FAIL)
 check("vitest: file not run fails", fv.parse_vitest_json(data, None, "packages/views/layout/bottom-bar.test.tsx", None)[0] == fv.FAIL)
@@ -177,6 +179,27 @@ check("in candidate: older candidate lacks it", not fv.feature_in_candidate({"or
 check("in candidate: no commits listed counts as present", fv.feature_in_candidate({"origin": {}}, old))
 
 check("version: hoon tag", fv.resolve_version("v0.11.0-hoon.1", "", "abc") == "0.11.0-hoon.1")
+
+# --- run_vitest with a stub pnpm: passing JSON but vitest exits 1 (unhandled error)
+stub = T / "stubbin"
+stub.mkdir()
+(stub / "pnpm").write_text("""#!/bin/sh
+[ "$1" = install ] && exit 0
+for a in "$@"; do case "$a" in --outputFile=*) out="${a#--outputFile=}";; esac; done
+printf '%s' '{"numFailedTests":0,"testResults":[{"name":"/t/packages/views/a.test.ts","status":"passed","assertionResults":[{"title":"t","fullName":"t","status":"passed"}]}]}' > "$out"
+exit "${STUB_EXIT:-1}"
+""")
+(stub / "pnpm").chmod(0o755)
+tree = T / "tree"
+(tree / "packages" / "views").mkdir(parents=True)
+logs = T / "vlogs"
+logs.mkdir()
+feat_v = [{"id": "f", "tests": [{"vitest": "packages/views/a.test.ts", "name": "t"}]}]
+env = dict(os.environ, PATH="%s:%s" % (stub, os.environ["PATH"]))
+v = fv.run_vitest(tree, feat_v, dict(env, STUB_EXIT="1"), logs)
+check("run_vitest: unexplained non-zero exit fails a passing entry", [c.verdict for c in v] == [fv.FAIL])
+v = fv.run_vitest(tree, feat_v, dict(env, STUB_EXIT="0"), logs)
+check("run_vitest: clean exit keeps the pass", [c.verdict for c in v] == [fv.PASS])
 check("version: untagged branch uses the describe form the CLI gates accept", fv.resolve_version(feat, "", feat[:9]) == "0.0.0-0-g%s" % feat[:9])
 subprocess.run(["git", "-C", str(repo), "tag", "v0.11.0", old], check=True)
 v = fv.resolve_version(feat, "", feat[:9])
