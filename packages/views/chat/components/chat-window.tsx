@@ -664,11 +664,13 @@ function SessionDropdown({
   const triggerRef = useRef<HTMLButtonElement>(null);
   // The window header has no title field of its own: renaming happens on the
   // open chat's row in the history list, so the shortcut opens the list there.
+  const renamable = activeSession && activeSession.status !== "archived" ? activeSession : null;
   useRenameTitleShortcut(
-    () => triggerRef.current,
+    // A new chat has no title yet: nothing to rename, so the key stays free.
+    () => (renamable ? triggerRef.current : null),
     () => {
-      if (!activeSession || activeSession.status === "archived") return;
-      setRenamingId(activeSession.id);
+      if (!renamable) return;
+      setRenamingId(renamable.id);
       setIsHistoryOpen(true);
     },
   );

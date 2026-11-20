@@ -216,6 +216,17 @@ describe("ChatWindow rename shortcut", () => {
     expect([input.selectionStart, input.selectionEnd]).toEqual([0, "Roadmap".length]);
   });
 
+  it("leaves Mod+R alone in a new chat, which has no title yet", () => {
+    act(() => {
+      useChatStore.setState({ activeSessionId: null });
+    });
+    renderWindow();
+    const inside = screen.getByRole("button", { name: enChat.window.minimize_tooltip });
+    inside.focus();
+
+    expect(fireEvent.keyDown(inside, { key: "r", code: "KeyR", metaKey: true })).toBe(true);
+  });
+
   it("leaves Mod+R alone while focus is outside the window", () => {
     renderWindow();
 

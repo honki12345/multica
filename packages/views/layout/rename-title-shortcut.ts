@@ -30,19 +30,34 @@ function isShown(el: HTMLElement | null): el is HTMLElement {
   return !!el && el.isConnected && el.getClientRects().length > 0;
 }
 
+/** How many ancestors up from `el` the first one containing `node` is. */
+function distanceToCommonAncestor(el: HTMLElement, node: Node): number {
+  let depth = 0;
+  for (let up: Node | null = el; up; up = up.parentNode, depth++) {
+    if (up.contains(node)) return depth;
+  }
+  return Infinity;
+}
+
 /**
  * Which title a keypress renames: the floating chat window's while focus is
- * inside it, otherwise the one on the page (the chat or issue on screen).
- * Hidden desktop tabs and collapsed panes have no layout, so they drop out.
+ * inside it, otherwise one on the page (the chat or issue on screen). With
+ * two on screen (an issue peek over an issue page), the one sharing the
+ * nearest container with the focus wins; failing that, the newest mounted,
+ * which is the one on top. Hidden panes have no layout, so they drop out.
  */
 function pickTarget(focus: EventTarget | null): RenameTarget | null {
+  const focusNode = focus instanceof Node ? focus : null;
   const floating = focus instanceof Element ? focus.closest(FLOATING_WINDOW) : null;
+  let best: { target: RenameTarget; distance: number } | null = null;
   for (const target of targets) {
     const el = target.element();
     if (!isShown(el)) continue;
-    if (floating ? floating.contains(el) : !el.closest(FLOATING_WINDOW)) return target;
+    if (floating ? !floating.contains(el) : el.closest(FLOATING_WINDOW)) continue;
+    const distance = focusNode ? distanceToCommonAncestor(el, focusNode) : Infinity;
+    if (!best || distance <= best.distance) best = { target, distance };
   }
-  return null;
+  return best?.target ?? null;
 }
 
 function onKeyDown(event: KeyboardEvent) {

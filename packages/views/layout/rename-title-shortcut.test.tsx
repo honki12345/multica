@@ -90,6 +90,33 @@ describe("rename title shortcut", () => {
     expect(floating).toHaveBeenCalledTimes(1);
   });
 
+  it("renames the title next to the focus when two are on screen, the newest otherwise", () => {
+    const page = vi.fn();
+    const peek = vi.fn();
+    render(
+      <>
+        <section>
+          <Target name="page issue" onRename={page} />
+          <textarea aria-label="page comment" />
+        </section>
+        <section>
+          <Target name="peek issue" onRename={peek} />
+          <textarea aria-label="peek comment" />
+        </section>
+      </>,
+    );
+
+    pressRename(screen.getByLabelText("peek comment"));
+    expect(peek).toHaveBeenCalledTimes(1);
+    expect(page).not.toHaveBeenCalled();
+
+    pressRename(screen.getByLabelText("page comment"));
+    expect(page).toHaveBeenCalledTimes(1);
+
+    pressRename(document.body);
+    expect(peek).toHaveBeenCalledTimes(2);
+  });
+
   it("does not hand an unfocused floating chat the keypress on a page without a title", () => {
     const floating = vi.fn();
     render(
