@@ -139,11 +139,37 @@ function press(target: Element | Document, key: "[" | "]") {
   });
 }
 
+// Animation frames run only when a test calls `frames()`.
+let frameQueue = new Map<number, FrameRequestCallback>();
+let nextFrame = 1;
+
+function frames(count = 1) {
+  for (let i = 0; i < count; i++) {
+    const due = frameQueue;
+    frameQueue = new Map();
+    act(() => {
+      for (const cb of due.values()) cb(performance.now());
+    });
+  }
+}
+
+/** Index moves the shortcut asked for, without the live-end pins. */
+function promptMoves(key: string) {
+  return (scrollCalls.get(key) ?? []).filter((call) => (call as { index: unknown }).index !== "LAST");
+}
+
 beforeEach(() => {
   scrollCalls.clear();
+  frameQueue = new Map();
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-  vi.stubGlobal("requestAnimationFrame", () => 0);
-  vi.stubGlobal("cancelAnimationFrame", () => {});
+  vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+    const id = nextFrame++;
+    frameQueue.set(id, cb);
+    return id;
+  });
+  vi.stubGlobal("cancelAnimationFrame", (id: number) => {
+    frameQueue.delete(id);
+  });
   configureShortcutPlatform("macos");
 });
 
@@ -153,14 +179,86 @@ afterEach(() => {
   configureShortcutPlatform(null);
 });
 
-describe("ChatMessageList previous/next sent message", () => {
-  it("brings the previous sent message to the top, skipping replies and wakeup turns", () => {
-    const { lists } = renderChats([{ messages: conversation("p", "uawaua") }]);
+describe("ChatMessageList previous/next sent message or wakeup", () => {
+  it("brings the previous sent message to the top, skipping replies", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "uaaaua") }]);
     layOut(lists[0]!, { topRow: 4 });
 
     press(document.body, "[");
 
     expect(scrollCalls.get("p0")).toEqual([{ index: 0, align: "start" }]);
+  });
+
+  it("stops at a wakeup turn the same way as at a sent message", () => {
+    const { view, lists } = renderChats([{ messages: conversation("p", "uawaua") }]);
+    layOut(lists[0]!, { topRow: 4 });
+
+    press(document.body, "[");
+
+    expect(scrollCalls.get("p0")).toEqual([{ index: 2, align: "start" }]);
+    const target = view.container.querySelector('[data-item-index="1002"]')!;
+    expect(target.querySelector('[data-slot="chat-wakeup-divider"]')).not.toBeNull();
+  });
+
+  it("counts every press of a burst through sent messages and wakeup turns alike", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "uawauawa") }]);
+    layOut(lists[0]!, { topRow: 6 });
+
+    press(document.body, "[");
+    press(document.body, "[");
+    press(document.body, "[");
+    press(document.body, "]");
+
+    expect(promptMoves("p0")).toEqual([
+      { index: 4, align: "start" },
+      { index: 2, align: "start" },
+      { index: 0, align: "start" },
+      { index: 2, align: "start" },
+    ]);
+  });
+
+  it("reaches a wakeup turn that is the first row of the chat, and stops there", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "wauaua") }]);
+    const list = lists[0]!;
+    layOut(list, { topRow: 2 });
+
+    press(document.body, "[");
+    expect(promptMoves("p0")).toEqual([{ index: 0, align: "start" }]);
+
+    fireEvent.wheel(list, { deltaY: -100 });
+    layOut(list, { topRow: 0 });
+    press(document.body, "[");
+    expect(promptMoves("p0")).toHaveLength(1);
+  });
+
+  it("stops at a wakeup turn at the bottom before going to the live end", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "uauawa") }]);
+    layOut(lists[0]!, { topRow: 2 });
+
+    press(document.body, "]");
+    press(document.body, "]");
+
+    expect(scrollCalls.get("p0")).toEqual([
+      { index: 4, align: "start" },
+      { index: "LAST", align: "end" },
+    ]);
+  });
+
+  it("holds a wakeup turn at the top when a row above it grows after it lands", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "uawaua") }]);
+    const list = lists[0]!;
+    layOut(list, { topRow: 4 });
+    press(document.body, "[");
+    layOut(list, { topRow: 2 });
+    frames(3);
+
+    layOut(list, { topRow: 2, offset: -300 });
+    frames(2);
+
+    expect(promptMoves("p0")).toEqual([
+      { index: 2, align: "start" },
+      { index: 2, align: "start" },
+    ]);
   });
 
   it("first returns to the start of a sent message cut off at the top", () => {
@@ -170,6 +268,185 @@ describe("ChatMessageList previous/next sent message", () => {
     press(document.body, "[");
 
     expect(scrollCalls.get("p0")).toEqual([{ index: 2, align: "start" }]);
+  });
+
+  it("counts every press of a burst, even before the list has moved for the previous one", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "uauauaua") }]);
+    layOut(lists[0]!, { topRow: 6 });
+
+    // The list does not move between the presses: rows render after the keys.
+    press(document.body, "[");
+    press(document.body, "[");
+    press(document.body, "[");
+
+    expect(scrollCalls.get("p0")).toEqual([
+      { index: 4, align: "start" },
+      { index: 2, align: "start" },
+      { index: 0, align: "start" },
+    ]);
+  });
+
+  it("steps from the list again once the reader scrolls it", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "uauauaua") }]);
+    const list = lists[0]!;
+    layOut(list, { topRow: 6 });
+
+    press(document.body, "[");
+    // The reader takes over: a wheel turn, and the list ends up at row 2.
+    fireEvent.wheel(list, { deltaY: -100 });
+    layOut(list, { topRow: 2 });
+    press(document.body, "[");
+
+    expect(scrollCalls.get("p0")).toEqual([
+      { index: 4, align: "start" },
+      { index: 0, align: "start" },
+    ]);
+  });
+
+  it("puts the message back at the top when a row above it grows after it lands", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "uauaua") }]);
+    const list = lists[0]!;
+    layOut(list, { topRow: 4 });
+    press(document.body, "[");
+    layOut(list, { topRow: 2 });
+    frames(3);
+    expect(promptMoves("p0")).toHaveLength(1);
+
+    // The reply above finishes rendering and pushes the message 300px down.
+    layOut(list, { topRow: 2, offset: -300 });
+    frames(2);
+
+    expect(promptMoves("p0")).toEqual([
+      { index: 2, align: "start" },
+      { index: 2, align: "start" },
+    ]);
+  });
+
+  it("aims again when the message ends up outside the rendered rows", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "uauaua") }]);
+    const list = lists[0]!;
+    layOut(list, { topRow: 4 });
+    press(document.body, "[");
+    layOut(list, { topRow: 2 });
+    frames();
+
+    // An older page lands above and the list settles with the message
+    // scrolled out of the rows Virtuoso keeps rendered.
+    layOut(list, { topRow: 0 });
+    list.querySelector('[data-item-index="1002"]')!.removeAttribute("data-item-index");
+    frames(3);
+
+    expect(promptMoves("p0")).toEqual([
+      { index: 2, align: "start" },
+      { index: 2, align: "start" },
+    ]);
+  });
+
+  it("aims again when the jump stops short of the message", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "uauaua") }]);
+    const list = lists[0]!;
+    layOut(list, { topRow: 4 });
+    press(document.body, "[");
+    // Virtuoso lands on an estimate: the message ends up 300px down, and stays.
+    layOut(list, { topRow: 2, offset: -300 });
+    frames(3);
+
+    expect(promptMoves("p0")).toEqual([
+      { index: 2, align: "start" },
+      { index: 2, align: "start" },
+    ]);
+  });
+
+  it("does not aim again while the list is still moving", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "uauaua") }]);
+    const list = lists[0]!;
+    layOut(list, { topRow: 4 });
+    press(document.body, "[");
+    for (const offset of [-900, -600, -300]) {
+      layOut(list, { topRow: 2, offset });
+      frames();
+    }
+
+    expect(promptMoves("p0")).toHaveLength(1);
+  });
+
+  it("leaves the list alone after the reader scrolls it", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "uauaua") }]);
+    const list = lists[0]!;
+    layOut(list, { topRow: 4 });
+    press(document.body, "[");
+    layOut(list, { topRow: 2 });
+    frames();
+
+    fireEvent.wheel(list, { deltaY: -100 });
+    layOut(list, { topRow: 2, offset: -300 });
+    frames(3);
+
+    expect(promptMoves("p0")).toHaveLength(1);
+  });
+
+  it("leaves the list alone after the reader scrolls it with the keyboard", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "uauaua") }]);
+    const list = lists[0]!;
+    layOut(list, { topRow: 4 });
+    press(document.body, "[");
+    layOut(list, { topRow: 2 });
+    frames();
+
+    fireEvent.keyDown(list, { key: "PageUp", code: "PageUp" });
+    layOut(list, { topRow: 1, offset: 100 });
+    frames(3);
+
+    expect(promptMoves("p0")).toHaveLength(1);
+  });
+
+  it("lets Jump to latest, pressed from the keyboard, take the list", () => {
+    const { view, lists } = renderChats([{ messages: conversation("p", "uauaua") }]);
+    const list = lists[0]!;
+    layOut(list, { topRow: 4 });
+    press(document.body, "[");
+    layOut(list, { topRow: 2 });
+    frames();
+
+    // The button shows once the list is a screen away from the end.
+    fireEvent.scroll(list);
+    frames();
+    const button = view.getByRole("button", { name: "Jump to latest" });
+    fireEvent.keyDown(button, { key: "Enter", code: "Enter" });
+    fireEvent.click(button);
+    layOut(list, { topRow: 0, atEnd: true });
+    frames(3);
+
+    expect(promptMoves("p0")).toHaveLength(1);
+  });
+
+  it("keeps the burst going while the modifiers are pressed again between taps", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "uauauaua") }]);
+    layOut(lists[0]!, { topRow: 6 });
+
+    press(document.body, "[");
+    fireEvent.keyDown(document.body, { key: "Meta", code: "MetaLeft", metaKey: true });
+    fireEvent.keyDown(document.body, { key: "Alt", code: "AltLeft", metaKey: true, altKey: true });
+    press(document.body, "[");
+
+    expect(promptMoves("p0")).toEqual([
+      { index: 4, align: "start" },
+      { index: 2, align: "start" },
+    ]);
+  });
+
+  it("stops holding the message once it has stayed put for a while", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "uauaua") }]);
+    const list = lists[0]!;
+    layOut(list, { topRow: 4 });
+    press(document.body, "[");
+    layOut(list, { topRow: 2 });
+    frames(120);
+
+    layOut(list, { topRow: 2, offset: -300 });
+    frames(3);
+
+    expect(promptMoves("p0")).toHaveLength(1);
   });
 
   it("goes to the live end after the last sent message, and stops there", () => {
@@ -201,13 +478,13 @@ describe("ChatMessageList previous/next sent message", () => {
     expect(scrollCalls.get("float0")).toHaveLength(1);
   });
 
-  it("climbs to the oldest loaded row so the older page loads when no earlier sent message is loaded", () => {
-    const { lists } = renderChats([{ messages: conversation("p", "wawaua"), hasOlder: true }]);
+  it("climbs to the oldest loaded row so the older page loads when no earlier stop is loaded", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "aaaaua"), hasOlder: true }]);
     layOut(lists[0]!, { topRow: 4 });
 
     press(document.body, "[");
 
-    expect(scrollCalls.get("p0")).toEqual([{ index: 0, align: "start" }]);
+    expect(scrollCalls.get("task:task-p0")).toEqual([{ index: 0, align: "start" }]);
   });
 
   it("ignores the chord while an IME composition is in progress", () => {

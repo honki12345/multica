@@ -55,11 +55,9 @@ describe("findPromptTarget", () => {
       .toEqual({ kind: "row", index: 0 });
   });
 
-  it("starts from the newest row going back when no row is measured", () => {
-    expect(target("previous", null)).toEqual({ kind: "row", index: 5 });
-  });
-
-  it("does not jump to the end going forward when no row is measured", () => {
+  it("does nothing when no row is measured, instead of jumping to either end", () => {
+    // A blank frame mid-scroll used to send "previous" to the newest message.
+    expect(target("previous", null)).toBeNull();
     expect(target("next", null)).toBeNull();
   });
 });

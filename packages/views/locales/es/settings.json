@@ -425,12 +425,12 @@
         "description": "Inicia un chat nuevo en la ventana de chat flotante."
       },
       "chatPreviousPrompt": {
-        "label": "Mensaje enviado anterior",
-        "description": "Desplaza el chat abierto al mensaje que enviaste antes del que está a la vista."
+        "label": "Mensaje enviado o recordatorio anterior",
+        "description": "Desplaza el chat abierto al mensaje que enviaste, o al recordatorio, antes del que está a la vista."
       },
       "chatNextPrompt": {
-        "label": "Siguiente mensaje enviado",
-        "description": "Desplaza el chat abierto al siguiente mensaje que enviaste y, después, a la última respuesta."
+        "label": "Siguiente mensaje enviado o recordatorio",
+        "description": "Desplaza el chat abierto al siguiente mensaje que enviaste o al siguiente recordatorio y, después, a la última respuesta."
       },
       "findInIssue": {
         "label": "Buscar en la tarea",

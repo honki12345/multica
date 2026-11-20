@@ -425,12 +425,12 @@
         "description": "Démarrer une nouvelle discussion dans la fenêtre de discussion flottante."
       },
       "chatPreviousPrompt": {
-        "label": "Message envoyé précédent",
-        "description": "Faire défiler la discussion ouverte jusqu'au message que vous avez envoyé avant celui affiché."
+        "label": "Message envoyé ou réveil précédent",
+        "description": "Faire défiler la discussion ouverte jusqu'au message que vous avez envoyé, ou au réveil, avant celui affiché."
       },
       "chatNextPrompt": {
-        "label": "Message envoyé suivant",
-        "description": "Faire défiler la discussion ouverte jusqu'au message suivant que vous avez envoyé, puis jusqu'à la dernière réponse."
+        "label": "Message envoyé ou réveil suivant",
+        "description": "Faire défiler la discussion ouverte jusqu'au message suivant que vous avez envoyé ou au réveil suivant, puis jusqu'à la dernière réponse."
       },
       "findInIssue": {
         "label": "Rechercher dans la tâche",
