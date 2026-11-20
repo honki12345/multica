@@ -480,38 +480,14 @@ features:
 
   - id: inbox-cli-manage
     summary: "Upstream's `multica inbox` management (count, read, unread, archive, unarchive, snooze, unsnooze; list --unread/--issue/--since/--archived/--snoozed) and the owner gate on every inbox route, cherry-picked ahead of an upstream release."
-    status: active
+    status: dropped
     kind: cli
     cards: [CALA-273]
     origin:
       type: upstream-cherry-pick
       upstream_pr: 10861
       commits: ["267194a85", "9ab32e563"]
-    files:
-      - server/cmd/multica/cmd_inbox_manage_test.go
-      - server/cmd/server/inbox_owner_gate_routes_test.go
-      - server/cmd/server/router.go
-      - server/internal/daemon/execenv/runtime_config_sections.go
-      - server/internal/handler/handler.go
-      - server/internal/handler/inbox.go
-      - server/internal/handler/inbox_access_test.go
-      - server/internal/handler/inbox_archive.go
-      - server/internal/handler/inbox_archive_test.go
-      - server/internal/handler/inbox_snooze.go
-      - server/internal/handler/inbox_write_access_test.go
-      - server/internal/service/builtin_skills/multica-platform/SKILL.md
-      - server/internal/service/builtin_skills/multica-platform/references/inbox.md
-      - server/internal/service/builtin_skills_test.go
-      - server/pkg/db/generated/inbox.sql.go
-      - server/pkg/db/generated/inbox_archive.sql.go
-      - server/pkg/db/queries/inbox.sql
-      - server/pkg/db/queries/inbox_archive.sql
-      - apps/docs/content/docs/cli.mdx
-      - apps/docs/content/docs/cli.ko.mdx
-      - apps/docs/content/docs/cli.ja.mdx
-      - apps/docs/content/docs/cli.fr.mdx
-      - apps/docs/content/docs/cli.zh.mdx
-      - apps/docs/content/docs/cli.zh-Hant.mdx
+    files: [server/cmd/multica/cmd_inbox_manage_test.go]
     watch:
       - path: server/cmd/multica/cmd_id_resolver.go
         why: resolveIssueRef / loadActorDisplayLookup used by --issue, read --issue and the FROM column
@@ -542,7 +518,7 @@ features:
         expect:
           - Each command exits 0; `workspaces[].count` for this workspace matches the web Inbox badge (`unread` counts raw notifications).
           - No notification changes read state.
-    drop_when: "an upstream release tag that contains multica-ai/multica#10861 is merged into main (the cherry-picks become no-ops in that merge; `inbox_filter.go` stays with inbox-list-filters)."
+    drop_when: "an upstream release tag that contains multica-ai/multica#10861 is merged into main (the cherry-picks become no-ops in that merge; `inbox_filter.go` stays with inbox-list-filters). Met by v0.11.1 (63cebc194 #10861 and 482ea80f5 #10921 are in the tag): every cherry-picked file is identical to v0.11.1 or differs only by our notice, which the merge removed; the fork wording in the inbox skill reference moved to inbox-list-filters (CALA-292)."
 
   - id: inbox-list-filters
     summary: "`multica inbox list` takes the web Inbox's filters as flags and lists the same rows: one per issue, newest first; --ungrouped for every notification. Sits on upstream's list (inbox-cli-manage)."
@@ -557,6 +533,7 @@ features:
       - server/cmd/multica/cmd_inbox_test.go
       - server/cmd/multica/inbox_filter.go
       - server/cmd/multica/inbox_filter_test.go
+      - server/internal/service/builtin_skills/multica-platform/references/inbox.md
       - packages/core/inbox/filter-parity.test.ts
       - packages/core/inbox/testdata/filter-parity.json
       - apps/docs/content/docs/inbox.mdx

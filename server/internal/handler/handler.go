@@ -1,5 +1,3 @@
-// Modified by honki12345, 2026: cherry-pick upstream multica-ai/multica#10861 (inbox management from the CLI) ahead of an upstream release (CALA-273).
-
 package handler
 
 import (
@@ -28,6 +26,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/dbreader"
 	"github.com/multica-ai/multica/server/internal/entitlement"
 	"github.com/multica-ai/multica/server/internal/events"
+	"github.com/multica-ai/multica/server/internal/inbox"
 	"github.com/multica-ai/multica/server/internal/inboxread"
 	"github.com/multica-ai/multica/server/internal/integrations/channel/engine"
 	composio "github.com/multica-ai/multica/server/internal/integrations/composio"
@@ -223,6 +222,7 @@ type RuntimeRecoveryNotifier interface {
 
 type Handler struct {
 	InboxReads             *inboxread.Guard
+	InboxTrimmer           *inbox.Trimmer // nil leaves inboxes untrimmed
 	Queries                *db.Queries
 	ReadSelector           *dbreader.Selector
 	DB                     dbExecutor
