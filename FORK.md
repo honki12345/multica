@@ -384,7 +384,12 @@ card with the triage report and these steps in its description.
    The comment starts with `배포 보류` (nothing is deployed) when the
    `--merge-commit` has another tree than the candidate (`검증한 트리와 병합
    커밋이 다름`), when `result.json` has no checks, or when an active registry
-   feature has no check in it, not even `n/a` (`검증 결과에 없는 개조 N건`).
+   feature has no check in it, not even `n/a` (`검증 결과에 없는 개조 N건`),
+   or when a feature that ran lacks a layer its registry entry calls for: a
+   `tests` list needs a `test` check, `scenarios` on a server/cli/daemon
+   feature a `scenario` check, `scenarios` on a web-ui feature a `screen`
+   check (`검증하지 않은 층 N건 (<id>:<layer>)`). So `fork-verify --skip screen`
+   cannot be approved. A feature whose checks are all `n/a` owes no layer.
    No tag, build or deploy before the user approves on the card.
 6. **After approval.** Tag `vX.Y.Z-hoon.1` on the merge commit, back up the
    database (`pg_dump -Fc`), `scripts/hoon/release.sh release vX.Y.Z-hoon.1`,

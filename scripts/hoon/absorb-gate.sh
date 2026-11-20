@@ -40,6 +40,11 @@
 #           (`검증한 트리와 병합 커밋이 다름`). The deploy is also held when
 #           result.json has no checks, or when an active registry feature has no
 #           check in it (any verdict, n/a included): `검증 결과에 없는 개조 N건`.
+#           It is held too when a feature that ran lacks a layer its registry
+#           entry calls for (tests -> test; server/cli/daemon scenarios ->
+#           scenario; web-ui scenarios -> screen), e.g. after
+#           `fork-verify --skip screen`: `검증하지 않은 층 N건 (<id>:<layer>)`.
+#           A feature whose checks are all n/a (commits absent) owes no layer.
 #           Run it inside the fork checkout (the revs are resolved there).
 #           Validates the decisions and prints the STOP comment (Korean markdown),
 #           then a `--- attachments` line and one absolute path per line (the
@@ -439,6 +444,43 @@ def pick_screens(vdir):
     return [os.path.join(sdir, n) for _, n in picked]
 
 
+def required_layers(f):
+    """Layers fork-verify must have reported for an active feature in the candidate.
+
+    Mirrors fork_verify.main: go/vitest tests -> `test`; server/cli/daemon
+    scenarios -> `scenario`; web-ui scenarios -> `screen` (web-ui scenarios are
+    only run as screens).
+    """
+    need = set()
+    if any("go" in t or "vitest" in t for t in f.get("tests") or [] if isinstance(t, dict)):
+        need.add("test")
+    if f.get("scenarios"):
+        if f.get("kind") in ("server", "cli", "daemon"):
+            need.add("scenario")
+        elif f.get("kind") == "web-ui":
+            need.add("screen")
+    return need
+
+
+def skipped_layers(features, checks):
+    """`feature:layer` for every layer the registry calls for but result.json lacks.
+
+    `fork-verify --skip screen` leaves the feature ids covered while no screen
+    check exists. A feature whose checks are all n/a (commits absent from the
+    candidate) was never run and owes no layer.
+    """
+    have = {}
+    for c in checks:
+        have.setdefault(c["feature"], {}).setdefault(c["layer"], set()).add(c["verdict"])
+    out = []
+    for f in features:
+        got = have.get(f["id"])
+        if f.get("status") != "active" or not got or all(v == {NA} for v in got.values()):
+            continue
+        out += ["%s:%s" % (f["id"], layer) for layer in ("test", "scenario", "screen") if layer in required_layers(f) and layer not in got]
+    return out
+
+
 def cmd_comment(a):
     tri = load_triage(a.triage)
     dec = load_yaml_text(open_text(a.decisions, "decisions"), "decisions")
@@ -464,6 +506,7 @@ def cmd_comment(a):
 
     verified = {c["feature"] for c in checks}
     unverified_features = sorted(f["id"] for f in features if f.get("status") == "active" and f["id"] not in verified)
+    missing_layers = skipped_layers(features, checks)
 
     reasons = []
     if tree_differs:
@@ -472,6 +515,8 @@ def cmd_comment(a):
         reasons.append("검증 결과가 비어 있음")
     if unverified_features:
         reasons.append("검증 결과에 없는 개조 %d건 (%s)" % (len(unverified_features), ", ".join(unverified_features)))
+    if missing_layers:
+        reasons.append("검증하지 않은 층 %d건 (%s)" % (len(missing_layers), ", ".join(missing_layers)))
     if failed:
         reasons.append("fork-verify 실패 %d건" % count[FAIL] if count[FAIL] else "fork-verify 종료 코드 %s" % exit_code)
     if count[UNVERIFIED]:

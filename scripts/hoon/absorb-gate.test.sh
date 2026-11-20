@@ -74,6 +74,10 @@ features:
     status: active
     kind: server
     cards: [CALA-1, CALA-2]
+    tests:
+      - {go: server/pkg/core, name: TestA}
+    scenarios:
+      - {name: does the thing}
   - id: wake-plan
     summary: Planned wake feature.
     status: planned
@@ -89,6 +93,8 @@ features:
     status: active
     kind: web-ui
     cards: []
+    scenarios:
+      - {name: bar, path: /x, widths: [1440, 900]}
 EOF
 
 cat > "$T/cards.json" <<'EOF'
@@ -490,6 +496,40 @@ first="$(head -n1 "$T/c-empty.md")"
 [ "$rc" -eq 0 ] && case "$first" in "배포 보류: "*"검증 결과가 비어 있음"*"검증 결과에 없는 개조 2건"*) true ;; *) false ;; esac && pass "empty checks hold the deploy" || bad "empty checks hold the deploy (rc=$rc, $first)"
 FV="$T/fv-ok" cmt > "$T/c-allfeat.md" 2>/dev/null
 [ "$(head -n1 "$T/c-allfeat.md")" = "배포 준비 완료. 승인하면 배포합니다." ] && pass "a planned feature and an n/a check do not need more coverage" || bad "n/a check for the planned feature is enough"
+
+# Covering the feature ids is not enough: every layer the registry calls for
+# (test, scenario, screen) must have a check, e.g. `fork-verify --skip screen`
+# must not read as verified.
+mkdir -p "$T/fv-skip-screen" "$T/fv-skip-scenario" "$T/fv-skip-test" "$T/fv-na-feature" "$T/fv-skip-all"
+"${PY[@]}" - "$T" <<'PY2'
+import json
+import sys
+t = sys.argv[1]
+d = json.load(open(t + "/fv-ok/result.json"))
+def put(name, keep, extra=()):
+    x = dict(d); x["checks"] = [c for c in d["checks"] if keep(c)] + list(extra)
+    json.dump(x, open(t + "/" + name + "/result.json", "w"))
+other_test = {"feature": "quiet-ui", "layer": "test", "name": "vitest other", "verdict": "pass", "detail": "ok", "evidence": []}
+put("fv-skip-screen", lambda c: c["layer"] != "screen", [other_test])
+put("fv-skip-scenario", lambda c: not (c["feature"] == "core-ours" and c["layer"] == "scenario"))
+put("fv-skip-test", lambda c: not (c["feature"] == "core-ours" and c["layer"] == "test"))
+na = {"feature": "core-ours", "layer": "test", "name": "개조 커밋", "verdict": "n/a", "detail": "후보에 커밋이 없음", "evidence": []}
+put("fv-na-feature", lambda c: c["feature"] != "core-ours", [na])
+put("fv-skip-all", lambda c: c["feature"] not in ("core-ours", "quiet-ui"), [na, other_test])
+PY2
+holds() { # holds <name> <fv dir> <needle>
+  FV="$2" cmt > "$T/c-layer.md" 2> "$T/e"; rc=$?
+  first="$(head -n1 "$T/c-layer.md")"
+  [ "$rc" -eq 0 ] && case "$first" in "배포 보류: "*"$3"*) true ;; *) false ;; esac && pass "$1" || bad "$1 (rc=$rc, $first)"
+}
+holds "a skipped screen layer holds the deploy" "$T/fv-skip-screen" "검증하지 않은 층 1건 (quiet-ui:screen)"
+holds "a skipped scenario layer holds the deploy" "$T/fv-skip-scenario" "검증하지 않은 층 1건 (core-ours:scenario)"
+holds "a skipped test layer holds the deploy" "$T/fv-skip-test" "검증하지 않은 층 1건 (core-ours:test)"
+FV="$T/fv-na-feature" cmt > "$T/c-layer.md" 2> "$T/e"
+[ "$(head -n1 "$T/c-layer.md")" = "배포 준비 완료. 승인하면 배포합니다." ] && pass "a feature whose checks are all n/a owes no layer" || bad "a feature whose checks are all n/a owes no layer ($(head -n1 "$T/c-layer.md"))"
+FV="$T/fv-skip-all" cmt > "$T/c-layer.md" 2> "$T/e"
+first="$(head -n1 "$T/c-layer.md")"
+case "$first" in "배포 보류: "*"검증하지 않은 층 1건 (quiet-ui:screen)"*) pass "layers are checked per feature (n/a feature skipped, quiet-ui:screen reported)" ;; *) bad "layers are checked per feature ($first)" ;; esac
 
 # --registry-ref reads the registry from git, like template.
 mkdir -p "$G/fork" && cp "$T/features.yml" "$G/fork/features.yml" && git -C "$G" add -A && git -C "$G" commit -qm registry && REGREF="$(git -C "$G" rev-parse HEAD)"
