@@ -1,10 +1,11 @@
-// Modified by honki12345, 2026: cover the chat previous/next sent-message defaults (CALA-281).
+// Modified by honki12345, 2026: cover the chat previous/next sent-message defaults (CALA-281), rename title on Mod+R (CALA-327).
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createShortcutChord,
   formatShortcut,
   isShortcutAllowedForAction,
   isReservedShortcut,
+  isReservedShortcutForAction,
   parseLegacyShortcut,
   SHORTCUT_ACTIONS,
   SHORTCUT_ACTION_BY_ID,
@@ -141,6 +142,51 @@ describe("keyboard shortcut definitions", () => {
     ).toBe(true);
     // Go back / Go forward keep the chord without Alt.
     expect(shortcutMatchesEvent(previous, keyEvent("[", { code: "BracketLeft", metaKey: true }), "macos")).toBe(false);
+  });
+
+  it("renames the open chat or issue title with Mod+R everywhere, composer included", () => {
+    const chord = createShortcutChord("R", { primary: true });
+    expect(SHORTCUT_ACTION_BY_ID.renameTitle.defaultShortcut).toEqual(chord);
+    expect(SHORTCUT_ACTION_BY_ID.renameTitle.allowInEditable).toBe(true);
+    for (const platform of ["macos", "windows", "linux"] as const) {
+      for (const runtime of ["web", "desktop"] as const) {
+        expect(
+          isShortcutAllowedForAction("renameTitle", chord, platform, runtime),
+          `Mod+R must stay assignable to renameTitle on ${platform}/${runtime}`,
+        ).toBe(true);
+        // Reload stays reserved for every other action, and the force-reload
+        // variants for this one too.
+        expect(isShortcutAllowedForAction("openSearch", chord, platform, runtime)).toBe(false);
+        expect(
+          isShortcutAllowedForAction(
+            "renameTitle",
+            createShortcutChord("R", { primary: true, shift: true }),
+            platform,
+            runtime,
+          ),
+        ).toBe(false);
+      }
+    }
+    expect(shortcutMatchesEvent(chord, keyEvent("r", { metaKey: true }), "macos")).toBe(true);
+    expect(shortcutMatchesEvent(chord, keyEvent("r", { ctrlKey: true }), "windows")).toBe(true);
+    expect(shortcutMatchesEvent(chord, keyEvent("R", { metaKey: true, shiftKey: true }), "macos")).toBe(false);
+  });
+
+  it("frees bare Mod+R from the reload reservation only for renaming", () => {
+    const chord = createShortcutChord("R", { primary: true });
+    for (const runtime of ["web", "desktop"] as const) {
+      expect(isReservedShortcut(chord, "macos", runtime)).toBe(true);
+      expect(isReservedShortcutForAction("renameTitle", chord, "macos", runtime)).toBe(false);
+      expect(isReservedShortcutForAction("findInIssue", chord, "macos", runtime)).toBe(true);
+      expect(
+        isReservedShortcutForAction(
+          "renameTitle",
+          createShortcutChord("R", { primary: true, shift: true }),
+          "macos",
+          runtime,
+        ),
+      ).toBe(true);
+    }
   });
 
   it("keeps the plain inbox archive key out of editable controls", () => {
