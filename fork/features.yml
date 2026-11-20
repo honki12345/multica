@@ -810,7 +810,7 @@ features:
     cards: [CALA-328]
     origin:
       type: ours
-      commits: ["759ab3826", "92e9a4273", "b8a1e9ce6", "77a821d37"]
+      commits: ["759ab3826", "92e9a4273", "b8a1e9ce6", "77a821d37", "3f2ae664a"]
     files:
       - packages/core/shortcuts/definitions.ts
       - packages/core/shortcuts/definitions.test.ts
@@ -917,6 +917,8 @@ features:
         name: counts every press of a burst, the route still on the issue before or already on the next one loading
       - vitest: packages/views/layout/panels/work-inbox-list-step.test.tsx
         name: steps on from an issue whose page has not loaded, named by its identifier
+      - vitest: packages/views/layout/panels/work-inbox-list-step.test.tsx
+        name: steps on from a notification archived elsewhere, whose row the section keeps in place
       - vitest: packages/views/layout/panels/work-inbox-list-step.test.tsx
         name: stops at the last notification and still claims the key
       - vitest: packages/views/issues/components/comment-composers.test.tsx
