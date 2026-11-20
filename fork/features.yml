@@ -414,6 +414,10 @@ features:
         name: moves a chip with Space and the arrow keys, and still opens a chat with Enter
       - vitest: packages/views/chat/components/use-chat-window-anchor.test.tsx
         name: follows its chip when the chips are dragged into another order
+      - vitest: packages/views/chat/components/use-chat-window-anchor.test.tsx
+        name: stays put when a chip is only hovered or its chat starts running
+      - vitest: packages/views/chat/components/chat-bar.test.tsx
+        name: opens a chat on a click right after a keyboard drag is cancelled with Escape
     scenarios:
       - name: drag a chip into another place
         path: /<workspace-slug>/issues

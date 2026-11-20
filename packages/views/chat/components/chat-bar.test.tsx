@@ -362,6 +362,31 @@ describe("ChatBar", () => {
     }
   });
 
+  it("opens a chat on a click right after a keyboard drag is cancelled with Escape", async () => {
+    const many = [1, 2, 3].map((n) => session(`Chat ${n}`, n, { has_unread: true }));
+    const rect = layOutChips(["Chat 3", "Chat 2", "Chat 1"]);
+    try {
+      renderBar(many);
+      const chip = screen.getByRole("button", { name: "Chat 3, Unread" });
+      chip.focus();
+      fireEvent.keyDown(chip, { code: "Space", key: " " });
+      fireEvent.keyUp(chip, { code: "Space", key: " " });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      fireEvent.keyDown(document, { code: "Escape", key: "Escape" });
+      fireEvent.keyUp(document, { code: "Escape", key: "Escape" });
+      await new Promise((resolve) => setTimeout(resolve, 120));
+
+      fireEvent.click(screen.getByRole("button", { name: "Chat 2, Unread" }));
+
+      expect(h.chat.setChatBarOrder).not.toHaveBeenCalled();
+      expect(h.chat.setOpen).toHaveBeenCalledWith(true);
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
   it("opens a chat from the history, grouped by when it last moved", async () => {
     vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 10, 11, 20) });
     try {

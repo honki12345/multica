@@ -46,14 +46,16 @@ const DRAG_MODIFIERS = [restrictToHorizontalAxis, restrictToFirstScrollableAnces
 const KEY_RELEASE_TIMEOUT_MS = 1000;
 // Space picks a chip up and puts it down. Enter is left to the button, so it
 // still opens the chat.
+const DRAG_KEYS = {
+  start: [KeyboardCode.Space],
+  cancel: [KeyboardCode.Esc],
+  end: [KeyboardCode.Space, KeyboardCode.Enter, KeyboardCode.Tab],
+};
 const KEYBOARD_DRAG: KeyboardSensorOptions = {
   coordinateGetter: sortableKeyboardCoordinates,
-  keyboardCodes: {
-    start: [KeyboardCode.Space],
-    cancel: [KeyboardCode.Esc],
-    end: [KeyboardCode.Space, KeyboardCode.Enter, KeyboardCode.Tab],
-  },
+  keyboardCodes: DRAG_KEYS,
 };
+const DRAG_SETTLE_KEYS: string[] = [...DRAG_KEYS.end, ...DRAG_KEYS.cancel];
 
 /** The star from the Multica mark, in the text colour. */
 function MulticaStar() {
@@ -218,6 +220,7 @@ export function ChatBar() {
 
   // Space clicks the chip when it comes up, which can be well after the
   // keydown that ended a keyboard drag; hold the guard until then.
+  const pendingRelease = useRef<(() => void) | null>(null);
   const settleDrag = useCallback(
     (event: { activatorEvent: Event | null }) => {
       if (!(event.activatorEvent instanceof KeyboardEvent)) {
@@ -227,17 +230,26 @@ export function ChatBar() {
       const release = () => {
         clearTimeout(fallback);
         window.removeEventListener("keyup", onKeyUp, true);
+        pendingRelease.current = null;
         releaseClickGuard();
       };
-      // Only the keys that end a drag click the button when they come up.
+      // Only the keys that end or cancel a drag; an arrow still held when the
+      // chip is dropped must not let Space's click through.
       const onKeyUp = (keyEvent: KeyboardEvent) => {
-        if (KEYBOARD_DRAG.keyboardCodes?.end.includes(keyEvent.code)) release();
+        if (DRAG_SETTLE_KEYS.includes(keyEvent.code)) release();
       };
       const fallback = setTimeout(release, KEY_RELEASE_TIMEOUT_MS);
       window.addEventListener("keyup", onKeyUp, true);
+      pendingRelease.current = release;
     },
     [releaseClickGuard],
   );
+  // A drag picked up again before the last one settled must not have the
+  // guard dropped under it by that one's timer.
+  const startDrag = useCallback(() => {
+    pendingRelease.current?.();
+    armClickGuard();
+  }, [armClickGuard]);
   const onDragEnd = useCallback(
     (event: DragEndEvent) => {
       settleDrag(event);
@@ -315,7 +327,7 @@ export function ChatBar() {
             sensors={sensors}
             collisionDetection={closestCenter}
             modifiers={DRAG_MODIFIERS}
-            onDragStart={armClickGuard}
+            onDragStart={startDrag}
             onDragEnd={onDragEnd}
             onDragCancel={settleDrag}
           >
