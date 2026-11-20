@@ -280,6 +280,24 @@ check("stack: gotest_db=failed means failed", st.gotest_db_state() == "failed")
 st.info["gotest_db"] = "ok"
 check("stack: gotest_db=ok means ok", st.gotest_db_state() == "ok")
 
+# --- report directory
+keep = T / "keep"; keep.mkdir(); (keep / "sentinel").write_text("x")
+link = T / "outlink"; link.symlink_to(keep)
+try:
+    fv.prepare_out_dir(link)
+    refused = False
+except ValueError:
+    refused = True
+check("out dir: a symlink is refused and its target survives", refused and (keep / "sentinel").exists())
+rel_base = T / "relbase"; rel_base.mkdir(); (rel_base / "r" ).mkdir(); (rel_base / "r" / "old").write_text("x")
+cwd0 = os.getcwd(); os.chdir(rel_base)
+try:
+    got = fv.prepare_out_dir(Path("r"))
+finally:
+    os.chdir(cwd0)
+check("out dir: a relative path becomes absolute and is emptied",
+      got.is_absolute() and os.path.samefile(got.parent, rel_base) and got.name == "r" and not got.exists())
+
 # --- pixel diff and triptych
 a = Image.new("RGB", (200, 100), (255, 255, 255))
 b = a.copy()

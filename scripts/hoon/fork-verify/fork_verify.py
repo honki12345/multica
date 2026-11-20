@@ -112,6 +112,20 @@ def exit_code(checks):
     return 1 if any(c.verdict == FAIL for c in checks) else 0
 
 
+def prepare_out_dir(path):
+    """Empty the report directory and return its absolute path.
+
+    Absolute because vitest and go run inside the exported tree, where a relative
+    path would land their reports. Not resolved, and a symlink is refused: the
+    directory is deleted first, and following a link would delete its target.
+    """
+    out = Path(os.path.abspath(path))
+    if out.is_symlink():
+        raise ValueError("--out %s is a symlink; pass the real directory" % out)
+    shutil.rmtree(out, ignore_errors=True)
+    return out
+
+
 def slugify_ref(ref):
     return re.sub(r"[^A-Za-z0-9._-]+", "-", ref).strip("-") or "ref"
 
@@ -1350,10 +1364,11 @@ def main(argv):
         return 2
     short = sha[:9]
     version = resolve_version(args.ref, args.version, short)
-    # Absolute: vitest and go run from inside the exported tree, and a relative
-    # --out would land their reports there.
-    out_dir = (Path(args.out) if args.out else REPO / "out" / "fork-verify" / slugify_ref(args.ref)).resolve()
-    shutil.rmtree(out_dir, ignore_errors=True)
+    try:
+        out_dir = prepare_out_dir(Path(args.out) if args.out else REPO / "out" / "fork-verify" / slugify_ref(args.ref))
+    except ValueError as e:
+        print("fork-verify: %s" % e, file=sys.stderr)
+        return 2
     logdir = out_dir / "logs"
     logdir.mkdir(parents=True)
     backup = args.backup or default_backup()
