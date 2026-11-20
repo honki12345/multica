@@ -30,34 +30,31 @@ function isShown(el: HTMLElement | null): el is HTMLElement {
   return !!el && el.isConnected && el.getClientRects().length > 0;
 }
 
-/** How many ancestors up from `el` the first one containing `node` is. */
-function distanceToCommonAncestor(el: HTMLElement, node: Node): number {
-  let depth = 0;
-  for (let up: Node | null = el; up; up = up.parentNode, depth++) {
-    if (up.contains(node)) return depth;
-  }
-  return Infinity;
-}
-
 /**
  * Which title a keypress renames: the floating chat window's while focus is
  * inside it, otherwise one on the page (the chat or issue on screen). With
- * two on screen (an issue peek over an issue page), the one sharing the
- * nearest container with the focus wins; failing that, the newest mounted,
- * which is the one on top. Hidden panes have no layout, so they drop out.
+ * two on screen (an issue peek over an issue page), the one in the nearest
+ * container around the focus wins; failing that, the newest mounted, which
+ * is the one on top. Hidden panes have no layout, so they drop out.
  */
 function pickTarget(focus: EventTarget | null): RenameTarget | null {
-  const focusNode = focus instanceof Node ? focus : null;
   const floating = focus instanceof Element ? focus.closest(FLOATING_WINDOW) : null;
-  let best: { target: RenameTarget; distance: number } | null = null;
+  const shown: { target: RenameTarget; el: HTMLElement }[] = [];
   for (const target of targets) {
     const el = target.element();
     if (!isShown(el)) continue;
     if (floating ? !floating.contains(el) : el.closest(FLOATING_WINDOW)) continue;
-    const distance = focusNode ? distanceToCommonAncestor(el, focusNode) : Infinity;
-    if (!best || distance <= best.distance) best = { target, distance };
+    shown.push({ target, el });
   }
-  return best?.target ?? null;
+  if (shown.length === 0) return null;
+  // Walk up from the focus; the first ancestor holding exactly one title
+  // decides. <body> holds them all, so a focus outside both falls through.
+  for (let up = focus instanceof Node ? focus : null; up && up !== document.body; up = up.parentNode) {
+    const inside = shown.filter(({ el }) => up!.contains(el));
+    if (inside.length === 1) return inside[0]!.target;
+    if (inside.length > 1) break;
+  }
+  return shown[shown.length - 1]!.target;
 }
 
 function onKeyDown(event: KeyboardEvent) {

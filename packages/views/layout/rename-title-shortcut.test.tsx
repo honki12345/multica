@@ -117,6 +117,35 @@ describe("rename title shortcut", () => {
     expect(peek).toHaveBeenCalledTimes(2);
   });
 
+  it("prefers the newest title over a deeper-nested page title when focus is outside both", () => {
+    const page = vi.fn();
+    const peek = vi.fn();
+    render(
+      <>
+        <section>
+          <div>
+            <div>
+              <Target name="page issue" onRename={page} />
+            </div>
+          </div>
+          <aside>
+            <button>page sidebar</button>
+          </aside>
+        </section>
+        <section>
+          <Target name="peek issue" onRename={peek} />
+        </section>
+      </>,
+    );
+
+    pressRename(document.body);
+    expect(peek).toHaveBeenCalledTimes(1);
+    expect(page).not.toHaveBeenCalled();
+
+    pressRename(screen.getByText("page sidebar"));
+    expect(page).toHaveBeenCalledTimes(1);
+  });
+
   it("does not hand an unfocused floating chat the keypress on a page without a title", () => {
     const floating = vi.fn();
     render(
