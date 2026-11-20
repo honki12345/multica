@@ -351,11 +351,26 @@ card with the triage report and these steps in its description.
    the gate's SHA. A tag-only rehearsal stops before this step.
 5. **Stop for approval.** `scripts/hoon/absorb-gate.sh comment --triage
    triage.json --decisions decisions.yml --verify out/fork-verify/<ref>
-   --triage-md triage.md --pr <url> --merge-commit <sha> --pr-check <url>
-   --tag vX.Y.Z-hoon.1` renders the single approval comment: the triage
-   summary, the upstream-first table, the C/E table, the test table and the
-   screen captures listed after `--- attachments` (attach them with
-   `multica issue comment add --attachment`). The card goes to `in_review`.
+   --cards cards.json --exclude-card <absorb card> --registry-ref
+   merge/vX.Y.Z --candidate merge/vX.Y.Z --triage-md triage.md --pr <url>
+   --merge-commit <sha> --pr-check <url> --tag vX.Y.Z-hoon.1` renders the
+   single approval comment: the triage summary, the upstream-first table, the
+   C/E table, the test table and the screen captures listed after
+   `--- attachments` (attach them with `multica issue comment add
+   --attachment`). The card goes to `in_review`. Run it inside the fork
+   checkout. The script refuses to render (exit 2) unless:
+   - the decisions hold exactly one upstream-first row per active/planned
+     registry feature (read at `--registry-ref`) and per open card outside the
+     registry (`--cards` is required; `has_more: true` is refused, so fetch
+     with a `--limit` that returns every card). Missing, duplicate and unknown
+     ids are listed on stderr;
+   - `--candidate` (the merge branch head that was verified and is up for
+     approval) is the commit `fork-verify` ran on: `result.json`'s `sha` equals
+     `git rev-parse <candidate>^{commit}`.
+   The comment starts with `배포 보류` (nothing is deployed) when the
+   `--merge-commit` has another tree than the candidate (`검증한 트리와 병합
+   커밋이 다름`), when `result.json` has no checks, or when an active registry
+   feature has no check in it, not even `n/a` (`검증 결과에 없는 개조 N건`).
    No tag, build or deploy before the user approves on the card.
 6. **After approval.** Tag `vX.Y.Z-hoon.1` on the merge commit, back up the
    database (`pg_dump -Fc`), `scripts/hoon/release.sh release vX.Y.Z-hoon.1`,

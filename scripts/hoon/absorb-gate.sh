@@ -8,6 +8,7 @@
 #                           [--cards <cards.json>] [--exclude-card CALA-N]...
 #   absorb-gate.sh comment  --triage <triage.json> --decisions <decisions.yml>
 #                           --verify <fork-verify out dir> --cards <cards.json>
+#                           --candidate <rev>
 #                           [--registry-ref <ref>] [--registry <path>] [--exclude-card CALA-N]...
 #                           [--triage-md <md>] [--pr <url>] [--merge-commit <sha>]
 #                           [--pr-check <url>] [--tag <planned tag>]
@@ -29,6 +30,15 @@
 #           --cards is required (an absorb always has project cards) and a cards
 #           file with `has_more: true` is refused (template and comment): an
 #           incomplete page cannot define the inventory.
+#           --candidate <rev> is the commit that was verified and is up for
+#           approval (the merge branch head). result.json's `sha` must equal
+#           `git rev-parse <rev>^{commit}`, else exit 2. A --merge-commit that
+#           differs from the candidate must have the same tree
+#           (`<x>^{tree}`); if not, the first line holds the deploy
+#           (`검증한 트리와 병합 커밋이 다름`). The deploy is also held when
+#           result.json has no checks, or when an active registry feature has no
+#           check in it (any verdict, n/a included): `검증 결과에 없는 개조 N건`.
+#           Run it inside the fork checkout (the revs are resolved there).
 #           Validates the decisions and prints the STOP comment (Korean markdown),
 #           then a `--- attachments` line and one absolute path per line (the
 #           triage .md and the screen captures, at most 8 files in total).
@@ -41,7 +51,7 @@
 set -uo pipefail
 
 usage="usage: $0 template --triage <json> [--registry-ref <ref>] [--registry <path>] [--cards <json>] [--exclude-card CALA-N]...
-       $0 comment  --triage <json> --decisions <yml> --verify <dir> --cards <json> [--registry-ref <ref>] [--registry <path>] [--exclude-card CALA-N]... [--triage-md <md>] [--pr <url>] [--merge-commit <sha>] [--pr-check <url>] [--tag <tag>]"
+       $0 comment  --triage <json> --decisions <yml> --verify <dir> --cards <json> --candidate <rev> [--registry-ref <ref>] [--registry <path>] [--exclude-card CALA-N]... [--triage-md <md>] [--pr <url>] [--merge-commit <sha>] [--pr-check <url>] [--tag <tag>]"
 case "${1:-}" in
   template|comment) cmd="$1"; shift ;;
   -h|--help) echo "$usage"; exit 0 ;;
@@ -371,6 +381,18 @@ def check_decisions(dec, tri, expected):
     return cands, rows
 
 
+def resolve(rev, what, kind="commit"):
+    top = repo_top()
+    if not top:
+        die("%s을 확인하려면 git 저장소 안에서 실행해야 합니다" % what)
+    if not rev or rev.startswith("-"):
+        die("%s가 올바른 리비전이 아닙니다 (%s)" % (what, rev))
+    p = subprocess.run(["git", "-C", top, "rev-parse", "--verify", "-q", "%s^{%s}" % (rev, kind)], capture_output=True, text=True)
+    if p.returncode != 0:
+        die("%s를 찾을 수 없습니다 (%s)" % (what, rev))
+    return p.stdout.strip()
+
+
 def load_verify(vdir):
     path = os.path.join(vdir, "result.json")
     if not os.path.isfile(path):
@@ -401,9 +423,17 @@ def pick_screens(vdir):
 def cmd_comment(a):
     tri = load_triage(a.triage)
     dec = load_yaml_text(open_text(a.decisions, "decisions"), "decisions")
-    _, feats, open_cards = inventory(a)
+    features, feats, open_cards = inventory(a)
     cands, rows = check_decisions(dec, tri, {f["id"] for f in feats} | {c["id"] for c in open_cards})
     res = load_verify(a.verify)
+    candidate = resolve(a.candidate, "--candidate")
+    if text(res.get("sha")) != candidate:
+        die("fork-verify 결과가 후보와 다른 커밋을 검증했습니다 (result.json sha %s, --candidate %s = %s)" % (text(res.get("sha")) or "없음", a.candidate, candidate))
+    tree_differs = False
+    if a.merge_commit:
+        merge_sha = resolve(a.merge_commit, "--merge-commit")
+        if merge_sha != candidate:
+            tree_differs = resolve(merge_sha, "--merge-commit", "tree") != resolve(candidate, "--candidate", "tree")
     if a.triage_md and not os.path.isfile(a.triage_md):
         die("triage 마크다운을 읽을 수 없습니다 (%s)" % a.triage_md)
 
@@ -413,7 +443,16 @@ def cmd_comment(a):
     failed = exit_code != 0 or count[FAIL] > 0
     keep_rows = [r for r in rows if text(r.get("verdict")) == KEEP and r.get("confirmed") is not True]
 
+    verified = {c["feature"] for c in checks}
+    unverified_features = sorted(f["id"] for f in features if f.get("status") == "active" and f["id"] not in verified)
+
     reasons = []
+    if tree_differs:
+        reasons.append("검증한 트리와 병합 커밋이 다름")
+    if not checks:
+        reasons.append("검증 결과가 비어 있음")
+    if unverified_features:
+        reasons.append("검증 결과에 없는 개조 %d건 (%s)" % (len(unverified_features), ", ".join(unverified_features)))
     if failed:
         reasons.append("fork-verify 실패 %d건" % count[FAIL] if count[FAIL] else "fork-verify 종료 코드 %s" % exit_code)
     if count[UNVERIFIED]:
@@ -455,6 +494,7 @@ def cmd_comment(a):
         w.append("- 배포 태그 `%s`" % a.tag)
     if a.pr:
         w.append("- PR %s" % a.pr)
+    w.append("- 검증한 후보 `%s`" % candidate)
     if a.merge_commit:
         w.append("- 병합 커밋 `%s`" % a.merge_commit)
     if a.pr_check:
@@ -594,6 +634,7 @@ def main():
     c.add_argument("--registry-ref", default="")
     c.add_argument("--registry", default="fork/features.yml")
     c.add_argument("--cards", required=True)
+    c.add_argument("--candidate", required=True)
     c.add_argument("--exclude-card", action="append", default=[])
     c.add_argument("--triage-md", default="")
     c.add_argument("--pr", default="")

@@ -23,6 +23,22 @@ fi
 
 # ---------- fixtures ----------
 
+# A throwaway repository for --candidate / --merge-commit: the candidate, a
+# merge commit with the same tree, and a commit with another tree. The script
+# resolves revs in its working directory.
+G="$T/repo"
+git init -q -b main "$G"
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
+printf 'a\n' > "$G/a.txt"
+git -C "$G" add -A && git -C "$G" commit -qm candidate
+CAND="$(git -C "$G" rev-parse HEAD)"
+git -C "$G" commit -q --allow-empty -m "same tree, other commit"
+SAMETREE="$(git -C "$G" rev-parse HEAD)"
+printf 'b\n' > "$G/a.txt"
+git -C "$G" commit -qam "other tree"
+OTHERTREE="$(git -C "$G" rev-parse HEAD)"
+
 cat > "$T/triage.json" <<'EOF'
 {
   "from": "v1.0.0",
@@ -94,7 +110,7 @@ mkv() {
   local d="$1" verdict="$2" code="$3"
   mkdir -p "$d/screens"
   cat > "$d/result.json" <<EOF
-{"ref": "cand", "sha": "0123456789abcdef", "exit": $code, "checks": [
+{"ref": "cand", "sha": "$CAND", "exit": $code, "checks": [
   {"feature": "core-ours", "layer": "test", "name": "go pkg TestA", "verdict": "pass", "detail": "통과 (1s)", "evidence": []},
   {"feature": "core-ours", "layer": "scenario", "name": "does the thing", "verdict": "$verdict", "detail": "detail-of-scenario", "evidence": []},
   {"feature": "quiet-ui", "layer": "screen", "name": "bar @1440", "verdict": "pass", "detail": "ok", "evidence": []},
@@ -129,9 +145,9 @@ yaml.safe_dump(d, open(sys.argv[2], "w"), allow_unicode=True, sort_keys=False)
 PY
 }
 
-run() { bash "$SCRIPT" "$@"; }
+run() { (cd "$G" && bash "$SCRIPT" "$@"); }
 tmpl() { run template --triage "$T/triage.json" --registry "$T/features.yml" --cards "$T/cards.json" --exclude-card CALA-99 "$@"; }
-cmt() { run comment --triage "$T/triage.json" --decisions "${DEC:-$GOOD}" --verify "${FV:-$T/fv-ok}" --triage-md "$T/triage.md" --registry "$T/features.yml" --cards "${CARDS:-$T/cards.json}" --exclude-card CALA-99 "$@"; }
+cmt() { run comment --triage "$T/triage.json" --decisions "${DEC:-$GOOD}" --verify "${FV:-$T/fv-ok}" --triage-md "$T/triage.md" --registry "$T/features.yml" --cards "${CARDS:-$T/cards.json}" --exclude-card CALA-99 --candidate "${CANDIDATE:-$CAND}" "$@"; }
 
 has() { grep -qF -- "$2" <<<"$1"; }
 check() { # check <name> <haystack> <needle>
@@ -244,10 +260,10 @@ check "comment single question" "$C1" 'Decide: 배포를 승인할까요?'
 check_not "comment has no em dash" "$C1" '—'
 
 # Optional links and planned tag.
-cmt --pr https://example.invalid/pr/1 --merge-commit abc1234 --pr-check https://example.invalid/chk --tag v1.1.0-hoon.1 > "$T/c-links.md" 2>/dev/null
+cmt --pr https://example.invalid/pr/1 --merge-commit "$SAMETREE" --pr-check https://example.invalid/chk --tag v1.1.0-hoon.1 > "$T/c-links.md" 2>/dev/null
 CL="$(cat "$T/c-links.md")"
 check "comment shows PR link" "$CL" 'https://example.invalid/pr/1'
-check "comment shows merge commit" "$CL" '`abc1234`'
+check "comment shows merge commit" "$CL" "병합 커밋 \`$SAMETREE\`"
 check "comment shows local check link" "$CL" 'https://example.invalid/chk'
 check "comment uses the planned tag in the release step" "$CL" 'scripts/hoon/release.sh release v1.1.0-hoon.1'
 
@@ -394,22 +410,71 @@ DEC="$T/cov-closed.yml" cmt > "$T/o" 2> "$T/e"; expect2 "a row for a closed card
 sed 's/"has_more": false/"has_more": true/' "$T/cards.json" > "$T/cards-more.json"
 CARDS="$T/cards-more.json" cmt > "$T/o" 2> "$T/e"; expect2 "comment refuses a cards page with has_more true" "has_more: true" $?
 run template --triage "$T/triage.json" --registry "$T/features.yml" --cards "$T/cards-more.json" > "$T/o" 2> "$T/e"; expect2 "template refuses a cards page with has_more true" "has_more: true" $?
-run comment --triage "$T/triage.json" --decisions "$GOOD" --verify "$T/fv-ok" --registry "$T/features.yml" > "$T/o" 2> "$T/e"; rc=$?
+run comment --triage "$T/triage.json" --decisions "$GOOD" --verify "$T/fv-ok" --registry "$T/features.yml" --candidate "$CAND" > "$T/o" 2> "$T/e"; rc=$?
 [ "$rc" -eq 2 ] && [ ! -s "$T/o" ] && pass "comment without --cards exits 2" || bad "comment without --cards exits 2 (rc=$rc)"
-run comment --triage "$T/triage.json" --decisions "$GOOD" --verify "$T/fv-ok" --registry "$T/nope.yml" --cards "$T/cards.json" > "$T/o" 2> "$T/e"; expect2 "comment with an unreadable registry exits 2" "레지스트리를 읽을 수 없습니다" $?
+run comment --triage "$T/triage.json" --decisions "$GOOD" --verify "$T/fv-ok" --registry "$T/nope.yml" --cards "$T/cards.json" --candidate "$CAND" > "$T/o" 2> "$T/e"; expect2 "comment with an unreadable registry exits 2" "레지스트리를 읽을 수 없습니다" $?
+
+# ---------- comment: the verification is bound to the candidate ----------
+
+# result.json for another commit: refuse, nothing on stdout.
+CANDIDATE="$OTHERTREE" cmt > "$T/o" 2> "$T/e"; expect2 "result.json sha != --candidate exits 2" "후보와 다른 커밋을 검증했습니다" $?
+CANDIDATE="no-such-rev" cmt > "$T/o" 2> "$T/e"; expect2 "unknown --candidate rev exits 2" "--candidate를 찾을 수 없습니다" $?
+run comment --triage "$T/triage.json" --decisions "$GOOD" --verify "$T/fv-ok" --registry "$T/features.yml" --cards "$T/cards.json" --exclude-card CALA-99 > "$T/o" 2> "$T/e"; rc=$?
+[ "$rc" -eq 2 ] && [ ! -s "$T/o" ] && pass "comment without --candidate exits 2" || bad "comment without --candidate exits 2 (rc=$rc)"
+(cd "$T" && bash "$SCRIPT" comment --triage "$T/triage.json" --decisions "$GOOD" --verify "$T/fv-ok" --registry "$T/features.yml" --cards "$T/cards.json" --exclude-card CALA-99 --candidate "$CAND") > "$T/o" 2> "$T/e"; expect2 "--candidate outside a git repository exits 2" "git 저장소 안에서" $?
+sed "s/$CAND/${CAND:0:12}/" "$T/fv-ok/result.json" > "$T/short-sha.json"; mkdir -p "$T/fv-short" && cp "$T/short-sha.json" "$T/fv-short/result.json"
+FV="$T/fv-short" cmt > "$T/o" 2> "$T/e"; expect2 "an abbreviated result.json sha does not match" "후보와 다른 커밋을 검증했습니다" $?
+
+# --merge-commit: same tree is fine, another tree holds the deploy.
+cmt --merge-commit "$SAMETREE" > "$T/c-mc-same.md" 2>/dev/null; rc=$?
+first="$(head -n1 "$T/c-mc-same.md")"
+[ "$rc" -eq 0 ] && [ "$first" = "배포 준비 완료. 승인하면 배포합니다." ] && pass "merge commit with the candidate's tree does not hold" || bad "merge commit with the candidate's tree does not hold (rc=$rc, $first)"
+check "comment shows the verified candidate" "$(cat "$T/c-mc-same.md")" "검증한 후보 \`$CAND\`"
+cmt --merge-commit "$CAND" > "$T/c-mc-self.md" 2>/dev/null
+[ "$(head -n1 "$T/c-mc-self.md")" = "배포 준비 완료. 승인하면 배포합니다." ] && pass "merge commit equal to the candidate does not hold" || bad "merge commit equal to the candidate does not hold"
+cmt --merge-commit "$OTHERTREE" > "$T/c-mc-diff.md" 2> "$T/e"; rc=$?
+first="$(head -n1 "$T/c-mc-diff.md")"
+[ "$rc" -eq 0 ] && case "$first" in "배포 보류: "*"검증한 트리와 병합 커밋이 다름"*) true ;; *) false ;; esac && pass "merge commit with another tree holds the deploy" || bad "merge commit with another tree holds the deploy (rc=$rc, $first)"
+cmt --merge-commit "no-such-rev" > "$T/o" 2> "$T/e"; expect2 "unknown --merge-commit rev exits 2" "--merge-commit를 찾을 수 없습니다" $?
+
+# Every active registry feature needs a check in result.json; empty checks hold.
+mkdir -p "$T/fv-missing-feat" "$T/fv-empty"
+"${PY[@]}" - "$T/fv-ok/result.json" "$T/fv-missing-feat/result.json" "$T/fv-empty/result.json" <<'PY'
+import json
+import sys
+d = json.load(open(sys.argv[1]))
+x = dict(d); x["checks"] = [c for c in d["checks"] if c["feature"] != "quiet-ui"]
+json.dump(x, open(sys.argv[2], "w"))
+x = dict(d); x["checks"] = []
+json.dump(x, open(sys.argv[3], "w"))
+PY
+FV="$T/fv-missing-feat" cmt > "$T/c-missfeat.md" 2> "$T/e"; rc=$?
+first="$(head -n1 "$T/c-missfeat.md")"
+[ "$rc" -eq 0 ] && case "$first" in "배포 보류: "*"검증 결과에 없는 개조 1건"*"quiet-ui"*) true ;; *) false ;; esac && pass "an active feature without a check holds the deploy" || bad "an active feature without a check holds the deploy (rc=$rc, $first)"
+FV="$T/fv-empty" cmt > "$T/c-empty.md" 2> "$T/e"; rc=$?
+first="$(head -n1 "$T/c-empty.md")"
+[ "$rc" -eq 0 ] && case "$first" in "배포 보류: "*"검증 결과가 비어 있음"*"검증 결과에 없는 개조 2건"*) true ;; *) false ;; esac && pass "empty checks hold the deploy" || bad "empty checks hold the deploy (rc=$rc, $first)"
+FV="$T/fv-ok" cmt > "$T/c-allfeat.md" 2>/dev/null
+[ "$(head -n1 "$T/c-allfeat.md")" = "배포 준비 완료. 승인하면 배포합니다." ] && pass "a planned feature and an n/a check do not need more coverage" || bad "n/a check for the planned feature is enough"
+
+# --registry-ref reads the registry from git, like template.
+mkdir -p "$G/fork" && cp "$T/features.yml" "$G/fork/features.yml" && git -C "$G" add -A && git -C "$G" commit -qm registry && REGREF="$(git -C "$G" rev-parse HEAD)"
+git -C "$G" reset -q --hard "$OTHERTREE"
+cmt --registry "fork/features.yml" --registry-ref "$REGREF" > "$T/c-regref.md" 2> "$T/e"; rc=$?
+[ "$rc" -eq 0 ] && [ "$(head -n1 "$T/c-regref.md")" = "배포 준비 완료. 승인하면 배포합니다." ] && pass "comment reads the registry at --registry-ref" || bad "comment reads the registry at --registry-ref (rc=$rc: $(cat "$T/e"))"
 
 # The unfilled template itself must be refused, naming every entry.
-run comment --triage "$T/triage.json" --decisions "$T/tmpl.yml" --verify "$T/fv-ok" --registry "$T/features.yml" --cards "$T/cards.json" --exclude-card CALA-99 > "$T/o" 2> "$T/e"; rc=$?
+run comment --triage "$T/triage.json" --decisions "$T/tmpl.yml" --verify "$T/fv-ok" --registry "$T/features.yml" --cards "$T/cards.json" --exclude-card CALA-99 --candidate "$CAND" > "$T/o" 2> "$T/e"; rc=$?
 expect2 "unfilled template exits 2" "decisions가 완성되지 않았습니다" "$rc"
 n="$(grep -c 'verdict가 비어 있습니다' "$T/e")"
 [ "$n" -eq 8 ] && pass "unfilled template reports every empty entry (8)" || bad "unfilled template reports every empty entry (got $n)"
 
 # Bad inputs.
-run comment --triage "$T/triage.json" --decisions "$T/nope.yml" --verify "$T/fv-ok" --registry "$T/features.yml" --cards "$T/cards.json" --exclude-card CALA-99 > "$T/o" 2> "$T/e"; expect2 "missing decisions exits 2" "decisions를 읽을 수 없습니다" $?
-run comment --triage "$T/triage.json" --decisions "$GOOD" --verify "$T/nope" --registry "$T/features.yml" --cards "$T/cards.json" --exclude-card CALA-99 > "$T/o" 2> "$T/e"; expect2 "missing fork-verify dir exits 2" "fork-verify 결과가 없습니다" $?
+run comment --triage "$T/triage.json" --decisions "$T/nope.yml" --verify "$T/fv-ok" --registry "$T/features.yml" --cards "$T/cards.json" --exclude-card CALA-99 --candidate "$CAND" > "$T/o" 2> "$T/e"; expect2 "missing decisions exits 2" "decisions를 읽을 수 없습니다" $?
+run comment --triage "$T/triage.json" --decisions "$GOOD" --verify "$T/nope" --registry "$T/features.yml" --cards "$T/cards.json" --exclude-card CALA-99 --candidate "$CAND" > "$T/o" 2> "$T/e"; expect2 "missing fork-verify dir exits 2" "fork-verify 결과가 없습니다" $?
 printf '{bad' > "$T/badjson"
-run comment --triage "$T/badjson" --decisions "$GOOD" --verify "$T/fv-ok" --registry "$T/features.yml" --cards "$T/cards.json" --exclude-card CALA-99 > "$T/o" 2> "$T/e"; expect2 "broken triage JSON exits 2" "JSON이 아닙니다" $?
-run comment --triage "$T/triage.json" --decisions "$GOOD" --verify "$T/fv-ok" --triage-md "$T/nope.md" --registry "$T/features.yml" --cards "$T/cards.json" --exclude-card CALA-99 > "$T/o" 2> "$T/e"; expect2 "missing triage md exits 2" "triage 마크다운을 읽을 수 없습니다" $?
+run comment --triage "$T/badjson" --decisions "$GOOD" --verify "$T/fv-ok" --registry "$T/features.yml" --cards "$T/cards.json" --exclude-card CALA-99 --candidate "$CAND" > "$T/o" 2> "$T/e"; expect2 "broken triage JSON exits 2" "JSON이 아닙니다" $?
+run comment --triage "$T/triage.json" --decisions "$GOOD" --verify "$T/fv-ok" --triage-md "$T/nope.md" --registry "$T/features.yml" --cards "$T/cards.json" --exclude-card CALA-99 --candidate "$CAND" > "$T/o" 2> "$T/e"; expect2 "missing triage md exits 2" "triage 마크다운을 읽을 수 없습니다" $?
 run comment --triage "$T/triage.json" --decisions "$GOOD" > "$T/o" 2> "$T/e"; rc=$?
 [ "$rc" -eq 2 ] && [ ! -s "$T/o" ] && pass "missing --verify exits 2" || bad "missing --verify exits 2 (rc=$rc)"
 run bogus > "$T/o" 2> "$T/e"; rc=$?
