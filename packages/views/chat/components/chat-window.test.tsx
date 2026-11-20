@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
+// Modified by honki12345, 2026: cover renaming the floating chat with Mod+R (CALA-327).
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createChatStore, registerChatStore, useChatStore } from "@multica/core/chat";
 import { chatSessionsOptions } from "@multica/core/chat/queries";
 import type { ChatSession } from "@multica/core/types";
 import { I18nProvider } from "@multica/core/i18n/react";
+import { configureShortcutPlatform } from "@multica/core/shortcuts";
 import enCommon from "../../locales/en/common.json";
 import enChat from "../../locales/en/chat.json";
 
@@ -70,7 +72,11 @@ vi.mock("./chat-input", () => ({
 }));
 vi.mock("./chat-queue", () => ({ ChatQueue: () => null }));
 vi.mock("./chat-empty-state", () => ({ EmptyState: () => null }));
-vi.mock("./session-history-list", () => ({ SessionHistoryList: () => null }));
+vi.mock("./session-history-list", () => ({
+  SessionHistoryList: ({ sessions, renderRow }: { sessions: ChatSession[]; renderRow: (s: ChatSession) => React.ReactNode }) => (
+    <>{sessions.map(renderRow)}</>
+  ),
+}));
 vi.mock("./chat-resize-handles", () => ({ ChatResizeHandles: () => null }));
 vi.mock("./offline-banner", () => ({ OfflineBanner: () => null }));
 vi.mock("./no-agent-banner", () => ({ NoAgentBanner: () => null }));
@@ -180,5 +186,42 @@ describe("ChatWindow minimize and close", () => {
     fireEvent.click(screen.getByRole("button", { name: enChat.window.minimize_tooltip }));
 
     expect(chatInputProps.last?.hidden).toBe(true);
+  });
+});
+
+describe("ChatWindow rename shortcut", () => {
+  beforeEach(() => {
+    configureShortcutPlatform("macos");
+    vi.spyOn(HTMLElement.prototype, "getClientRects").mockReturnValue(
+      [new DOMRect(0, 0, 100, 20)] as unknown as DOMRectList,
+    );
+  });
+
+  afterEach(() => {
+    configureShortcutPlatform(null);
+    vi.restoreAllMocks();
+  });
+
+  it("opens the chat list with the open chat's title ready to rename on Mod+R from inside the window", async () => {
+    renderWindow();
+    const inside = screen.getByRole("button", { name: enChat.window.new_chat_tooltip });
+    inside.focus();
+
+    const notCancelled = fireEvent.keyDown(inside, { key: "r", code: "KeyR", metaKey: true });
+
+    expect(notCancelled).toBe(false);
+    const input = await screen.findByRole<HTMLInputElement>("textbox", { name: enChat.session_history.row_rename_aria });
+    expect(input).toHaveValue("Roadmap");
+    await waitFor(() => expect(input).toHaveFocus());
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, "Roadmap".length]);
+  });
+
+  it("leaves Mod+R alone while focus is outside the window", () => {
+    renderWindow();
+
+    expect(fireEvent.keyDown(document.body, { key: "r", code: "KeyR", metaKey: true })).toBe(true);
+    expect(
+      screen.queryByRole("textbox", { name: enChat.session_history.row_rename_aria }),
+    ).not.toBeInTheDocument();
   });
 });

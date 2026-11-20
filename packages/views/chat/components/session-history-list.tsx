@@ -1,5 +1,7 @@
 "use client";
 
+// Modified by honki12345, 2026: open scrolled to a given chat (CALA-327).
+
 import type { ReactNode } from "react";
 import { Virtuoso, type Components } from "react-virtuoso";
 import type { ChatSession } from "@multica/core/types";
@@ -18,15 +20,22 @@ export function SessionHistoryList({
   footer,
   maxHeight,
   estimatedRowHeight = 56,
+  initialSessionId,
 }: {
   sessions: ChatSession[];
   renderRow: (session: ChatSession) => ReactNode;
   footer?: ReactNode;
   maxHeight?: number;
   estimatedRowHeight?: number;
+  /** Read at mount: open scrolled so this chat's row is rendered. */
+  initialSessionId?: string | null;
 }) {
+  const initialIndex = initialSessionId
+    ? sessions.findIndex((session) => session.id === initialSessionId)
+    : -1;
   return (
     <Virtuoso
+      {...(initialIndex > 0 ? { initialTopMostItemIndex: initialIndex } : {})}
       style={{
         height: maxHeight == null
           ? "100%"
