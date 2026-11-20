@@ -237,7 +237,7 @@ check "comment screen section names the columns and files" "$C1" '운영 | 후�
 check "comment steps: tag first" "$C1" '1. 병합 커밋에 `<tag>` 태그를 답니다.'
 check "comment steps: backup, release, screen retest" "$C1" '2. 운영 DB를 `pg_dump`로 백업합니다.'
 check "comment release step" "$C1" '3. `scripts/hoon/release.sh release <tag>`'
-check "comment retest step" "$C1" '3. 운영에서 `scripts/hoon/fork-verify.sh <tag> --skip test,scenario`'
+check "comment retest step" "$C1" '4. 운영에서 `scripts/hoon/fork-verify.sh <tag> --skip test,scenario`'
 check "comment rollback line" "$C1" '이미지와 바이너리만 되돌립니다. 마이그레이션은 되돌리지 않습니다.'
 check "comment single question" "$C1" 'Decide: 배포를 승인할까요?'
 [ "$(grep -c '^Decide:' "$T/c1.md")" -eq 1 ] && pass "comment has exactly one question without 유지 rows" || bad "comment has exactly one question without 유지 rows"
