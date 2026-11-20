@@ -1,6 +1,6 @@
 "use client";
 
-// Modified by honki12345, 2026: anchor the chat window to a scrolled chip (CALA-72).
+// Modified by honki12345, 2026: anchor the chat window to a scrolled chip (CALA-72); follow it when chips are reordered (CALA-300).
 
 import { useLayoutEffect, useRef, useState } from "react";
 
@@ -24,7 +24,7 @@ const ANCHOR_TRIGGER_SELECTOR = "[data-chat-anchor], [data-chat-anchor-trigger]"
  *
  * The window is placed when it opens, when the bar opens another chat in it,
  * and when its container resizes; after that it follows its control if the
- * bar's chips reflow or their strip scrolls. It stays put otherwise: a chip appearing for the chat
+ * bar's chips reflow, are dragged into another order, or their strip scrolls. It stays put otherwise: a chip appearing for the chat
  * just started must not move it under the person typing in it.
  *
  * `width` is the width the window is sized to, not the one it is animating
@@ -97,12 +97,31 @@ export function useChatWindowAnchor(
     };
     document.addEventListener("scroll", onScroll, true);
 
+    // Dragging chips into another order moves the control without resizing
+    // the bar: follow it once the chips are moved, and again when they finish
+    // sliding into place.
+    const followMovedChips = () => {
+      if (pressedAnchor()?.dataset.chatAnchor !== placedAt) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    };
+    const onTransitionEnd = (event: TransitionEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest(CHAT_BAR_CHIPS_SELECTOR)) return;
+      followMovedChips();
+    };
+    document.addEventListener("transitionend", onTransitionEnd, true);
+    const chipsObserver = new MutationObserver(followMovedChips);
+    const barForChips = document.querySelector(CHAT_BAR_SELECTOR);
+    if (barForChips) chipsObserver.observe(barForChips, { childList: true, subtree: true });
+
     if (typeof ResizeObserver === "undefined") {
       return () => {
         measureRef.current = null;
         cancelAnimationFrame(frame);
         document.removeEventListener("click", onClick);
         document.removeEventListener("scroll", onScroll, true);
+        document.removeEventListener("transitionend", onTransitionEnd, true);
+        chipsObserver.disconnect();
       };
     }
     const observer = new ResizeObserver(measure);
@@ -112,14 +131,15 @@ export function useChatWindowAnchor(
     const barObserver = new ResizeObserver(() => {
       if (pressedAnchor()?.dataset.chatAnchor === placedAt) measure();
     });
-    const bar = document.querySelector(CHAT_BAR_SELECTOR);
-    if (bar) barObserver.observe(bar);
+    if (barForChips) barObserver.observe(barForChips);
 
     return () => {
       measureRef.current = null;
       cancelAnimationFrame(frame);
       document.removeEventListener("click", onClick);
       document.removeEventListener("scroll", onScroll, true);
+      document.removeEventListener("transitionend", onTransitionEnd, true);
+      chipsObserver.disconnect();
       observer.disconnect();
       barObserver.disconnect();
     };

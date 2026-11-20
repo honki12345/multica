@@ -150,6 +150,43 @@ describe("useChatWindowAnchor", () => {
     view.rerender(<Harness isOpen pressed="a" width={990} />);
     expect(rightOf(view)).toBe(1100 - 8 - 990);
   });
+
+  it("follows its chip when the chips are dragged into another order", async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => frames.push(cb));
+    const anchors = { a: 700, b: 900 };
+    layOut(anchors);
+    const view = render(
+      <div data-slot="chat-bar">
+        <div data-slot="chat-bar-chips">
+          <Harness isOpen pressed="a" />
+        </div>
+      </div>,
+    );
+    expect(rightOf(view)).toBe(280);
+
+    // The chip moves without the bar changing size: its strip's children are
+    // reordered, then it slides into place.
+    anchors.a = 900;
+    const strip = view.container.querySelector('[data-slot="chat-bar-chips"]')!;
+    await act(async () => {
+      strip.appendChild(document.createElement("span"));
+      await Promise.resolve();
+    });
+    act(() => {
+      frames.splice(0).forEach((cb) => cb(0));
+    });
+    expect(rightOf(view)).toBe(1400 - 900 - WINDOW_WIDTH);
+
+    anchors.a = 850;
+    act(() => {
+      view.container
+        .querySelector('[data-chat-anchor="a"]')!
+        .dispatchEvent(new Event("transitionend", { bubbles: true }));
+      frames.splice(0).forEach((cb) => cb(0));
+    });
+    expect(rightOf(view)).toBe(1400 - 850 - WINDOW_WIDTH);
+  });
 });
 
 describe("useChatWindowAnchor with useChatResize", () => {

@@ -30,6 +30,7 @@ function select(
     openSessionId: null,
     kept: [],
     dismissed: {},
+    order: [],
     maxVisible: 4,
     ...input,
   });
@@ -124,6 +125,44 @@ describe("selectChatBarSessions", () => {
     expect(ids(visible)).toEqual(["newer", "older"]);
   });
 
+  it("follows the order the chips were dragged into", () => {
+    const { visible } = select({
+      sessions: [1, 2, 3].map((n) => session(`s${n}`, n, { has_unread: true })),
+      order: ["s1", "s3", "s2"],
+    });
+
+    expect(ids(visible)).toEqual(["s1", "s3", "s2"]);
+  });
+
+  it("puts a chip that is not in the dragged order first, newest first", () => {
+    const { visible } = select({
+      sessions: [1, 2, 3, 4].map((n) => session(`s${n}`, n, { has_unread: true })),
+      order: ["s1", "s2"],
+    });
+
+    expect(ids(visible)).toEqual(["s4", "s3", "s1", "s2"]);
+  });
+
+  it("skips ordered chats that have no chip", () => {
+    const { visible } = select({
+      sessions: [session("s1", 1, { has_unread: true }), session("s2", 2), session("s3", 3, { has_unread: true })],
+      order: ["gone", "s3", "s2", "s1"],
+    });
+
+    expect(ids(visible)).toEqual(["s3", "s1"]);
+  });
+
+  it("still brings the open chat out of the overflow when the chips were reordered", () => {
+    const { visible } = select({
+      sessions: [1, 2, 3].map((n) => session(`s${n}`, n, { has_unread: true })),
+      order: ["s3", "s2", "s1"],
+      openSessionId: "s1",
+      maxVisible: 2,
+    });
+
+    expect(ids(visible)).toEqual(["s1", "s3"]);
+  });
+
   it("shows every chip with no overflow when there is no limit", () => {
     const sessions = [1, 2, 3, 4, 5, 6].map((n) => session(`s${n}`, n, { has_unread: true }));
     const { visible, overflow } = selectChatBarSessions({
@@ -132,6 +171,7 @@ describe("selectChatBarSessions", () => {
       openSessionId: "s1",
       kept: [],
       dismissed: {},
+      order: [],
     });
 
     expect(ids(visible)).toEqual(["s6", "s5", "s4", "s3", "s2", "s1"]);

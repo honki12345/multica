@@ -1,7 +1,7 @@
-// Modified by honki12345, 2026: cover the horizontally scrolling chip strip (CALA-72).
+// Modified by honki12345, 2026: cover the horizontally scrolling chip strip (CALA-72) and dragging chips into order (CALA-300).
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { chatSessionsOptions, pendingChatTasksOptions } from "@multica/core/chat/queries";
 import type { ChatSession } from "@multica/core/types";
@@ -18,12 +18,14 @@ const h = vi.hoisted(() => ({
     selectedAgentId: "agent-1" as string | null,
     chatBarKept: [] as string[],
     chatBarDismissed: {} as Record<string, string>,
+    chatBarOrder: [] as string[],
     setOpen: vi.fn(),
     setActiveSession: vi.fn(),
     setSelectedAgentId: vi.fn(),
     startNewChat: vi.fn(),
     keepChatInBar: vi.fn(),
     dismissChatFromBar: vi.fn(),
+    setChatBarOrder: vi.fn(),
   },
 }));
 
@@ -85,6 +87,24 @@ function renderBar(sessions: ChatSession[], running: string[] = []) {
   );
 }
 
+const chipOrder = () =>
+  Array.from(document.querySelectorAll<HTMLElement>("[data-chat-chip]")).map((el) => el.dataset.chatChip);
+
+/**
+ * jsdom lays nothing out: give each chip, in the order given, a 100px-wide
+ * box side by side, so dnd-kit can tell where a dragged chip lands.
+ */
+function layOutChips(ids: string[]) {
+  const box = (left: number, width: number) =>
+    ({ left, right: left + width, width, top: 0, bottom: 20, height: 20, x: left, y: 0, toJSON: () => ({}) }) as DOMRect;
+  return vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    if (this.dataset.slot === "chat-bar-chips") return box(0, 1000);
+    const id = this.dataset.chatChip ?? this.dataset.chatAnchor;
+    const index = id ? ids.indexOf(id) : -1;
+    return index === -1 ? box(0, 0) : box(index * 100, 100);
+  });
+}
+
 const SESSIONS = [
   session("Read and done", 1),
   session("Billing progress", 2, { agent_id: "agent-2" }),
@@ -98,6 +118,7 @@ beforeEach(() => {
   h.chat.selectedAgentId = "agent-1";
   h.chat.chatBarKept = [];
   h.chat.chatBarDismissed = {};
+  h.chat.chatBarOrder = [];
 });
 
 describe("ChatBar", () => {
@@ -243,6 +264,98 @@ describe("ChatBar", () => {
 
     expect(h.chat.setOpen).toHaveBeenCalledWith(false);
     expect(h.chat.startNewChat).not.toHaveBeenCalled();
+  });
+
+  it("lays the chips out in the order they were dragged into", () => {
+    h.chat.chatBarKept = ["Read and done"];
+    h.chat.chatBarOrder = ["Read and done", "Weekly report"];
+    renderBar(SESSIONS, [SESSIONS[1]!.id]);
+
+    // Billing progress was never dragged, so it goes first.
+    expect(chipOrder()).toEqual(["Billing progress", "Read and done", "Weekly report"]);
+  });
+
+  it("does not open the chat when its chip is dragged, and saves the new order", async () => {
+    const many = [1, 2, 3].map((n) => session(`Chat ${n}`, n, { has_unread: true }));
+    const rect = layOutChips(["Chat 3", "Chat 2", "Chat 1"]);
+    try {
+      renderBar(many);
+      const chip = screen.getByRole("button", { name: "Chat 3, Unread" });
+      const pointer = { isPrimary: true, button: 0, clientX: 40, clientY: 10 };
+      fireEvent.pointerDown(chip, pointer);
+      fireEvent.pointerMove(document, { ...pointer, clientX: 60 });
+      fireEvent.pointerMove(document, { ...pointer, clientX: 230 });
+      fireEvent.pointerUp(document, { ...pointer, clientX: 230 });
+      fireEvent.click(chip);
+
+      expect(h.chat.setChatBarOrder).toHaveBeenCalledWith(["Chat 2", "Chat 1", "Chat 3"]);
+      expect(h.chat.setOpen).not.toHaveBeenCalled();
+
+      // A click after the drag has settled opens the chat again.
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      fireEvent.click(chip);
+      expect(h.chat.setOpen).toHaveBeenCalledWith(true);
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
+  it("treats a press that barely moves as a click", () => {
+    renderBar(SESSIONS, [SESSIONS[1]!.id]);
+    const chip = screen.getByRole("button", { name: "Billing progress, Running" });
+    const pointer = { isPrimary: true, button: 0, clientX: 40, clientY: 10 };
+    fireEvent.pointerDown(chip, pointer);
+    fireEvent.pointerMove(document, { ...pointer, clientX: 43 });
+    fireEvent.pointerUp(document, { ...pointer, clientX: 43 });
+    fireEvent.click(chip);
+
+    expect(h.chat.setChatBarOrder).not.toHaveBeenCalled();
+    expect(h.chat.setOpen).toHaveBeenCalledWith(true);
+  });
+
+  it("does not start a drag from a chip's close button", () => {
+    renderBar(SESSIONS, [SESSIONS[1]!.id]);
+    const close = screen.getByRole("button", { name: "Close Billing progress" });
+    const pointer = { isPrimary: true, button: 0, clientX: 40, clientY: 10 };
+    fireEvent.pointerDown(close, pointer);
+    fireEvent.pointerMove(document, { ...pointer, clientX: 200 });
+    fireEvent.pointerUp(document, { ...pointer, clientX: 200 });
+    fireEvent.click(close);
+
+    expect(h.chat.setChatBarOrder).not.toHaveBeenCalled();
+    expect(h.chat.dismissChatFromBar).toHaveBeenCalledWith("Billing progress", SESSIONS[1]!.updated_at);
+  });
+
+  it("moves a chip with Space and the arrow keys, and still opens a chat with Enter", async () => {
+    const many = [1, 2, 3].map((n) => session(`Chat ${n}`, n, { has_unread: true }));
+    const rect = layOutChips(["Chat 3", "Chat 2", "Chat 1"]);
+    try {
+      renderBar(many);
+      const chip = screen.getByRole("button", { name: "Chat 3, Unread" });
+      chip.focus();
+
+      fireEvent.keyDown(chip, { code: "Space", key: " " });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      fireEvent.keyDown(document, { code: "ArrowRight", key: "ArrowRight" });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      fireEvent.keyDown(document, { code: "Space", key: " " });
+      fireEvent.keyUp(chip, { code: "Space", key: " " });
+      fireEvent.click(chip);
+
+      expect(h.chat.setChatBarOrder).toHaveBeenCalledWith(["Chat 2", "Chat 3", "Chat 1"]);
+      expect(h.chat.setOpen).not.toHaveBeenCalled();
+
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      fireEvent.keyDown(chip, { code: "Enter", key: "Enter" });
+      fireEvent.click(chip);
+      expect(h.chat.setOpen).toHaveBeenCalledWith(true);
+    } finally {
+      rect.mockRestore();
+    }
   });
 
   it("opens a chat from the history, grouped by when it last moved", async () => {
