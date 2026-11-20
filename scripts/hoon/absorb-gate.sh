@@ -21,15 +21,17 @@
 #           The registry is read from --registry at --registry-ref (default: the
 #           working file fork/features.yml). --cards is the JSON of
 #           `multica issue list --project <id> --output json` (an object with
-#           an `issues` key or a list). Cards with status done/cancelled and
+#           an `issues` key or a list). It must be the whole project list:
+#           has_more true, offset > 0 and fewer unique issues than `total`
+#           exit 2. Cards with status done/cancelled and
 #           --exclude-card ids (repeatable, comma separated) get no row.
 # comment   Takes the same inventory inputs as `template` and requires exact
 #           coverage: every active/planned registry feature and every open,
 #           non-excluded card outside the registry has exactly one
 #           upstream_priority row; missing, duplicate and unknown ids exit 2.
-#           --cards is required (an absorb always has project cards) and a cards
-#           file with `has_more: true` is refused (template and comment): an
-#           incomplete page cannot define the inventory.
+#           --cards is required (an absorb always has project cards) and an
+#           incomplete list is refused (template and comment): an incomplete
+#           page cannot define the inventory.
 #           --candidate <rev> is the commit that was verified and is up for
 #           approval (the merge branch head). result.json's `sha` must equal
 #           `git rev-parse <rev>^{commit}`, else exit 2. A --merge-commit that
@@ -181,10 +183,22 @@ def load_registry(a):
 
 
 def load_cards(path):
+    """Open-card inventory. It must be the whole project list, not one page.
+
+    `multica issue list --output json` prints {issues, total, limit, offset,
+    has_more}. A later page (offset > 0) or a short one (fewer issues than
+    total) would silently drop open cards, so both are refused. A bare list
+    carries no paging fields and is taken as given.
+    """
     data = load_json(path, "cards JSON")
+    paging = None
     if isinstance(data, dict):
+        paging = data
         if data.get("has_more") is True:
             die("cards JSON이 일부 페이지입니다 (has_more: true). --limit을 늘려 다시 받으세요 (%s)" % path)
+        offset = data.get("offset", 0)
+        if isinstance(offset, bool) or not isinstance(offset, int) or offset != 0:
+            die("cards JSON이 첫 페이지가 아닙니다 (offset: %r). offset 0부터 전체를 합쳐 다시 받으세요 (%s)" % (offset, path))
         data = data.get("issues")
     if not isinstance(data, list):
         die("cards JSON은 목록이거나 issues 키를 가져야 합니다 (%s)" % path)
@@ -193,6 +207,11 @@ def load_cards(path):
         if not isinstance(c, dict) or not c.get("identifier"):
             die("cards JSON 항목에 identifier가 없습니다 (%s)" % path)
         cards.append({"id": str(c["identifier"]), "status": str(c.get("status", "")), "title": str(c.get("title", ""))})
+    if paging is not None and "total" in paging:
+        total = paging["total"]
+        have = len({c["id"] for c in cards})
+        if isinstance(total, bool) or not isinstance(total, int) or total != have:
+            die("cards JSON의 카드 수가 total과 다릅니다 (카드 %d건, total %r). 전체를 받아 다시 넣으세요 (%s)" % (have, total, path))
     return cards
 
 

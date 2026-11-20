@@ -349,7 +349,13 @@ card with the triage report and these steps in its description.
       상류에 없음 records that upstream ships nothing equivalent in the range.
       `scripts/hoon/absorb-gate.sh template --triage triage.json --cards
       <issue list json> --exclude-card <absorb card>` writes the decisions
-      file with one row per item; every row needs a verdict.
+      file with one row per item; every row needs a verdict. The card list
+      must be complete: `multica issue list --project <id> --output json
+      --limit 100 --fields identifier,title,status > cards.json`, then check
+      `has_more` is `false` and `total` equals the number of issues. If not,
+      page with `--offset` and merge the pages into one list (a bare JSON list
+      of issues works). A later page (`offset` > 0) or a list shorter than
+      `total` is refused, so open cards cannot drop out silently.
 3. **Verify.** `scripts/hoon/features-check.sh --head merge/vX.Y.Z` and
    `scripts/hoon/fork-verify.sh merge/vX.Y.Z --screen-input triage.json
    --real-agent` (B paths add the surrounding screens).
@@ -369,9 +375,9 @@ card with the triage report and these steps in its description.
    checkout. The script refuses to render (exit 2) unless:
    - the decisions hold exactly one upstream-first row per active/planned
      registry feature (read at `--registry-ref`) and per open card outside the
-     registry (`--cards` is required; `has_more: true` is refused, so fetch
-     with a `--limit` that returns every card). Missing, duplicate and unknown
-     ids are listed on stderr;
+     registry (`--cards` is required and must be the whole list: `has_more:
+     true`, `offset` > 0 and fewer issues than `total` are refused). Missing,
+     duplicate and unknown ids are listed on stderr;
    - `--candidate` (the merge branch head that was verified and is up for
      approval) is the commit `fork-verify` ran on: `result.json`'s `sha` equals
      `git rev-parse <candidate>^{commit}`.

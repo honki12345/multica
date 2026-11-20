@@ -92,7 +92,7 @@ features:
 EOF
 
 cat > "$T/cards.json" <<'EOF'
-{"has_more": false, "issues": [
+{"has_more": false, "limit": 100, "offset": 0, "total": 8, "issues": [
   {"identifier": "CALA-1", "status": "done", "title": "registered and done"},
   {"identifier": "CALA-2", "status": "in_progress", "title": "registered and open"},
   {"identifier": "CALA-5", "status": "in_review", "title": "registered planned"},
@@ -414,6 +414,36 @@ DEC="$T/cov-closed.yml" cmt > "$T/o" 2> "$T/e"; expect2 "a row for a closed card
 sed 's/"has_more": false/"has_more": true/' "$T/cards.json" > "$T/cards-more.json"
 CARDS="$T/cards-more.json" cmt > "$T/o" 2> "$T/e"; expect2 "comment refuses a cards page with has_more true" "has_more: true" $?
 run template --triage "$T/triage.json" --registry "$T/features.yml" --cards "$T/cards-more.json" > "$T/o" 2> "$T/e"; expect2 "template refuses a cards page with has_more true" "has_more: true" $?
+# `has_more: false` on a later or short page still drops open cards.
+"${PY[@]}" - "$T" <<'PY2'
+import json, sys
+t = sys.argv[1]
+d = json.load(open(t + "/cards.json"))
+w = lambda name, x: json.dump(x, open(t + "/" + name, "w"))
+w("cards-lastpage.json", dict(d, offset=27, limit=1, total=28, issues=d["issues"][-1:]))
+w("cards-short.json", dict(d, total=9))
+w("cards-over.json", dict(d, total=7))
+w("cards-dup.json", dict(d, issues=d["issues"][:-1] + [d["issues"][0]]))
+w("cards-badoffset.json", dict(d, offset="0"))
+w("cards-badtotal.json", dict(d, total="8"))
+w("cards-nototal.json", {k: v for k, v in d.items() if k not in ("total", "offset", "limit")})
+w("cards-bare.json", d["issues"])
+PY2
+while IFS='|' read -r name want; do
+  CARDS="$T/cards-$name.json" cmt > "$T/o" 2> "$T/e"; expect2 "comment refuses an incomplete cards list ($name)" "$want" $?
+  run template --triage "$T/triage.json" --registry "$T/features.yml" --cards "$T/cards-$name.json" > "$T/o" 2> "$T/e"; expect2 "template refuses an incomplete cards list ($name)" "$want" $?
+done <<'EOF'
+lastpage|첫 페이지가 아닙니다
+badoffset|첫 페이지가 아닙니다
+short|total과 다릅니다
+over|total과 다릅니다
+dup|total과 다릅니다
+badtotal|total과 다릅니다
+EOF
+for name in nototal bare; do
+  CARDS="$T/cards-$name.json" cmt > "$T/o" 2> "$T/e"; rc=$?
+  [ "$rc" -eq 0 ] && [ "$(head -n1 "$T/o")" = "배포 준비 완료. 승인하면 배포합니다." ] && pass "comment accepts a cards list without paging fields ($name)" || bad "comment accepts a cards list without paging fields ($name) (rc=$rc: $(cat "$T/e"))"
+done
 run comment --triage "$T/triage.json" --decisions "$GOOD" --verify "$T/fv-ok" --registry "$T/features.yml" --candidate "$CAND" > "$T/o" 2> "$T/e"; rc=$?
 [ "$rc" -eq 2 ] && [ ! -s "$T/o" ] && pass "comment without --cards exits 2" || bad "comment without --cards exits 2 (rc=$rc)"
 run comment --triage "$T/triage.json" --decisions "$GOOD" --verify "$T/fv-ok" --registry "$T/nope.yml" --cards "$T/cards.json" --candidate "$CAND" > "$T/o" 2> "$T/e"; expect2 "comment with an unreadable registry exits 2" "레지스트리를 읽을 수 없습니다" $?
