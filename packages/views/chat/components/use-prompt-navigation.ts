@@ -37,6 +37,32 @@ function measureAnchor(scrollEl: HTMLElement, firstIndex: number): PromptAnchor 
   return { index: best.index, startVisible: best.top >= viewportTop - START_VISIBLE_SLACK };
 }
 
+/**
+ * How long, in ms, the last target stays the starting point for the next press
+ * (CALA-294). Long enough to cover Virtuoso landing a jump (it gives up at
+ * 1.2s), short enough that a later press measures where the reader really is.
+ */
+const CURSOR_FRESH_MS = 1000;
+
+/** Input that means the reader moved the list themselves. */
+const READER_INPUTS = ["wheel", "touchstart", "pointerdown"] as const;
+
+/**
+ * Frames a landed message is held at the top, about a second. Rows above it
+ * that finish rendering late (tables, code, previews) grow and push it down,
+ * and Virtuoso only compensates for growth while scrolling up.
+ */
+const HOLD_FRAMES = 60;
+
+/** How far, in px, the message may drift before it is put back. */
+const HOLD_SLACK = 2;
+
+/** Top edge of the row with absolute index `row`, from the list's top, if rendered. */
+function rowTop(scrollEl: HTMLElement, row: number): number | null {
+  const el = scrollEl.querySelector<HTMLElement>(`[${ROW_INDEX_ATTR}="${row}"]`);
+  return el ? el.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top : null;
+}
+
 const FLOATING_WINDOW = '[data-mc="chat-window"]';
 
 function isShown(el: Element): boolean {
@@ -61,6 +87,11 @@ function ownsKeypress(scrollEl: HTMLElement, target: EventTarget | null): boolea
  * Previous / next sent message (CALA-281): `chatPreviousPrompt` and
  * `chatNextPrompt` move the reader's own messages to the top of the list,
  * skipping replies; past the last one, "next" goes to the live end.
+ *
+ * A press right after another steps from the previous press's target rather
+ * than from what is on screen (opencode's fresh cursor): Virtuoso paints a jump
+ * a frame or more later, so a quick second press would otherwise measure the
+ * old position and be lost (CALA-294).
  */
 export function usePromptNavigation({
   scrollEl,
@@ -86,6 +117,40 @@ export function usePromptNavigation({
 
   useEffect(() => {
     if (!enabled || !scrollEl) return;
+    // Absolute index, so it survives older pages being prepended.
+    let cursor: { row: number; at: number } | null = null;
+    let holdFrame = 0;
+    const stopHold = () => {
+      cancelAnimationFrame(holdFrame);
+      holdFrame = 0;
+    };
+    const dropCursor = () => {
+      cursor = null;
+      stopHold();
+    };
+    // For a second after the jump, re-aims whenever the message has come to
+    // rest anywhere but the top: Virtuoso stopped on an estimate, or a row
+    // above grew. Re-aiming while it still moves would fight Virtuoso's own
+    // correction.
+    const hold = (row: number) => {
+      stopHold();
+      let frames = 0;
+      let lastTop: number | null = null;
+      const tick = () => {
+        holdFrame = 0;
+        if (!scrollEl.isConnected || ++frames > HOLD_FRAMES) return;
+        const top = rowTop(scrollEl, row);
+        const resting = top !== null && lastTop !== null && Math.abs(top - lastTop) <= HOLD_SLACK;
+        if (resting && Math.abs(top) > HOLD_SLACK) {
+          latest.current.scrollToRow(row - latest.current.firstIndex);
+          lastTop = null;
+        } else {
+          lastTop = top;
+        }
+        holdFrame = requestAnimationFrame(tick);
+      };
+      holdFrame = requestAnimationFrame(tick);
+    };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || isImeComposing(event)) return;
       let direction: PromptDirection;
@@ -97,18 +162,33 @@ export function usePromptNavigation({
       event.preventDefault();
       // Held keys repeat the step; the chord stays claimed either way.
       const current = latest.current;
+      const now = performance.now();
+      const fresh = cursor !== null && now - cursor.at < CURSOR_FRESH_MS ? cursor : null;
       const target = findPromptTarget({
         prompts: current.prompts,
-        anchor: measureAnchor(scrollEl, current.firstIndex),
-        atEnd: isAtLiveEnd(scrollEl),
+        anchor: fresh
+          ? { index: fresh.row - current.firstIndex, startVisible: true }
+          : measureAnchor(scrollEl, current.firstIndex),
+        atEnd: !fresh && isAtLiveEnd(scrollEl),
         hasOlder: current.hasOlder,
         direction,
       });
       if (!target) return;
-      if (target.kind === "end") current.scrollToLiveEnd();
-      else current.scrollToRow(target.index);
+      if (target.kind === "end") {
+        dropCursor();
+        current.scrollToLiveEnd();
+        return;
+      }
+      cursor = { row: current.firstIndex + target.index, at: now };
+      current.scrollToRow(target.index);
+      hold(cursor.row);
     };
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    for (const type of READER_INPUTS) document.addEventListener(type, dropCursor, { capture: true, passive: true });
+    return () => {
+      stopHold();
+      document.removeEventListener("keydown", onKeyDown);
+      for (const type of READER_INPUTS) document.removeEventListener(type, dropCursor, { capture: true });
+    };
   }, [enabled, scrollEl]);
 }

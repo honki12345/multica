@@ -29,19 +29,20 @@ export function findPromptTarget({
   hasOlder: boolean;
   direction: PromptDirection;
 }): PromptTarget | null {
+  // Nothing measured means the rows for the current position are not painted
+  // yet; stepping from a guess would jump to the wrong end of the chat.
+  if (!anchor) return null;
   if (direction === "previous") {
     // A sent message cut off at the top counts as "not reached yet": the first
     // press brings back its start, the next press moves past it.
-    const from = anchor ? (anchor.startVisible ? anchor.index - 1 : anchor.index) : prompts.length - 1;
+    const from = anchor.startVisible ? anchor.index - 1 : anchor.index;
     for (let i = Math.min(from, prompts.length - 1); i >= 0; i--) {
       if (prompts[i]) return { kind: "row", index: i };
     }
     // Bringing the oldest loaded row into view is what loads the page above it.
     return hasOlder && prompts.length > 0 ? { kind: "row", index: 0 } : null;
   }
-  // Nothing measured means the rows for the current position are not rendered
-  // yet (a held key outrunning Virtuoso); jumping to the end would skip prompts.
-  if (atEnd || !anchor) return null;
+  if (atEnd) return null;
   for (let i = anchor.index + 1; i < prompts.length; i++) {
     if (prompts[i]) return { kind: "row", index: i };
   }
