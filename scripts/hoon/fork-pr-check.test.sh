@@ -361,8 +361,51 @@ TMPDIR="$T/tmp" fpc run 20 --out "$T/out20r" >/dev/null 2>&1
 # --- gate
 HEAD="$(printf 'a%.0s' $(seq 40))"; OLD="$(printf 'b%.0s' $(seq 40))"
 setview 30 "$HEAD"
-comment() { # <id> <created_at> <assoc> <pr> <head> <verdict> [body prefix]
-  printf '{"id":%s,"created_at":"%s","author_association":"%s","body":"%s## 로컬 검사\\n\\n<!-- fork-pr-check pr=%s head=%s verdict=%s -->"}' "$1" "$2" "$3" "${7:-}" "$4" "$5" "$6"
+# comment <id> <created_at> <assoc> <pr> <head> <verdict> [variant] prints one
+# issue-comment JSON object whose body looks like what `run` generates; the
+# variant breaks exactly one rule of the gate.
+comment() {
+  python3 - "$@" <<'PY'
+import json, sys
+cid, at, assoc, pr, head, verdict = sys.argv[1:7]
+variant = sys.argv[7] if len(sys.argv) > 7 else ""
+rows = {
+    "bash scripts/hoon/license-check.sh": 0,
+    "bash scripts/hoon/features-check.sh": 0,
+    "git diff --check abc..HEAD": 0,
+}
+if verdict == "fail":
+    rows["bash scripts/hoon/other.test.sh"] = 1
+if variant == "row-nonzero":
+    rows["git diff --check abc..HEAD"] = 2
+if variant == "no-license-row":
+    del rows["bash scripts/hoon/license-check.sh"]
+if variant == "license-nonzero":
+    rows["bash scripts/hoon/license-check.sh"] = 1
+table = [f"| `{c}` | {rc} | done | 1s |" for c, rc in rows.items()]
+mark = f"<!-- fork-pr-check pr={pr} head={head} verdict={verdict} -->"
+head_line = "- head: `%s`" % (("b" * 40) if variant == "head-line-differs" else head)
+body = ["## 로컬 검사 (fork-pr-check)", "", f"- PR: #{pr}", head_line, "", "| 명령 | 종료 코드 | 결과 | 시간 |", "|---|---|---|---|", *table, "", "판정: 통과" if verdict == "pass" else "판정: 실패 1건", "", mark]
+if variant == "no-header":
+    body[0] = "LGTM"
+if variant == "no-head-line":
+    del body[3]
+if variant == "fenced":
+    body = ["## 로컬 검사 (fork-pr-check)", "", "```", *body[2:], "```"]
+if variant == "unclosed-fence":
+    body = body[:-1] + ["```", mark]
+if variant == "quoted":
+    body = body[:-1] + ["> " + mark]
+if variant == "trailing-text":
+    body = body + ["", "thanks!"]
+if variant == "marker-mid":
+    body = body[:-1] + [mark, "", "see above"]
+if variant == "marker-and-quote":
+    body = body[:-2] + ["", "> quoted: " + mark.replace("verdict=pass", "verdict=fail"), "", mark]
+if variant == "crlf":
+    body = [l + "\r" for l in body]
+print(json.dumps({"id": int(cid), "created_at": at, "author_association": assoc, "body": "\n".join(body)}))
+PY
 }
 gate() { out="$(fpc gate 30 2>/dev/null)"; rc=$?; }
 want() { # <name> <rc> <out>
@@ -394,9 +437,26 @@ want "gate: a marker for another PR is ignored" 0 "gate=ok head=$HEAD"
 printf '[%s]' "$(comment 1 2026-01-01T00:00:00Z OWNER 30 "$HEAD" fail)" > "$T/gh/comments-30.json"
 printf '[%s]' "$(comment 2 2026-01-02T00:00:00Z OWNER 30 "$HEAD" pass)" >> "$T/gh/comments-30.json"; gate
 want "gate: --paginate output (concatenated arrays) is read" 0 "gate=ok head=$HEAD"
-printf '[{"id":1,"created_at":"2026-01-01T00:00:00Z","author_association":"OWNER","body":"%s\\n\\n> <!-- fork-pr-check pr=30 head=%s verdict=fail -->\\n\\nquoted: <!-- fork-pr-check pr=30 head=%s verdict=fail -->"}]' \
-  "<!-- fork-pr-check pr=30 head=$HEAD verdict=pass -->" "$OLD" "$OLD" > "$T/gh/comments-30.json"; gate
-want "gate: markers quoted in prose after the real one do not count" 0 "gate=ok head=$HEAD"
+printf '[%s]' "$(comment 1 2026-01-01T00:00:00Z OWNER 30 "$HEAD" pass marker-and-quote)" > "$T/gh/comments-30.json"; gate
+want "gate: a quoted fail marker above the real last-line marker does not count" 0 "gate=ok head=$HEAD"
+
+# Regression: a marker that only looks like the generated one must not open the gate.
+for v in fenced unclosed-fence quoted trailing-text marker-mid no-header no-head-line head-line-differs; do
+  printf '[%s]' "$(comment 1 2026-01-01T00:00:00Z OWNER 30 "$HEAD" pass "$v")" > "$T/gh/comments-30.json"; gate
+  want "gate: forged pass ($v) cannot open the gate" 1 "gate=blocked reason=no-comment"
+done
+printf '[%s]' "$(comment 1 2026-01-01T00:00:00Z OWNER 30 "$HEAD" pass crlf)" > "$T/gh/comments-30.json"; gate
+want "gate: a generated comment with CRLF line endings is accepted" 0 "gate=ok head=$HEAD"
+for v in row-nonzero no-license-row license-nonzero; do
+  printf '[%s]' "$(comment 1 2026-01-01T00:00:00Z OWNER 30 "$HEAD" pass "$v")" > "$T/gh/comments-30.json"; gate
+  want "gate: hand-edited verdict=pass ($v) cannot pass" 1 "gate=blocked reason=no-comment"
+done
+printf '[%s,%s]' "$(comment 1 2026-01-01T00:00:00Z OWNER 30 "$HEAD" pass)" "$(comment 2 2026-01-02T00:00:00Z OWNER 30 "$HEAD" fail quoted)" > "$T/gh/comments-30.json"; gate
+want "gate: an invalid newer comment is ignored, not a blocker" 0 "gate=ok head=$HEAD"
+printf '[%s,%s]' "$(comment 1 2026-01-01T00:00:00Z OWNER 30 "$HEAD" pass)" "$(comment 2 2026-01-02T00:00:00Z OWNER 30 "$HEAD" pass row-nonzero)" > "$T/gh/comments-30.json"; gate
+want "gate: a forged newer pass does not replace an older valid pass" 0 "gate=ok head=$HEAD"
+printf '[%s,%s]' "$(comment 1 2026-01-01T00:00:00Z OWNER 30 "$HEAD" pass)" "$(comment 2 2026-01-02T00:00:00Z OWNER 30 "$HEAD" fail)" > "$T/gh/comments-30.json"; gate
+want "gate: a valid newer fail still blocks" 1 "gate=blocked reason=verdict-fail"
 touch "$T/gh/api-fails"; gate
 [ "$rc" = 2 ] && pass "gate: gh api failure -> exit 2 (not ok)" || bad "gate: gh api failure -> exit 2 (rc=$rc out='$out')"
 rm -f "$T/gh/api-fails"

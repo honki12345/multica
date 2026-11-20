@@ -17,10 +17,17 @@
 #       Exit 0: all checks passed; 1: a check failed; 2: setup error (gh/git
 #       failed, head moved while fetching, post failed).
 # plan  Prints the commands `run` would execute, one per line, and runs nothing.
-# gate  Reads the PR comments, takes the newest one carrying the marker
-#       `<!-- fork-pr-check pr=<n> head=<sha> verdict=pass|fail -->` (only from
-#       OWNER/MEMBER/COLLABORATOR; a stranger's comment cannot open the gate)
-#       and prints `gate=ok head=<sha>` (exit 0) only when that head is the PR's
+# gate  Reads the PR comments and takes the newest valid one (only from
+#       OWNER/MEMBER/COLLABORATOR; a stranger's comment cannot open the gate).
+#       Valid means the body is what `run` generates: the first line is
+#       `## 로컬 검사 (fork-pr-check)`, a line ``- head: `<sha>` `` carries the
+#       same sha as the marker, and the marker
+#       `<!-- fork-pr-check pr=<n> head=<sha> verdict=pass|fail -->` is the
+#       last non-empty line, outside any ``` fence (quoted or fenced markers do
+#       not count). verdict=pass also needs table rows for license-check.sh and
+#       features-check.sh with exit code 0 and no row with a non-zero exit code,
+#       so a hand-edited verdict cannot pass. An invalid newer comment is
+#       ignored, not a blocker. It prints `gate=ok head=<sha>` (exit 0) only when that head is the PR's
 #       current head and the verdict is pass. Otherwise prints
 #       `gate=blocked reason=no-comment|head-moved|verdict-fail` (exit 1).
 #       Exit 2 (`gate=error`) when gh fails. Merge only after gate=ok:
@@ -118,17 +125,62 @@ while True:
         break
     v, i = dec.raw_decode(text, i)
     items.extend(v if isinstance(v, list) else [v])
-pat = re.compile(r"^<!-- fork-pr-check pr=(\d+) head=([0-9a-f]{40}) verdict=(pass|fail) -->[ \t\r]*$", re.M)
+
+HEADER = "## 로컬 검사 (fork-pr-check)"
+MARK = re.compile(r"^<!-- fork-pr-check pr=(\d+) head=([0-9a-f]{40}) verdict=(pass|fail) -->$")
+HEAD = re.compile(r"^- head: `([0-9a-f]{40})`$")
+ROW = re.compile(r"^\| `(.+?)` \| (\d+) \| ")
+FENCE = re.compile(r"^\s{0,3}(```|~~~)")
+REQUIRED = ("bash scripts/hoon/license-check.sh", "bash scripts/hoon/features-check.sh")
+
+
+def parse(body):
+    """(head, verdict) of a comment that fork-pr-check generated, else None.
+
+    Only unfenced lines count, so a marker, head line or table row quoted in a
+    code block cannot stand in for the real ones.
+    """
+    lines = [l.rstrip("\r") for l in body.split("\n")]
+    if not lines or lines[0].strip() != HEADER:
+        return None
+    last = max((k for k, l in enumerate(lines) if l.strip()), default=-1)
+    m = MARK.match(lines[last].strip()) if last >= 0 else None
+    if not m or m.group(1) != n:
+        return None
+    heads, rows, fenced = [], [], False
+    for k, l in enumerate(lines):
+        if FENCE.match(l):
+            fenced = not fenced
+            continue
+        if fenced:
+            if k == last:
+                return None
+            continue
+        h = HEAD.match(l.strip())
+        if h:
+            heads.append(h.group(1))
+        r = ROW.match(l.strip())
+        if r:
+            rows.append((r.group(1).replace("\\|", "|"), int(r.group(2))))
+    if fenced or m.group(2) not in heads:
+        return None
+    if m.group(3) == "pass":
+        ok = {c for c, rc in rows if rc == 0}
+        if any(rc != 0 for _, rc in rows) or not all(r in ok for r in REQUIRED):
+            return None
+    return m.group(2), m.group(3)
+
+
 best = None
 for c in items:
     if not isinstance(c, dict) or c.get("author_association") not in ("OWNER", "MEMBER", "COLLABORATOR"):
         continue
-    marks = [m for m in pat.finditer(c.get("body") or "") if m.group(1) == n]
-    if not marks:
+    got = parse(c.get("body") or "")
+    if got is None:
         continue
     key = (c.get("created_at") or "", c.get("id") or 0)
     if best is None or key > best[0]:
-        best = (key, marks[-1].group(2), marks[-1].group(3))
+        best = (key, got[0], got[1])
 if best is None:
     print("gate=blocked reason=no-comment"); sys.exit(1)
 _, head, verdict = best

@@ -108,7 +108,14 @@ checks are chosen from the files the PR changes:
 The comment carries the full 40-character head SHA, the base, the machine,
 each command with its exit code, result line and time, the verdict, and a
 marker line `<!-- fork-pr-check pr=<n> head=<sha> verdict=pass|fail -->`.
-`gate` reads the newest marker from an owner/member/collaborator comment.
+`gate` reads the newest valid comment from an owner/member/collaborator. Valid
+means it is the comment `run` generates: it starts with the
+`## 로컬 검사 (fork-pr-check)` header, has a ``- head: `<sha>` `` line with the
+marker's sha, ends with the marker as its last non-empty line outside any code
+fence, and, for `verdict=pass`, has exit-code-0 rows for `license-check.sh` and
+`features-check.sh` and no row with a non-zero exit code. A marker pasted into
+a code block or a quote, or a hand-edited verdict, does not open the gate; an
+invalid newer comment is ignored.
 
 Merge only when `gate` says `ok`: zero failures for the current head. A failure
 judged pre-existing upstream (the same test also fails on the clean upstream
