@@ -808,8 +808,10 @@ features:
     cards: [CALA-330]
     origin:
       type: ours
-      commits: ["a5120e89d", "45610a4a9"]
+      commits: ["a5120e89d", "45610a4a9", "01f950fa1"]
     files:
+      - packages/views/common/take-keyboard-focus.ts
+      - packages/views/common/take-keyboard-focus.test.tsx
       - packages/views/chat/chat-page.tsx
       - packages/views/chat/chat-page.test.tsx
       - packages/views/chat/components/chat-message-list.tsx
@@ -838,6 +840,14 @@ features:
       symbols: [focusRequested, focusOnOpen]
       keywords: [arrow keys scroll chat, focus conversation, scroll keys reading pane, keyboard scroll issue detail]
     tests:
+      - vitest: packages/views/common/take-keyboard-focus.test.tsx
+        name: waits while a menu holds focus, then takes it once the menu lets go
+      - vitest: packages/views/common/take-keyboard-focus.test.tsx
+        name: gives up after a while instead of taking focus much later
+      - vitest: packages/views/chat/components/chat-message-list.focus.test.tsx
+        name: takes the keys once the popover has let go, even when the list lands first
+      - vitest: packages/views/chat/chat-page.test.tsx
+        name: drops the request when another chat opens before the picked one does
       - vitest: packages/views/chat/components/chat-message-list.focus.test.tsx
         name: takes the keys when the reader clicks a message's text
       - vitest: packages/views/chat/components/chat-message-list.focus.test.tsx
