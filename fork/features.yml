@@ -881,7 +881,9 @@ features:
       - packages/views/chat/components/chat-input.tsx
       - packages/views/chat/components/chat-window.tsx
       - packages/views/chat/components/chat-thread-list.tsx
+      - packages/views/inbox/components/inbox-list.tsx
       - packages/views/inbox/components/inbox-list-item.tsx
+      - packages/views/settings/components/keyboard-shortcuts-tab.tsx
       - packages/views/issues/components/issue-detail.tsx
       - packages/views/issues/components/comment-input.tsx
       - packages/views/issues/components/list-view.tsx
@@ -904,10 +906,6 @@ features:
     watch:
       - path: packages/core/shortcuts/**
         why: shortcutMatchesEvent, the reserved-chord policy and the Settings store the five actions go through
-      - path: packages/views/settings/components/keyboard-shortcuts-tab.tsx
-        why: lists the actions under General and records overrides through isShortcutAllowedForAction
-      - path: packages/views/inbox/components/inbox-list.tsx
-        why: owns its own arrow-key row stepping on the archive list scroller (MUL-5622); the region keys step only where no handler claimed the key
       - path: packages/views/layout/collection-list/collection-list.tsx
         why: grid arrow/j/k handling and the page-level arrow capture when focus is on <body>
       - path: packages/views/issues/components/issue-peek.tsx
@@ -944,6 +942,10 @@ features:
         name: steps through list rows with the arrow keys only while the list has focus
       - vitest: packages/views/layout/use-focus-region-shortcuts.test.tsx
         name: keeps the floating chat window's regions to itself
+      - vitest: packages/views/layout/use-focus-region-shortcuts.test.tsx
+        name: leaves Esc to an open issue peek, which closes on it
+      - vitest: packages/views/layout/use-focus-region-shortcuts.test.tsx
+        name: lets Settings record a region key instead of moving focus
       - vitest: apps/desktop/src/main/keyboard-shortcuts.test.ts
         name: passes the region chords through on every platform
     scenarios:

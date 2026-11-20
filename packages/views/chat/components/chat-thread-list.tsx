@@ -587,6 +587,7 @@ export function ChatThreadList({
           e.preventDefault();
           window.open(getShareableUrl(href), "_blank", "noopener,noreferrer");
         }}
+        data-dragging={drag.isDragging ? "" : undefined}
         onKeyDown={(e) => {
           // A drag under way owns the keys: the one that drops the row must
           // not also open it.

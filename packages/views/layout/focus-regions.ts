@@ -136,7 +136,7 @@ export function pickRegionOfKind(
 
 function isFocusable(element: Element): element is HTMLElement {
   if (!(element instanceof HTMLElement)) return false;
-  if (element.closest("[inert]")) return false;
+  if (element.closest("[inert], [hidden]")) return false;
   if (element.hasAttribute("disabled")) return false;
   return element.matches(FOCUSABLE_SELECTOR) || element.hasAttribute("tabindex");
 }
@@ -149,21 +149,39 @@ function firstFocusableIn(element: Element): HTMLElement | null {
   return null;
 }
 
-/**
- * Where focus goes in `region`: its marked target (or the first focusable
- * inside it), the region itself when it takes focus (a scroller with
- * tabindex), else its first focusable element.
- */
-export function focusRegionTarget(region: HTMLElement): HTMLElement | null {
-  const marked = region.querySelector<HTMLElement>(`[${REGION_TARGET_ATTR}]`);
-  const fromMark = marked ? firstFocusableIn(marked) : null;
-  if (fromMark) return fromMark;
-  if (region.hasAttribute("tabindex") && isFocusable(region)) return region;
-  return firstFocusableIn(region);
+/** Whether `element` belongs to `region` itself rather than to a region nested in it. */
+function ownedBy(region: HTMLElement, element: Element): boolean {
+  return element.closest(`[${FOCUS_REGION_ATTR}]`) === region;
 }
 
-/** The element to focus for a list row: the row, or its first control. */
+/**
+ * Where focus goes in `region`: its own marked target (or the first focusable
+ * inside it), the region itself when it takes focus (a scroller with
+ * tabindex), else its first focusable element. Targets of a region nested
+ * inside (the comment box inside the issue body) do not count.
+ */
+export function focusRegionTarget(region: HTMLElement): HTMLElement | null {
+  for (const marked of region.querySelectorAll<HTMLElement>(`[${REGION_TARGET_ATTR}]`)) {
+    if (!ownedBy(region, marked)) continue;
+    const target = firstFocusableIn(marked);
+    if (target) return target;
+  }
+  if (region.hasAttribute("tabindex") && isFocusable(region)) return region;
+  for (const candidate of region.querySelectorAll(FOCUSABLE_SELECTOR)) {
+    if (ownedBy(region, candidate) && isFocusable(candidate)) return candidate;
+  }
+  return null;
+}
+
+/**
+ * The element to focus for a list row: the row when it takes focus, else its
+ * link (a tree row puts its expand toggle first), else its first control.
+ */
 export function focusRowTarget(row: HTMLElement): HTMLElement | null {
+  const self: Element = row;
+  if (isFocusable(self)) return self;
+  const link = row.querySelector<HTMLElement>("a[href]");
+  if (link && isFocusable(link)) return link;
   return firstFocusableIn(row);
 }
 

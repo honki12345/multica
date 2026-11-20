@@ -7,6 +7,7 @@ import {
   REGION_TARGET_ATTR,
   findFocusRegions,
   focusRegionTarget,
+  focusRowTarget,
   isRegionRendered,
   nextFocusRegion,
   pickRegionOfKind,
@@ -152,6 +153,23 @@ describe("focusRegionTarget", () => {
     expect(focusRegionTarget(composer)?.id).toBe("shell");
   });
 
+  it("lands on a region's own target, not on a nested region's (the comment box inside the issue body)", () => {
+    const body = region(
+      "body",
+      `<p>issue</p><div ${FOCUS_REGION_ATTR}="composer"><div role="button" tabindex="0" id="shell" ${REGION_TARGET_ATTR}></div></div>`,
+      { tabindex: "-1" },
+    );
+    expect(focusRegionTarget(body)).toBe(body);
+  });
+
+  it("skips a marked target that is not shown (the comment editor before it mounts)", () => {
+    const composer = region(
+      "composer",
+      `<div hidden ${REGION_TARGET_ATTR}><div contenteditable="true" id="ed"></div></div><div role="button" tabindex="0" id="shell" ${REGION_TARGET_ATTR}></div>`,
+    );
+    expect(focusRegionTarget(composer)?.id).toBe("shell");
+  });
+
   it("falls back to the region itself when it can take focus (the body scroller)", () => {
     const body = region("body", "<p>text</p><button>reply</button>", { tabindex: "-1" });
     expect(focusRegionTarget(body)).toBe(body);
@@ -179,6 +197,21 @@ describe("regionOfElement", () => {
     document.body.append(loose);
     expect(regionOfElement(loose)).toBeNull();
     expect(regionOfElement(null)).toBeNull();
+  });
+});
+
+describe("focusRowTarget", () => {
+  it("prefers the row's link over a toggle in front of it (a project row in the sidebar tree)", () => {
+    const row = document.createElement("div");
+    row.innerHTML = `<button id="toggle"></button><a href="/p" id="link"></a>`;
+    expect(focusRowTarget(row)?.id).toBe("link");
+  });
+
+  it("takes the row itself when it is focusable (a chat row)", () => {
+    const row = document.createElement("div");
+    row.tabIndex = 0;
+    row.innerHTML = `<button id="pin"></button>`;
+    expect(focusRowTarget(row)).toBe(row);
   });
 });
 

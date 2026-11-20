@@ -230,6 +230,55 @@ describe("useFocusRegionShortcuts", () => {
     expect(active()).toBe("window-input");
   });
 
+  it("leaves Esc to an open issue peek, which closes on it", () => {
+    render(
+      <>
+        <Page />
+        <aside data-issue-peek="">
+          <div data-focus-region="body" tabIndex={-1} id="peek-body" />
+        </aside>
+      </>,
+    );
+    giveBoxes();
+    document.getElementById("body")!.focus();
+    expect(press("Escape")).toBe(true);
+    expect(active()).toBe("body");
+  });
+
+  it("lets Settings record a region key instead of moving focus", () => {
+    render(
+      <>
+        <Page />
+        <button type="button" aria-pressed="true" data-shortcut-recorder="" id="recorder">
+          recording
+        </button>
+      </>,
+    );
+    giveBoxes();
+    document.getElementById("recorder")!.focus();
+    expect(press("F8")).toBe(true);
+    expect(active()).toBe("recorder");
+  });
+
+  it("leaves the arrow keys to a keyboard drag in progress", () => {
+    render(<Page />);
+    giveBoxes();
+    const row = document.getElementById("row-1")!;
+    row.setAttribute("data-dragging", "");
+    row.focus();
+    expect(press("ArrowDown")).toBe(true);
+    expect(active()).toBe("row-1");
+  });
+
+  it("does not step rows in a list that steps its own selection", () => {
+    render(<Page />);
+    giveBoxes();
+    document.getElementById("list")!.setAttribute("data-focus-rows", "self");
+    document.getElementById("row-1")!.focus();
+    expect(press("End")).toBe(true);
+    expect(active()).toBe("row-1");
+  });
+
   it("leaves Mod+Shift+H to the editor's highlight when text is selected, and moves otherwise", () => {
     render(<Page />);
     giveBoxes();
@@ -245,6 +294,13 @@ describe("useFocusRegionShortcuts", () => {
     document.getSelection()!.collapseToEnd();
     press("H", { metaKey: true, shiftKey: true });
     expect(active()).toBe("row-1");
+
+    // Only the chord the editor binds yields; Mod+Shift+L moves even with a selection.
+    editor.focus();
+    document.getSelection()!.removeAllRanges();
+    document.getSelection()!.addRange(range);
+    press("L", { metaKey: true, shiftKey: true });
+    expect(active()).toBe("body");
   });
 
   it("wins over an editor keymap that binds the same chord", () => {

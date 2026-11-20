@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import {
+  createShortcutChord,
   getShortcut,
   isEditableShortcutTarget,
   isPortalLayerShortcutTarget,
@@ -38,6 +39,16 @@ const CYCLES: Partial<Record<ShortcutActionId, 1 | -1>> = {
 };
 const REGION_ACTIONS = [...Object.keys(JUMPS), ...Object.keys(CYCLES)] as ShortcutActionId[];
 const ROW_KEYS = new Set<string>(["ArrowUp", "ArrowDown", "Home", "End"]);
+// Chords the editor binds itself: Tiptap highlights on Mod+Shift+H.
+const EDITOR_BOUND = [createShortcutChord("H", { primary: true, shift: true })];
+// The Settings recorder takes the next chord as the new binding.
+const RECORDER_SELECTOR = '[data-shortcut-recorder][aria-pressed="true"]';
+// A list that steps its own selection (the inbox archive list, MUL-5622).
+const SELF_STEPPING_SELECTOR = '[data-focus-rows="self"]';
+// A keyboard drag in progress (chat list reorder) owns the arrow keys.
+const DRAGGING_SELECTOR = "[data-dragging]";
+// An open issue peek closes on Esc from its own document listener.
+const PEEK_SELECTOR = "[data-issue-peek]";
 
 // Long enough to find the region after a jump, short enough not to linger.
 const FLASH_MS = 900;
@@ -114,14 +125,14 @@ export function useFocusRegionShortcuts() {
     const onRegionChord = (event: KeyboardEvent) => {
       if (event.defaultPrevented || isImeComposing(event)) return;
       if (isPortalLayerShortcutTarget(event.target)) return;
+      if (event.target instanceof Element && event.target.closest(RECORDER_SELECTOR)) return;
       const actionId = REGION_ACTIONS.find((id) => shortcutMatchesEvent(getShortcut(id), event));
       if (!actionId) return;
-      // An editor's own formatting chord (Tiptap highlights on Mod+Shift+H)
-      // keeps working on selected text; with nothing selected it would only
-      // toggle a stored mark, so the region key wins there. Function keys
-      // format nothing and always move.
-      const formatting = event.metaKey || event.ctrlKey;
-      if (formatting && isEditableShortcutTarget(event.target) && hasTextSelection()) return;
+      // An editor's own formatting chord keeps working on selected text; with
+      // nothing selected it would only toggle a stored mark, so the region key
+      // wins there.
+      const editorBound = EDITOR_BOUND.some((chord) => shortcutMatchesEvent(chord, event));
+      if (editorBound && isEditableShortcutTarget(event.target) && hasTextSelection()) return;
       const active = document.activeElement;
       const regions = regionsAround(active);
       const current = regionOfElement(active);
@@ -150,6 +161,7 @@ export function useFocusRegionShortcuts() {
 
       if (event.key === "Escape") {
         if (current.kind === "composer") return;
+        if (document.querySelector(PEEK_SELECTOR)) return;
         const composer = pickRegionOfKind(regionsAround(active), "composer", null);
         if (!composer) return;
         event.preventDefault();
@@ -158,6 +170,9 @@ export function useFocusRegionShortcuts() {
       }
 
       if (current.kind === "list" && ROW_KEYS.has(event.key)) {
+        if (active?.closest(DRAGGING_SELECTOR)) return;
+        const selfStepping = active?.closest(SELF_STEPPING_SELECTOR);
+        if (selfStepping && current.element.contains(selfStepping)) return;
         if (moveRow(current.element, active, event.key as RowKey)) event.preventDefault();
       }
     };

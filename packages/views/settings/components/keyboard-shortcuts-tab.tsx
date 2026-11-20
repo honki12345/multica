@@ -1,5 +1,7 @@
 "use client";
 
+// Modified by honki12345, 2026: mark the recorder so the focus region keys can be recorded (CALA-332).
+
 import { useMemo, useState } from "react";
 import { Keyboard, RotateCcw, Search, X } from "@multica/ui/icons";
 import { Button } from "@multica/ui/components/ui/button";
@@ -320,6 +322,7 @@ function ShortcutRow({
             )}
             aria-label={t(($) => $.shortcuts.record_aria, { action: label })}
             aria-pressed={recording}
+            data-shortcut-recorder=""
           >
             {recording ? (
               <span className="inline-flex items-center gap-1.5 font-sans">
