@@ -88,6 +88,21 @@ describe("AppBottomBar", () => {
     ).toHaveAttribute("href", "/acme/agents");
   });
 
+  it("never lets the status group shrink beside the chat chips", () => {
+    h.team.stuck = [{ id: "a1" }];
+    h.team.byAgent = new Map([["a1", { queuedCount: 1 }]]);
+    renderBar();
+
+    const link = screen.getByRole("link", { name: "1 task waiting on an offline runtime" });
+    let node: HTMLElement | null = link.parentElement;
+    const footer = screen.getByRole("contentinfo");
+    while (node && node !== footer) {
+      expect(node.className).not.toMatch(/\bmin-w-0\b/);
+      expect(node.className).toMatch(/\bshrink-0\b/);
+      node = node.parentElement;
+    }
+  });
+
   it("drops quick chat on the Chat tab, which already shows it full-page", () => {
     renderBar("/acme/chat");
     expect(screen.queryByTestId("chat-bar")).not.toBeInTheDocument();
