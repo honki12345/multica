@@ -23,8 +23,11 @@
 #       `## 로컬 검사 (fork-pr-check)`, a line ``- head: `<sha>` `` carries the
 #       same sha as the marker, and the marker
 #       `<!-- fork-pr-check pr=<n> head=<sha> verdict=pass|fail -->` is the
-#       last non-empty line, outside any ``` fence (quoted or fenced markers do
-#       not count). verdict=pass also needs table rows for license-check.sh and
+#       last non-empty line. The header, head line, table rows and marker must
+#       start at column 0 (the generator never indents them) and sit outside
+#       every code fence (CommonMark: 3+ backticks or tildes, closed only by the
+#       same char at least as long); quoted, fenced or indented copies do not
+#       count. verdict=pass also needs table rows for license-check.sh and
 #       features-check.sh with exit code 0 and no row with a non-zero exit code,
 #       so a hand-edited verdict cannot pass. An invalid newer comment is
 #       ignored, not a blocker. It prints `gate=ok head=<sha>` (exit 0) only when that head is the PR's
@@ -130,39 +133,56 @@ HEADER = "## 로컬 검사 (fork-pr-check)"
 MARK = re.compile(r"^<!-- fork-pr-check pr=(\d+) head=([0-9a-f]{40}) verdict=(pass|fail) -->$")
 HEAD = re.compile(r"^- head: `([0-9a-f]{40})`$")
 ROW = re.compile(r"^\| `(.+?)` \| (\d+) \| ")
-FENCE = re.compile(r"^\s{0,3}(```|~~~)")
+FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 REQUIRED = ("bash scripts/hoon/license-check.sh", "bash scripts/hoon/features-check.sh")
+
+
+def fence_after(line, fence):
+    """Fence state after `line`: None (outside) or (char, length) of the open fence.
+
+    CommonMark: open on 3+ backticks or tildes with up to 3 spaces of indent
+    (a backtick fence's info string cannot hold a backtick); close only on the
+    same char, at least as long, with nothing else on the line.
+    """
+    if fence is None:
+        m = FENCE_OPEN.match(line)
+        if m and not (m.group(1)[0] == "`" and "`" in m.group(2)):
+            return (m.group(1)[0], len(m.group(1)))
+        return None
+    ch, n = fence
+    m = re.match(r"^ {0,3}(%s{%d,})[ \t]*$" % (re.escape(ch), n), line)
+    return None if m else fence
 
 
 def parse(body):
     """(head, verdict) of a comment that fork-pr-check generated, else None.
 
-    Only unfenced lines count, so a marker, head line or table row quoted in a
-    code block cannot stand in for the real ones.
+    The generator writes the header, head line, table rows and marker at column
+    0, so a line counts only when it starts there and sits outside every code
+    fence. Quoted, fenced or indented copies cannot stand in for the real ones.
     """
     lines = [l.rstrip("\r") for l in body.split("\n")]
-    if not lines or lines[0].strip() != HEADER:
+    if not lines or lines[0] != HEADER:
         return None
     last = max((k for k, l in enumerate(lines) if l.strip()), default=-1)
-    m = MARK.match(lines[last].strip()) if last >= 0 else None
+    m = MARK.match(lines[last]) if last >= 0 else None
     if not m or m.group(1) != n:
         return None
-    heads, rows, fenced = [], [], False
-    for k, l in enumerate(lines):
-        if FENCE.match(l):
-            fenced = not fenced
+    heads, rows, fence = [], [], None
+    for l in lines:
+        if fence is not None:
+            fence = fence_after(l, fence)
             continue
-        if fenced:
-            if k == last:
-                return None
+        fence = fence_after(l, None)
+        if fence is not None:
             continue
-        h = HEAD.match(l.strip())
+        h = HEAD.match(l)
         if h:
             heads.append(h.group(1))
-        r = ROW.match(l.strip())
+        r = ROW.match(l)
         if r:
             rows.append((r.group(1).replace("\\|", "|"), int(r.group(2))))
-    if fenced or m.group(2) not in heads:
+    if fence is not None or m.group(2) not in heads:
         return None
     if m.group(3) == "pass":
         ok = {c for c, rc in rows if rc == 0}

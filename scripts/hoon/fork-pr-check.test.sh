@@ -402,6 +402,28 @@ if variant == "marker-mid":
     body = body[:-1] + [mark, "", "see above"]
 if variant == "marker-and-quote":
     body = body[:-2] + ["", "> quoted: " + mark.replace("verdict=pass", "verdict=fail"), "", mark]
+if variant == "fence4-then-fence3":
+    body = body[:2] + ["````", "```"] + body[2:]
+if variant == "tilde-then-backtick":
+    body = body[:2] + ["~~~", "```"] + body[2:]
+if variant == "backtick-then-tilde":
+    body = body[:2] + ["```", "~~~"] + body[2:]
+if variant == "fence-indent3":
+    body = body[:2] + ["   ```"] + body[2:]
+if variant == "fence-close-with-text":
+    body = body[:2] + ["```", *body[2:-1], "``` x", mark]
+if variant == "indented-block":
+    body = body[:2] + ["    " + l for l in body[2:]]
+if variant == "indent-head":
+    body[3] = " " + body[3]
+if variant == "indent-rows":
+    body = [" " + l if l.startswith("| `") else l for l in body]
+if variant == "indent-marker":
+    body[-1] = " " + body[-1]
+if variant == "tab-head":
+    body[3] = "\t" + body[3]
+if variant == "fenced-noise":
+    body = body[:-3] + ["```", "- head: `" + "c" * 40 + "`", "| `bash x.sh` | 9 | boom | 1s |", "```", ""] + body[-3:]
 if variant == "crlf":
     body = [l + "\r" for l in body]
 print(json.dumps({"id": int(cid), "created_at": at, "author_association": assoc, "body": "\n".join(body)}))
@@ -441,12 +463,16 @@ printf '[%s]' "$(comment 1 2026-01-01T00:00:00Z OWNER 30 "$HEAD" pass marker-and
 want "gate: a quoted fail marker above the real last-line marker does not count" 0 "gate=ok head=$HEAD"
 
 # Regression: a marker that only looks like the generated one must not open the gate.
-for v in fenced unclosed-fence quoted trailing-text marker-mid no-header no-head-line head-line-differs; do
+for v in fenced unclosed-fence quoted trailing-text marker-mid no-header no-head-line head-line-differs \
+  fence4-then-fence3 tilde-then-backtick backtick-then-tilde fence-indent3 fence-close-with-text \
+  indented-block indent-head indent-rows indent-marker tab-head; do
   printf '[%s]' "$(comment 1 2026-01-01T00:00:00Z OWNER 30 "$HEAD" pass "$v")" > "$T/gh/comments-30.json"; gate
   want "gate: forged pass ($v) cannot open the gate" 1 "gate=blocked reason=no-comment"
 done
 printf '[%s]' "$(comment 1 2026-01-01T00:00:00Z OWNER 30 "$HEAD" pass crlf)" > "$T/gh/comments-30.json"; gate
 want "gate: a generated comment with CRLF line endings is accepted" 0 "gate=ok head=$HEAD"
+printf '[%s]' "$(comment 1 2026-01-01T00:00:00Z OWNER 30 "$HEAD" pass fenced-noise)" > "$T/gh/comments-30.json"; gate
+want "gate: a fenced fake head line and failing row are ignored, the real ones still count" 0 "gate=ok head=$HEAD"
 for v in row-nonzero no-license-row license-nonzero; do
   printf '[%s]' "$(comment 1 2026-01-01T00:00:00Z OWNER 30 "$HEAD" pass "$v")" > "$T/gh/comments-30.json"; gate
   want "gate: hand-edited verdict=pass ($v) cannot pass" 1 "gate=blocked reason=no-comment"
