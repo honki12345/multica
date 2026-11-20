@@ -180,6 +180,20 @@ check("in candidate: no commits listed counts as present", fv.feature_in_candida
 
 check("version: hoon tag", fv.resolve_version("v0.11.0-hoon.1", "", "abc") == "0.11.0-hoon.1")
 
+# --- leftover processes of the test HERMES_HOME are stopped; others are not
+import time as _t
+hh = str(T / "hh" / ".hermes")
+# Not /bin/sleep: macOS hides the environment of platform binaries from ps -E.
+nap = [sys.executable, "-c", "import time; time.sleep(60)"]
+mine = subprocess.Popen(nap, env=dict(os.environ, HERMES_HOME=hh))
+other = subprocess.Popen(nap, env=dict(os.environ, HERMES_HOME=hh + "-other"))
+_t.sleep(0.3)
+fv.stop_processes_with_env("HERMES_HOME", hh)
+_t.sleep(0.3)
+check("cleanup: process with the test HERMES_HOME stopped", mine.poll() is not None)
+check("cleanup: process with another HERMES_HOME untouched", other.poll() is None)
+other.kill()
+
 # --- run_vitest with a stub pnpm: passing JSON but vitest exits 1 (unhandled error)
 stub = T / "stubbin"
 stub.mkdir()

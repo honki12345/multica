@@ -581,7 +581,40 @@ class Resident:
                 p.wait(10)
 
     def cleanup(self):
+        stop_processes_with_env("HERMES_HOME", str(self.home / ".hermes"))
         shutil.rmtree(self.home, ignore_errors=True)
+
+
+def stop_processes_with_env(key, value):
+    """Stop detached processes started with key=value (hermes acp auto-starts
+    a gateway for the test HERMES_HOME that outlives the run otherwise)."""
+    real = os.path.realpath(value)
+    out = run(["ps", "-axE", "-o", "pid=,command="]).stdout
+    pids = [int(line.split(None, 1)[0]) for line in out.splitlines()
+            if line.strip() and any(tok in ("%s=%s" % (key, value), "%s=%s" % (key, real)) for tok in line.split())]
+    for pid in pids:
+        if pid != os.getpid():
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+    deadline = time.time() + 15
+    while pids and time.time() < deadline:
+        pids = [p for p in pids if _alive(p)]
+        time.sleep(0.5)
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+def _alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
 
 
 def tool_outputs(messages):
