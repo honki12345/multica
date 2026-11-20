@@ -161,7 +161,9 @@ export function useFocusRegionShortcuts() {
 
       if (event.key === "Escape") {
         if (current.kind === "composer") return;
-        if (document.querySelector(PEEK_SELECTOR)) return;
+        // The peek's own listener closes it on Esc; the floating chat window
+        // is its own scope and keeps Esc-to-composer.
+        if (!focusScopeOf(active) && document.querySelector(PEEK_SELECTOR)) return;
         const composer = pickRegionOfKind(regionsAround(active), "composer", null);
         if (!composer) return;
         event.preventDefault();

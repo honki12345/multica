@@ -245,6 +245,25 @@ describe("useFocusRegionShortcuts", () => {
     expect(active()).toBe("body");
   });
 
+  it("still sends Esc to the chat window's composer while a peek is open", () => {
+    render(
+      <>
+        <Page />
+        <aside data-issue-peek="" />
+        <div {...{ [FOCUS_SCOPE_ATTR]: "" }}>
+          <div data-focus-region="body" tabIndex={-1} id="window-body" />
+          <div data-focus-region="composer">
+            <textarea id="window-input" {...{ [REGION_TARGET_ATTR]: "" }} />
+          </div>
+        </div>
+      </>,
+    );
+    giveBoxes();
+    document.getElementById("window-body")!.focus();
+    press("Escape");
+    expect(active()).toBe("window-input");
+  });
+
   it("lets Settings record a region key instead of moving focus", () => {
     render(
       <>

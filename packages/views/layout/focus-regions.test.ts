@@ -170,6 +170,14 @@ describe("focusRegionTarget", () => {
     expect(focusRegionTarget(composer)?.id).toBe("shell");
   });
 
+  it("enters a list on the open row's link, not on a toggle in front of it (a sidebar tree row)", () => {
+    const list = region(
+      "list",
+      `<div data-focus-row ${REGION_TARGET_ATTR}><button id="toggle"></button><a href="/p" id="link"></a></div>`,
+    );
+    expect(focusRegionTarget(list)?.id).toBe("link");
+  });
+
   it("falls back to the region itself when it can take focus (the body scroller)", () => {
     const body = region("body", "<p>text</p><button>reply</button>", { tabindex: "-1" });
     expect(focusRegionTarget(body)).toBe(body);

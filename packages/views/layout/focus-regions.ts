@@ -163,7 +163,7 @@ function ownedBy(region: HTMLElement, element: Element): boolean {
 export function focusRegionTarget(region: HTMLElement): HTMLElement | null {
   for (const marked of region.querySelectorAll<HTMLElement>(`[${REGION_TARGET_ATTR}]`)) {
     if (!ownedBy(region, marked)) continue;
-    const target = firstFocusableIn(marked);
+    const target = marked.hasAttribute(FOCUS_ROW_ATTR) ? focusRowTarget(marked) : firstFocusableIn(marked);
     if (target) return target;
   }
   if (region.hasAttribute("tabindex") && isFocusable(region)) return region;
