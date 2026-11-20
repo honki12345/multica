@@ -1,5 +1,7 @@
 "use client";
 
+// Modified by honki12345, 2026: picking a chat from the history hands keyboard focus to the conversation (CALA-330).
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
@@ -102,6 +104,14 @@ export function ChatWindow() {
   const newChatRequest = useChatStore((s) => s.newChatRequest);
   const { focusRequest: openFocusRequest } = useChatInputFocus(isOpen, windowRef, newChatRequest);
   const focusRequest = c.focusInputRequest + openFocusRequest;
+  // Picking a chat from the history means reading it: the conversation takes
+  // the keys once it has landed (CALA-330). The caret stays in the composer.
+  // The request names the picked chat, like the chat page's.
+  const [focusRequestFor, setFocusRequestFor] = useState<string | null>(null);
+  const selectSessionToRead = (session: ChatSession) => {
+    c.handleSelectSession(session);
+    setFocusRequestFor(session.id);
+  };
 
   const annotations = useChatAnnotations({
     sessionId: activeSessionId,
@@ -280,7 +290,7 @@ export function ChatWindow() {
             // sessions can still resolve their avatar.
             agents={c.agents}
             activeSessionId={activeSessionId}
-            onSelectSession={c.handleSelectSession}
+            onSelectSession={selectSessionToRead}
             onArchiveSession={handleArchiveSession}
           />
         </div>
@@ -363,6 +373,8 @@ export function ChatWindow() {
             quickActionsPendingMessageId={quickActionsPending?.message_id ?? null}
             onReady={markContentReady}
             annotations={annotations}
+            focusRequested={!!activeSessionId && focusRequestFor === activeSessionId}
+            onFocusRequestApplied={() => setFocusRequestFor(null)}
           >
             <EmptyState
               agent={activeAgent}
