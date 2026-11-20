@@ -509,14 +509,26 @@ describe("ChatPage responsive layout", () => {
 describe("ChatPage keyboard focus after picking a thread", () => {
   it("asks the conversation to take focus when a thread is picked", () => {
     hasMessagesRef.current = true;
-    storeRef.current = { activeSessionId: "session-1" };
-    renderPage("session=session-1");
+    storeRef.current = { activeSessionId: "session-9" };
+    renderPage("session=session-9");
     expect(messageListProps.last?.focusRequested).not.toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "select-thread" }));
 
     expect(messageListProps.last?.focusRequested).toBe(true);
     act(() => messageListProps.last?.onFocusRequestApplied?.());
+    expect(messageListProps.last?.focusRequested).toBe(false);
+  });
+
+  it("drops the request when another chat opens before the picked one does", () => {
+    hasMessagesRef.current = true;
+    storeRef.current = { activeSessionId: "session-1" };
+    renderPage("session=session-1");
+
+    // The stub row picks "session-9"; the controller fake keeps session-1 open,
+    // as when the pick has not opened yet and another chat is on screen.
+    fireEvent.click(screen.getByRole("button", { name: "select-thread" }));
+
     expect(messageListProps.last?.focusRequested).toBe(false);
   });
 

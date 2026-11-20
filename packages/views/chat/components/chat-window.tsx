@@ -106,10 +106,11 @@ export function ChatWindow() {
   const focusRequest = c.focusInputRequest + openFocusRequest;
   // Picking a chat from the history means reading it: the conversation takes
   // the keys once it has landed (CALA-330). The caret stays in the composer.
-  const [conversationFocusRequested, setConversationFocusRequested] = useState(false);
+  // The request names the picked chat, like the chat page's.
+  const [focusRequestFor, setFocusRequestFor] = useState<string | null>(null);
   const selectSessionToRead = (session: ChatSession) => {
     c.handleSelectSession(session);
-    setConversationFocusRequested(true);
+    setFocusRequestFor(session.id);
   };
 
   const annotations = useChatAnnotations({
@@ -372,8 +373,8 @@ export function ChatWindow() {
             quickActionsPendingMessageId={quickActionsPending?.message_id ?? null}
             onReady={markContentReady}
             annotations={annotations}
-            focusRequested={conversationFocusRequested}
-            onFocusRequestApplied={() => setConversationFocusRequested(false)}
+            focusRequested={!!activeSessionId && focusRequestFor === activeSessionId}
+            onFocusRequestApplied={() => setFocusRequestFor(null)}
           >
             <EmptyState
               agent={activeAgent}

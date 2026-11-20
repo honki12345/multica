@@ -4,7 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider } from "@multica/core/i18n/react";
 import type { ChatMessage } from "@multica/core/types";
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
+import { Popover, PopoverContent, PopoverTrigger } from "@multica/ui/components/ui/popover";
 import enChat from "../../locales/en/chat.json";
 
 // Virtuoso cannot lay out rows in jsdom; every row is rendered as is.
@@ -167,17 +168,126 @@ describe("ChatMessageList keyboard focus", () => {
   });
 
   it("does not pull focus back after the reader tabs out to the list", async () => {
-    const { conversation, row, rerender } = renderPage();
+    // Like the page: settling the request clears it.
+    let requested = true;
+    const { conversation, row, rerender } = renderPage({
+      onFocusRequestApplied: () => {
+        requested = false;
+      },
+    });
     row.focus();
-    rerender(true);
+    rerender(requested);
     reveal();
     expect(document.activeElement).toBe(conversation);
+    rerender(requested);
 
     vi.useRealTimers();
     await userEvent.tab({ shift: true });
     expect(document.activeElement).toBe(row);
-    rerender(true, [...MESSAGES, message("m2", "user")]);
+    // The list keeps re-rendering as replies stream in.
+    rerender(requested, [...MESSAGES, message("m2", "user")]);
+    rerender(requested, [...MESSAGES, message("m2", "user"), message("m3", "assistant")]);
 
     expect(document.activeElement).toBe(row);
+  });
+});
+
+describe("ChatMessageList keyboard focus after a pick from a closing popover", () => {
+  // The floating window's history is a popover. A pick closes it, and while it
+  // animates out the clicked row keeps focus; when it is removed, focus goes
+  // back to its trigger. A list that lands in that window must still end up
+  // with the keys.
+  let finishExit: (() => void) | null = null;
+
+  function HistoryPick() {
+    const [open, setOpen] = useState(true);
+    const [session, setSession] = useState("s1");
+    const [requested, setRequested] = useState<string | null>(null);
+    return (
+      <I18nProvider locale="en" resources={{ en: { chat: enChat } }}>
+        <QueryClientProvider client={new QueryClient()}>
+          <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger>history</PopoverTrigger>
+            <PopoverContent>
+              <div
+                tabIndex={0}
+                onClick={() => {
+                  setSession("s2");
+                  setRequested("s2");
+                  setOpen(false);
+                }}
+              >
+                Other chat
+              </div>
+            </PopoverContent>
+          </Popover>
+          <ChatMessageList
+            key={session}
+            messages={MESSAGES}
+            pendingTask={null}
+            availability="online"
+            focusRequested={requested === session}
+            onFocusRequestApplied={() => setRequested(null)}
+          />
+        </QueryClientProvider>
+      </I18nProvider>
+    );
+  }
+
+  // Base UI reads the exit animation a frame after closing.
+  let frames: FrameRequestCallback[] = [];
+  const runFrames = () => {
+    for (let i = 0; i < 5; i++) {
+      const due = frames;
+      frames = [];
+      due.forEach((cb) => cb(performance.now()));
+    }
+  };
+
+  beforeEach(() => {
+    frames = [];
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => frames.push(cb));
+    let exit: Promise<void> | null = null;
+    Object.defineProperty(Element.prototype, "getAnimations", {
+      configurable: true,
+      value(this: Element) {
+        if (!this.closest('[data-slot="popover-content"]') && this.getAttribute("data-slot") !== "popover-content") return [];
+        exit ??= new Promise<void>((resolve) => {
+          finishExit = resolve;
+        });
+        return [{ finished: exit }];
+      },
+    });
+  });
+
+  afterEach(() => {
+    delete (Element.prototype as unknown as { getAnimations?: unknown }).getAnimations;
+    finishExit = null;
+  });
+
+  it("takes the keys once the popover has let go, even when the list lands first", async () => {
+    const view = render(<HistoryPick />);
+    const row = view.getByText("Other chat");
+    row.focus();
+
+    act(() => row.click());
+    act(() => runFrames());
+    reveal();
+    // The list has landed; the popover is still on screen with the row focused.
+    expect(document.querySelector('[data-slot="popover-content"]')).not.toBeNull();
+    expect(document.activeElement).toBe(row);
+
+    await act(async () => {
+      finishExit?.();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      runFrames();
+      vi.advanceTimersByTime(200);
+    });
+    expect(document.querySelector('[data-slot="popover-content"]')).toBeNull();
+
+    expect(document.activeElement).toBe(view.container.querySelector("[data-tab-scroll-root]"));
   });
 });

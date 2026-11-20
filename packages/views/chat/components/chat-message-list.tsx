@@ -31,7 +31,7 @@ import {
 } from "@multica/ui/icons";
 import { useScrollFade } from "@multica/ui/hooks/use-scroll-fade";
 import { isTaskMessageTaskId, taskMessagesOptions } from "@multica/core/chat/queries";
-import { isEditableShortcutTarget, isPortalLayerShortcutTarget } from "@multica/core/shortcuts";
+import { useTakeKeyboardFocus } from "../../common/take-keyboard-focus";
 import { RichContent } from "../../rich-content";
 import { RichContentScrollRootProvider } from "../../rich-content/scroll-root";
 import { copyText } from "@multica/ui/lib/clipboard";
@@ -248,26 +248,12 @@ export function ChatMessageList({
   useEffect(() => {
     if (active && hasReachedLiveEnd) onRevealed?.();
   }, [active, hasReachedLiveEnd, onRevealed]);
-  // Applied once per request: a request still standing on a later render must
-  // not pull focus back after the reader tabbed out to the list.
-  const focusAppliedRef = useRef(false);
-  const onFocusRequestAppliedRef = useRef(onFocusRequestApplied);
-  onFocusRequestAppliedRef.current = onFocusRequestApplied;
-  useEffect(() => {
-    if (!focusRequested) {
-      focusAppliedRef.current = false;
-      return;
-    }
-    // A hidden list cannot hold focus; wait until it has landed.
-    if (focusAppliedRef.current || !active || !hasReachedLiveEnd || !scrollContainerEl) return;
-    focusAppliedRef.current = true;
-    const current = scrollContainerEl.ownerDocument.activeElement;
-    if (!isEditableShortcutTarget(current) && !isPortalLayerShortcutTarget(current)) {
-      // Focusing scrolls every scrollable ancestor to reveal the box (#3929).
-      scrollContainerEl.focus({ preventScroll: true });
-    }
-    onFocusRequestAppliedRef.current?.();
-  }, [focusRequested, active, hasReachedLiveEnd, scrollContainerEl]);
+  // A hidden list cannot hold focus; the request waits until it has landed.
+  useTakeKeyboardFocus(
+    active && hasReachedLiveEnd ? scrollContainerEl : null,
+    focusRequested,
+    () => onFocusRequestApplied?.(),
+  );
   // Soft edge fade hinting more content above/below. Kept small so it barely
   // grazes full-bleed previews (image / HTML) at the edges.
   const fadeStyle = useScrollFade(scrollRef, 16);

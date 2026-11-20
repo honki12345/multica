@@ -154,15 +154,16 @@ export function ChatPage() {
   };
 
   // Picking a thread means reading it: the conversation takes the keys from
-  // the row that was clicked, once it has landed (CALA-330). A deep link or a
-  // refresh leaves focus where it is.
-  const [conversationFocusRequested, setConversationFocusRequested] = useState(false);
+  // the row that was clicked, once it has landed (CALA-330). The request names
+  // the picked chat, so it never reaches a chat opened another way (a deep
+  // link, back/forward) when the picked one had nothing to show.
+  const [focusRequestFor, setFocusRequestFor] = useState<string | null>(null);
 
   const handleSelect = (session: ChatSession) => {
     supersedeAgentIntent();
     c.handleSelectSession(session);
     setComposingNew(false);
-    setConversationFocusRequested(true);
+    setFocusRequestFor(session.id);
   };
 
   // Single archive path for both entry points (thread-list row + conversation
@@ -368,8 +369,8 @@ export function ChatPage() {
           quickActionsPendingMessageId={quickActionsPending?.message_id ?? null}
           annotations={annotations}
           wakeups={wakeups}
-          focusRequested={conversationFocusRequested}
-          onFocusRequestApplied={() => setConversationFocusRequested(false)}
+          focusRequested={!!c.activeSessionId && focusRequestFor === c.activeSessionId}
+          onFocusRequestApplied={() => setFocusRequestFor(null)}
         />
       ) : (
         <EmptyState

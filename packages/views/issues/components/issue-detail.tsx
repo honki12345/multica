@@ -13,7 +13,7 @@ import { IssueAppRequests } from "../../common/app-requests";
 import { useStatusLabel } from "../utils/status-label";
 import { priorityLabel } from "../utils/priority-label";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
-import { isEditableShortcutTarget, isPortalLayerShortcutTarget } from "@multica/core/shortcuts";
+import { useTakeKeyboardFocus } from "../../common/take-keyboard-focus";
 import { useState, useEffect, useCallback, useMemo, useRef, useId, Fragment, type ComponentProps, type ReactNode } from "react";
 import { Virtuoso, type ListRange, type VirtuosoHandle } from "react-virtuoso";
 import { useDefaultLayout, usePanelRef } from "react-resizable-panels";
@@ -3021,17 +3021,11 @@ export function IssueDetail({ issueId, onDelete, onDone, onUnsubscribeArchive, d
 
   useRightSidebarShortcut(rightSidebarShortcutTargetRef, handleToggleSidebar);
 
-  // Once per issue: a later render must not pull focus back after the reader
-  // tabbed away. A text field or menu that already has focus keeps it.
-  const focusedOnOpenRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!focusOnOpen || !scrollContainerEl || focusedOnOpenRef.current === id) return;
-    focusedOnOpenRef.current = id;
-    const current = scrollContainerEl.ownerDocument.activeElement;
-    if (isEditableShortcutTarget(current) || isPortalLayerShortcutTarget(current)) return;
-    // Focusing scrolls every scrollable ancestor to reveal the box (#3929).
-    scrollContainerEl.focus({ preventScroll: true });
-  }, [focusOnOpen, scrollContainerEl, id]);
+  // Once per issue: the body takes the keys when it first appears.
+  const [focusSettledFor, setFocusSettledFor] = useState<string | null>(null);
+  useTakeKeyboardFocus(scrollContainerEl, focusOnOpen && focusSettledFor !== id, () =>
+    setFocusSettledFor(id),
+  );
 
   useIssueDetailScrollRestore({
     restoreKey: `${wsId}:${id}`,
