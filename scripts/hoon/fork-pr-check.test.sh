@@ -209,7 +209,7 @@ out="$(TMPDIR="$T/tmp" fpc run 21 --out "$T/out21" 2>/dev/null)"; rc=$?
 [ "$rc" = 1 ] && pass "run: a failing check -> exit 1" || bad "run: a failing check -> exit 1 (rc=$rc)"
 printf '%s\n' "$out" | grep -qF '| `bash scripts/hoon/features-check.sh` | 1 | features-check: base=v1.0.0 features=3 errors=2 warnings=0 | ' && pass "run: failing row carries exit code 1" || { bad "run: failing row carries exit code 1"; echo "$out"; }
 printf '%s\n' "$out" | grep -qF '| `bash scripts/hoon/license-check.sh` | 0 |' && pass "run: later and earlier checks still run" || bad "run: later and earlier checks still run"
-printf '%s\n' "$out" | grep -qE '^판정: 실패 1건 .*bash scripts/hoon/features-check.sh' && pass "run: fail verdict lists the failed command" || { bad "run: fail verdict lists the failed command"; echo "$out"; }
+printf '%s\n' "$out" | grep -qE '^판정: 실패 1건.*bash scripts/hoon/features-check.sh' && pass "run: fail verdict lists the failed command" || { bad "run: fail verdict lists the failed command"; echo "$out"; }
 has "run: fail marker" "$out" "<!-- fork-pr-check pr=21 head=$HEAD21 verdict=fail -->"
 [ "$(worktrees)" = "$before" ] && [ "$(leftovers)" = 0 ] && pass "run: worktree removed after a failing check" || bad "run: worktree removed after a failing check"
 

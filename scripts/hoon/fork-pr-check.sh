@@ -260,7 +260,7 @@ out = [
     "",
 ]
 if failed:
-    out.append(f"판정: 실패 {len(failed)}건 — " + ", ".join(f"`{cell(c)}`" for c in failed))
+    out.append(f"판정: 실패 {len(failed)}건. " + ", ".join(f"`{cell(c)}`" for c in failed))
 else:
     out.append("판정: 통과 (실패 0)")
 out += ["", "전체 시험은 출시 CI에서 돈다(포크 규칙: 전체 vitest run 금지)"]
