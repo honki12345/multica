@@ -544,6 +544,41 @@ features:
           - No notification changes read state.
     drop_when: "an upstream release tag that contains multica-ai/multica#10861 is merged into main (the cherry-picks become no-ops in that merge; `inbox_filter.go` stays with inbox-list-filters)."
 
+  - id: inbox-row-issue-id
+    summary: "An Inbox row click in the Work panel records the issue's id, not the identifier its link opens at, so the open row lights and the issue counts as opened from the Inbox (upstream #10903, cherry-picked ahead of v0.11.1). shortcut-list-step's Work Inbox keys depend on it."
+    status: active
+    kind: web-ui
+    cards: [CALA-328]
+    origin:
+      type: upstream-cherry-pick
+      upstream_pr: 10903
+      commits: ["4c4b06694"]
+    files:
+      - packages/views/layout/panels/inbox-section.tsx
+      - packages/views/layout/panels/work-panel.tsx
+      - packages/views/layout/panels/work-panel.test.tsx
+    watch:
+      - path: packages/views/inbox/components/inbox-display.ts
+        why: inboxRowHref opens an issue at its identifier, which is why the click reads data-issue-id
+    upstream_equivalent:
+      prs: [10903]
+      keywords: [data-issue-id, light the Work panel Inbox row]
+    tests:
+      - vitest: packages/views/layout/panels/work-panel.test.tsx
+        name: lights an issue opened from the Inbox at its identifier URL
+    scenarios:
+      - name: the Inbox row of an issue opened from it lights
+        path: /<workspace-slug>/issues
+        widths: [1440]
+        setup: a member with notifications on issues that have identifiers
+        steps:
+          - Open an issue page, then click the second row of the Work panel's Inbox section.
+        selectors:
+          - '[data-inbox-row] a[aria-current="page"]'
+        expect:
+          - The clicked row is lit and the issue header shows the Inbox actions.
+    drop_when: "an upstream release tag that contains multica-ai/multica#10903 (v0.11.1 or later) is merged into main (the cherry-pick becomes a no-op in that merge)."
+
   - id: inbox-list-filters
     summary: "`multica inbox list` takes the web Inbox's filters as flags and lists the same rows: one per issue, newest first; --ungrouped for every notification. Sits on upstream's list (inbox-cli-manage)."
     status: active
@@ -860,7 +895,7 @@ features:
       - path: packages/views/layout/panels/inbox-section.tsx
         why: useInboxSectionRows and the row click (requestLanding, rememberSidebarIssue) a step repeats
       - path: packages/views/layout/panels/work-panel.tsx
-        why: rememberClickedIssue records an Inbox row click; a step records the same through the selection store
+        why: rememberClickedIssue records an Inbox row click by issue id (inbox-row-issue-id, upstream PR 10903); a step records the same through the selection store
       - path: packages/views/inbox/components/use-filtered-inbox-rows.ts
         why: the filtered rows, in order, that a step walks on an issue opened from the section
       - path: packages/views/inbox/components/use-sidebar-inbox-issue.ts
