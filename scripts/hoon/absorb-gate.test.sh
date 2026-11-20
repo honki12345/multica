@@ -131,7 +131,7 @@ PY
 
 run() { bash "$SCRIPT" "$@"; }
 tmpl() { run template --triage "$T/triage.json" --registry "$T/features.yml" --cards "$T/cards.json" --exclude-card CALA-99 "$@"; }
-cmt() { run comment --triage "$T/triage.json" --decisions "${DEC:-$GOOD}" --verify "${FV:-$T/fv-ok}" --triage-md "$T/triage.md" "$@"; }
+cmt() { run comment --triage "$T/triage.json" --decisions "${DEC:-$GOOD}" --verify "${FV:-$T/fv-ok}" --triage-md "$T/triage.md" --registry "$T/features.yml" --cards "${CARDS:-$T/cards.json}" --exclude-card CALA-99 "$@"; }
 
 has() { grep -qF -- "$2" <<<"$1"; }
 check() { # check <name> <haystack> <needle>
@@ -363,18 +363,53 @@ DEC="$T/missing-e.yml" cmt > "$T/o" 2> "$T/e"; expect2 "missing E candidate exit
 DEC="$T/bad-e.yml" cmt > "$T/o" 2> "$T/e"; expect2 "E candidate with a C-only verdict exits 2" "verdict '버림'는 허용 값이 아닙니다 (흡수|보류|무관)" $?
 DEC="$T/wrong-target.yml" cmt > "$T/o" 2> "$T/e"; expect2 "decisions for another range exit 2" "target/from이 triage와 다릅니다" $?
 
+# Inventory coverage: the decisions must hold exactly one row per active/planned
+# feature and per open card outside the registry.
+"${PY[@]}" - "$GOOD" "$T/cov-empty.yml" "$T/cov-missing-card.yml" "$T/cov-missing-feature.yml" "$T/cov-dup.yml" "$T/cov-unknown.yml" "$T/cov-closed.yml" <<'PY'
+import copy
+import sys
+import yaml
+d = yaml.safe_load(open(sys.argv[1]))
+out = sys.argv[2:]
+
+def save(path, doc):
+    yaml.safe_dump(doc, open(path, "w"), allow_unicode=True, sort_keys=False)
+
+x = copy.deepcopy(d); x["upstream_priority"] = []; save(out[0], x)
+x = copy.deepcopy(d); x["upstream_priority"] = [r for r in x["upstream_priority"] if r["id"] != "CALA-7"]; save(out[1], x)
+x = copy.deepcopy(d); x["upstream_priority"] = [r for r in x["upstream_priority"] if r["id"] != "quiet-ui"]; save(out[2], x)
+x = copy.deepcopy(d); x["upstream_priority"].append(copy.deepcopy(x["upstream_priority"][0])); save(out[3], x)
+x = copy.deepcopy(d); r = copy.deepcopy(x["upstream_priority"][0]); r["id"] = "made-up"; x["upstream_priority"].append(r); save(out[4], x)
+x = copy.deepcopy(d); r = copy.deepcopy(x["upstream_priority"][0]); r["id"] = "CALA-8"; x["upstream_priority"].append(r); save(out[5], x)
+PY
+DEC="$T/cov-empty.yml" cmt > "$T/o" 2> "$T/e"; expect2 "upstream_priority: [] is refused (rows deleted)" "upstream_priority에 행이 없습니다 (core-ours)" $?
+check "emptied upstream_priority lists every missing id" "$(cat "$T/e")" "upstream_priority에 행이 없습니다 (CALA-10)"
+DEC="$T/cov-missing-card.yml" cmt > "$T/o" 2> "$T/e"; expect2 "a deleted open-card row is refused" "upstream_priority에 행이 없습니다 (CALA-7)" $?
+DEC="$T/cov-missing-feature.yml" cmt > "$T/o" 2> "$T/e"; expect2 "a deleted feature row is refused" "upstream_priority에 행이 없습니다 (quiet-ui)" $?
+DEC="$T/cov-dup.yml" cmt > "$T/o" 2> "$T/e"; expect2 "a duplicate row is refused" "upstream_priority에 id가 2번 있습니다 (core-ours)" $?
+DEC="$T/cov-unknown.yml" cmt > "$T/o" 2> "$T/e"; expect2 "an unknown id is refused" "upstream_priority에 알 수 없는 id가 있습니다 (made-up)" $?
+DEC="$T/cov-closed.yml" cmt > "$T/o" 2> "$T/e"; expect2 "a row for a closed card is refused as unknown" "upstream_priority에 알 수 없는 id가 있습니다 (CALA-8)" $?
+
+# An incomplete cards page cannot define the inventory.
+sed 's/"has_more": false/"has_more": true/' "$T/cards.json" > "$T/cards-more.json"
+CARDS="$T/cards-more.json" cmt > "$T/o" 2> "$T/e"; expect2 "comment refuses a cards page with has_more true" "has_more: true" $?
+run template --triage "$T/triage.json" --registry "$T/features.yml" --cards "$T/cards-more.json" > "$T/o" 2> "$T/e"; expect2 "template refuses a cards page with has_more true" "has_more: true" $?
+run comment --triage "$T/triage.json" --decisions "$GOOD" --verify "$T/fv-ok" --registry "$T/features.yml" > "$T/o" 2> "$T/e"; rc=$?
+[ "$rc" -eq 2 ] && [ ! -s "$T/o" ] && pass "comment without --cards exits 2" || bad "comment without --cards exits 2 (rc=$rc)"
+run comment --triage "$T/triage.json" --decisions "$GOOD" --verify "$T/fv-ok" --registry "$T/nope.yml" --cards "$T/cards.json" > "$T/o" 2> "$T/e"; expect2 "comment with an unreadable registry exits 2" "레지스트리를 읽을 수 없습니다" $?
+
 # The unfilled template itself must be refused, naming every entry.
-run comment --triage "$T/triage.json" --decisions "$T/tmpl.yml" --verify "$T/fv-ok" > "$T/o" 2> "$T/e"; rc=$?
+run comment --triage "$T/triage.json" --decisions "$T/tmpl.yml" --verify "$T/fv-ok" --registry "$T/features.yml" --cards "$T/cards.json" --exclude-card CALA-99 > "$T/o" 2> "$T/e"; rc=$?
 expect2 "unfilled template exits 2" "decisions가 완성되지 않았습니다" "$rc"
 n="$(grep -c 'verdict가 비어 있습니다' "$T/e")"
 [ "$n" -eq 8 ] && pass "unfilled template reports every empty entry (8)" || bad "unfilled template reports every empty entry (got $n)"
 
 # Bad inputs.
-run comment --triage "$T/triage.json" --decisions "$T/nope.yml" --verify "$T/fv-ok" > "$T/o" 2> "$T/e"; expect2 "missing decisions exits 2" "decisions를 읽을 수 없습니다" $?
-run comment --triage "$T/triage.json" --decisions "$GOOD" --verify "$T/nope" > "$T/o" 2> "$T/e"; expect2 "missing fork-verify dir exits 2" "fork-verify 결과가 없습니다" $?
+run comment --triage "$T/triage.json" --decisions "$T/nope.yml" --verify "$T/fv-ok" --registry "$T/features.yml" --cards "$T/cards.json" --exclude-card CALA-99 > "$T/o" 2> "$T/e"; expect2 "missing decisions exits 2" "decisions를 읽을 수 없습니다" $?
+run comment --triage "$T/triage.json" --decisions "$GOOD" --verify "$T/nope" --registry "$T/features.yml" --cards "$T/cards.json" --exclude-card CALA-99 > "$T/o" 2> "$T/e"; expect2 "missing fork-verify dir exits 2" "fork-verify 결과가 없습니다" $?
 printf '{bad' > "$T/badjson"
-run comment --triage "$T/badjson" --decisions "$GOOD" --verify "$T/fv-ok" > "$T/o" 2> "$T/e"; expect2 "broken triage JSON exits 2" "JSON이 아닙니다" $?
-run comment --triage "$T/triage.json" --decisions "$GOOD" --verify "$T/fv-ok" --triage-md "$T/nope.md" > "$T/o" 2> "$T/e"; expect2 "missing triage md exits 2" "triage 마크다운을 읽을 수 없습니다" $?
+run comment --triage "$T/badjson" --decisions "$GOOD" --verify "$T/fv-ok" --registry "$T/features.yml" --cards "$T/cards.json" --exclude-card CALA-99 > "$T/o" 2> "$T/e"; expect2 "broken triage JSON exits 2" "JSON이 아닙니다" $?
+run comment --triage "$T/triage.json" --decisions "$GOOD" --verify "$T/fv-ok" --triage-md "$T/nope.md" --registry "$T/features.yml" --cards "$T/cards.json" --exclude-card CALA-99 > "$T/o" 2> "$T/e"; expect2 "missing triage md exits 2" "triage 마크다운을 읽을 수 없습니다" $?
 run comment --triage "$T/triage.json" --decisions "$GOOD" > "$T/o" 2> "$T/e"; rc=$?
 [ "$rc" -eq 2 ] && [ ! -s "$T/o" ] && pass "missing --verify exits 2" || bad "missing --verify exits 2 (rc=$rc)"
 run bogus > "$T/o" 2> "$T/e"; rc=$?

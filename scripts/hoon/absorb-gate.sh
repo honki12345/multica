@@ -7,8 +7,10 @@
 #   absorb-gate.sh template --triage <triage.json> [--registry-ref <ref>] [--registry <path>]
 #                           [--cards <cards.json>] [--exclude-card CALA-N]...
 #   absorb-gate.sh comment  --triage <triage.json> --decisions <decisions.yml>
-#                           --verify <fork-verify out dir> [--triage-md <md>] [--pr <url>]
-#                           [--merge-commit <sha>] [--pr-check <url>] [--tag <planned tag>]
+#                           --verify <fork-verify out dir> --cards <cards.json>
+#                           [--registry-ref <ref>] [--registry <path>] [--exclude-card CALA-N]...
+#                           [--triage-md <md>] [--pr <url>] [--merge-commit <sha>]
+#                           [--pr-check <url>] [--tag <planned tag>]
 #
 # template  Prints a decisions YAML skeleton to stdout (verdicts empty):
 #           - candidates: one entry per C label (commit x feature) and per E
@@ -20,7 +22,14 @@
 #           `multica issue list --project <id> --output json` (an object with
 #           an `issues` key or a list). Cards with status done/cancelled and
 #           --exclude-card ids (repeatable, comma separated) get no row.
-# comment   Validates the decisions and prints the STOP comment (Korean markdown),
+# comment   Takes the same inventory inputs as `template` and requires exact
+#           coverage: every active/planned registry feature and every open,
+#           non-excluded card outside the registry has exactly one
+#           upstream_priority row; missing, duplicate and unknown ids exit 2.
+#           --cards is required (an absorb always has project cards) and a cards
+#           file with `has_more: true` is refused (template and comment): an
+#           incomplete page cannot define the inventory.
+#           Validates the decisions and prints the STOP comment (Korean markdown),
 #           then a `--- attachments` line and one absolute path per line (the
 #           triage .md and the screen captures, at most 8 files in total).
 #           Exit 2 with the offending entries on stderr and nothing on stdout
@@ -32,7 +41,7 @@
 set -uo pipefail
 
 usage="usage: $0 template --triage <json> [--registry-ref <ref>] [--registry <path>] [--cards <json>] [--exclude-card CALA-N]...
-       $0 comment  --triage <json> --decisions <yml> --verify <dir> [--triage-md <md>] [--pr <url>] [--merge-commit <sha>] [--pr-check <url>] [--tag <tag>]"
+       $0 comment  --triage <json> --decisions <yml> --verify <dir> --cards <json> [--registry-ref <ref>] [--registry <path>] [--exclude-card CALA-N]... [--triage-md <md>] [--pr <url>] [--merge-commit <sha>] [--pr-check <url>] [--tag <tag>]"
 case "${1:-}" in
   template|comment) cmd="$1"; shift ;;
   -h|--help) echo "$usage"; exit 0 ;;
@@ -164,6 +173,8 @@ def load_registry(a):
 def load_cards(path):
     data = load_json(path, "cards JSON")
     if isinstance(data, dict):
+        if data.get("has_more") is True:
+            die("cards JSON이 일부 페이지입니다 (has_more: true). --limit을 늘려 다시 받으세요 (%s)" % path)
         data = data.get("issues")
     if not isinstance(data, list):
         die("cards JSON은 목록이거나 issues 키를 가져야 합니다 (%s)" % path)
@@ -180,20 +191,28 @@ def card_sort_key(cid):
     return (head, int(tail) if tail.isdigit() else 0, cid)
 
 
-def cmd_template(a):
-    tri = load_triage(a.triage)
+def inventory(a):
+    """Registry features and open cards that need an upstream_priority row."""
     features = load_registry(a)
     cards = load_cards(a.cards) if a.cards else []
     excluded = {x.strip() for v in a.exclude_card for x in v.split(",") if x.strip()}
+    registered = set()
+    for f in features:
+        registered.update(str(x) for x in (f.get("cards") or []))
+    rows = [f for f in features if f.get("status") in ("active", "planned")]
+    open_cards = [c for c in cards if c["status"] not in CLOSED_CARD and c["id"] not in registered and c["id"] not in excluded]
+    open_cards.sort(key=lambda c: card_sort_key(c["id"]))
+    return features, rows, open_cards
+
+
+def cmd_template(a):
+    tri = load_triage(a.triage)
+    features, rows, open_cards = inventory(a)
     c_rows, e_rows = split_commits(tri)
 
     upstream = {}
     for c in c_rows:
         upstream.setdefault(c["feature"], []).append({"commit": c["commit"], "pr": c["pr"], "subject": c["subject"]})
-
-    registered = set()
-    for f in features:
-        registered.update(str(x) for x in (f.get("cards") or []))
 
     w = []
     w.append("# absorb-gate decisions. Fill every `verdict` (and the text field next to it);")
@@ -229,17 +248,11 @@ def cmd_template(a):
         w.append('    verdict: ""  # 흡수|보류|무관')
         w.append('    reason: ""')
 
-    rows = []
-    for f in features:
-        if f.get("status") in ("active", "planned"):
-            rows.append(("feature", f))
-    open_cards = [c for c in cards if c["status"] not in CLOSED_CARD and c["id"] not in registered and c["id"] not in excluded]
-    open_cards.sort(key=lambda c: card_sort_key(c["id"]))
     if rows or open_cards:
         w.append("upstream_priority:")
     else:
         w.append("upstream_priority: []")
-    for _, f in rows:
+    for f in rows:
         w.append("  - kind: feature")
         w.append("    id: %s" % j(f["id"]))
         w.append("    status: %s" % j(f.get("status")))
@@ -292,7 +305,7 @@ def pr_link(pr):
     return "-" if pr in (None, "") else "[#%s](%s)" % (pr, UPSTREAM_PR_URL % pr)
 
 
-def check_decisions(dec, tri):
+def check_decisions(dec, tri, expected):
     errs = []
     if not isinstance(dec, dict):
         die("decisions가 YAML 맵이 아닙니다")
@@ -327,6 +340,18 @@ def check_decisions(dec, tri):
             errs.append("%s verdict '%s'는 허용 값이 아닙니다 (%s)" % (who, v, "|".join(allowed)))
         elif kind == "C" and not text(x.get("reason")):
             errs.append("%s reason이 비어 있습니다" % who)
+    seen = {}
+    for x in rows:
+        if text(x.get("id")):
+            seen[text(x.get("id"))] = seen.get(text(x.get("id")), 0) + 1
+    for want in sorted(expected, key=card_sort_key):
+        if want not in seen:
+            errs.append("upstream_priority에 행이 없습니다 (%s)" % want)
+    for got, n in sorted(seen.items(), key=lambda kv: card_sort_key(kv[0])):
+        if got not in expected:
+            errs.append("upstream_priority에 알 수 없는 id가 있습니다 (%s)" % got)
+        elif n > 1:
+            errs.append("upstream_priority에 id가 %d번 있습니다 (%s)" % (n, got))
     for x in rows:
         who = "upstream_priority %s" % text(x.get("id"))
         v = text(x.get("verdict"))
@@ -376,7 +401,8 @@ def pick_screens(vdir):
 def cmd_comment(a):
     tri = load_triage(a.triage)
     dec = load_yaml_text(open_text(a.decisions, "decisions"), "decisions")
-    cands, rows = check_decisions(dec, tri)
+    _, feats, open_cards = inventory(a)
+    cands, rows = check_decisions(dec, tri, {f["id"] for f in feats} | {c["id"] for c in open_cards})
     res = load_verify(a.verify)
     if a.triage_md and not os.path.isfile(a.triage_md):
         die("triage 마크다운을 읽을 수 없습니다 (%s)" % a.triage_md)
@@ -565,6 +591,10 @@ def main():
     c.add_argument("--triage", required=True)
     c.add_argument("--decisions", required=True)
     c.add_argument("--verify", required=True)
+    c.add_argument("--registry-ref", default="")
+    c.add_argument("--registry", default="fork/features.yml")
+    c.add_argument("--cards", required=True)
+    c.add_argument("--exclude-card", action="append", default=[])
     c.add_argument("--triage-md", default="")
     c.add_argument("--pr", default="")
     c.add_argument("--merge-commit", default="")
