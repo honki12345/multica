@@ -171,6 +171,13 @@ git -C "$R" checkout -q main && printf 'later\n' > "$R/later.txt" && git -C "$R"
 out="$(plan 11)"
 has "plan: diff --check uses the merge base, not the new main tip" "$out" "git diff --check $MB..HEAD"
 
+out="$(fpc plan 8 --base "$BASE_SHA" 2>&1)"
+has "plan: --base picks the diff base" "$out" "git diff --check $BASE_SHA..HEAD"
+git -C "$R" checkout -q main && printf 'x\n' > "$R/m.txt" && git -C "$R" add -A && git -C "$R" commit -qm "m"
+git -C "$R" update-ref refs/pull/12/head main && setview 12 "$(git -C "$R" rev-parse main)"
+hasnt "plan: merged PR (head inside base) has nothing to select" "$(plan 12)" "pnpm"
+has "plan: merged PR with --base <old base> selects from the real diff" "$(fpc plan 12 --base "$BASE_SHA" 2>&1)" "git diff --check $BASE_SHA..HEAD"
+
 # --- run: pass, fail, head moved, cleanup
 mkpr 20 <<'EOF'
 README.md	pass\n

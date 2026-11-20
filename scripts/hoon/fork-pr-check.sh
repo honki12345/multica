@@ -3,8 +3,8 @@
 # FORK.md "Verification"). The fork does not use GitHub Actions; this script is
 # the merge gate.
 #
-#   scripts/hoon/fork-pr-check.sh run  <PR#> [--post] [--repo <owner/name>] [--out <dir>]
-#   scripts/hoon/fork-pr-check.sh plan <PR#> [--repo <owner/name>]
+#   scripts/hoon/fork-pr-check.sh run  <PR#> [--post] [--repo <owner/name>] [--out <dir>] [--base <rev>]
+#   scripts/hoon/fork-pr-check.sh plan <PR#> [--repo <owner/name>] [--base <rev>]
 #   scripts/hoon/fork-pr-check.sh gate <PR#> [--repo <owner/name>]
 #
 # run   Fetches the PR head into refs/fork-pr-check/<n>, checks it out in a
@@ -40,6 +40,10 @@
 # Checks run with DATABASE_URL/DIRECT_URL/TEST_DATABASE_URL unset, so DB-backed Go
 # tests skip; no database is started.
 #
+# --base <rev> replaces the base commit (default: tip of the PR's base branch).
+# Use it to dry-run an already merged PR, whose head is contained in the base
+# tip so that no files differ: --base <first parent of the merge commit>.
+#
 # Test overrides (no network): FPC_GH=<gh binary or stub> (default gh),
 # --repo-url <git url> (default https://github.com/<repo>.git),
 # --upstream-url <git url> (default https://github.com/multica-ai/multica.git).
@@ -50,11 +54,12 @@ REPO=honki12345/multica
 REPO_URL=""
 UPSTREAM_URL=https://github.com/multica-ai/multica.git
 OUT=""
+BASE_REV=""
 POST=0
 PR=""
 
 usage() {
-  echo "usage: $0 run|plan|gate <PR#> [--post] [--repo <owner/name>] [--out <dir>] [--repo-url <url>] [--upstream-url <url>]" >&2
+  echo "usage: $0 run|plan|gate <PR#> [--post] [--repo <owner/name>] [--out <dir>] [--base <rev>] [--repo-url <url>] [--upstream-url <url>]" >&2
   exit 2
 }
 die() { echo "fork-pr-check: $1" >&2; exit 2; }
@@ -74,6 +79,7 @@ while [ $# -gt 0 ]; do
     --post) POST=1; shift ;;
     --repo) [ $# -ge 2 ] || usage; REPO="$2"; shift 2 ;;
     --out) [ $# -ge 2 ] || usage; OUT="$2"; shift 2 ;;
+    --base) [ $# -ge 2 ] || usage; BASE_REV="$2"; shift 2 ;;
     --repo-url) [ $# -ge 2 ] || usage; REPO_URL="$2"; shift 2 ;;
     --upstream-url) [ $# -ge 2 ] || usage; UPSTREAM_URL="$2"; shift 2 ;;
     *) usage ;;
@@ -290,7 +296,7 @@ GOT="$(g rev-parse -q --verify "refs/fork-pr-check/$PR^{commit}")" || die "fetch
 [ "$GOT" = "$OID" ] || die "head moved: gh reports $OID, fetched $GOT. Run again."
 g fetch -q --no-tags "$REPO_URL" "+refs/heads/$BASEREF:refs/fork-pr-check/base-$PR" 2>&1 \
   || die "could not fetch base branch $BASEREF from $REPO_URL"
-BASESHA="$(g rev-parse -q --verify "refs/fork-pr-check/base-$PR^{commit}")" || die "base is not a commit"
+BASESHA="$(g rev-parse -q --verify "${BASE_REV:-refs/fork-pr-check/base-$PR}^{commit}")" || die "base is not a commit"
 MB="$(g merge-base "$BASESHA" "$OID")" || die "no merge base between $BASEREF and $OID"
 
 PLAN="$(g diff --name-only -z --no-renames --diff-filter=d "$MB" "$OID" | python3 -c "$PLAN_PY" "$OID" "$MB")" \
