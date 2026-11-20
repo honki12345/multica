@@ -856,12 +856,12 @@ features:
 
   - id: focus-regions
     summary: Keyboard focus regions (list, content, message box) with Buzz-style keys to jump between them (Mod+Shift+H / Mod+Shift+L / Mod+L, F8 / Shift+F8), Esc back to the message box, and arrow keys that step list rows only while the list has focus, on the chat page, the inbox and the issues pages.
-    status: planned
+    status: active
     kind: web-ui
     cards: [CALA-332]
     origin:
       type: ours
-      commits: []
+      commits: ["d20035726"]
     files:
       - packages/core/shortcuts/definitions.ts
       - packages/core/shortcuts/definitions.test.ts
