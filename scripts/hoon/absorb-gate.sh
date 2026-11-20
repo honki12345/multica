@@ -228,7 +228,7 @@ def cmd_template(a):
     w.append("# absorb-gate decisions. Fill every `verdict` (and the text field next to it);")
     w.append("# `absorb-gate.sh comment` refuses an empty or unknown value.")
     w.append("# candidates C: 버림 (drop ours, use upstream) | 줄임 (keep only what upstream lacks) | 유지 (keep ours); reason required.")
-    w.append("# candidates E: 흡수 | 보류 | 무관.")
+    w.append("# candidates E: 흡수 | 보류 | 무관; reason required.")
     w.append("# upstream_priority: 상류로 대체 | 상류 위에 남은 것만 | 우리 것 유지 | 상류에 없음; evidence required (PR, file, test result).")
     w.append("# 상류에 없음 = upstream ships nothing equivalent in this range; 우리 것 유지 = upstream overlaps but ours stays, and asks the user.")
     w.append("# `confirmed: true` on a 우리 것 유지 row records that the user already approved it; the comment then asks nothing.")
@@ -348,7 +348,7 @@ def check_decisions(dec, tri, expected):
             errs.append("%s verdict가 비어 있습니다 (%s)" % (who, "|".join(allowed)))
         elif v not in allowed:
             errs.append("%s verdict '%s'는 허용 값이 아닙니다 (%s)" % (who, v, "|".join(allowed)))
-        elif kind == "C" and not text(x.get("reason")):
+        elif not text(x.get("reason")):
             errs.append("%s reason이 비어 있습니다" % who)
     seen = {}
     for x in rows:

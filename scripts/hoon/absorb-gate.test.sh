@@ -350,7 +350,7 @@ expect2() { # expect2 <name> <stderr needle>; stdout/stderr files from the last 
   pass "$name"
 }
 
-"${PY[@]}" - "$GOOD" "$T/empty-c.yml" "$T/bad-c.yml" "$T/empty-row.yml" "$T/bad-row.yml" "$T/no-ev.yml" "$T/missing-e.yml" "$T/bad-e.yml" "$T/wrong-target.yml" <<'PY'
+"${PY[@]}" - "$GOOD" "$T/empty-c.yml" "$T/bad-c.yml" "$T/empty-row.yml" "$T/bad-row.yml" "$T/no-ev.yml" "$T/missing-e.yml" "$T/bad-e.yml" "$T/wrong-target.yml" "$T/no-reason-e.yml" "$T/no-reason-c.yml" <<'PY'
 import copy
 import sys
 import yaml
@@ -368,6 +368,8 @@ x = copy.deepcopy(d); x["upstream_priority"][0]["evidence"] = ""; save(out[4], x
 x = copy.deepcopy(d); x["candidates"] = [c for c in x["candidates"] if c["kind"] != "E"]; save(out[5], x)
 x = copy.deepcopy(d); [c.update(verdict="버림") for c in x["candidates"] if c["kind"] == "E"]; save(out[6], x)
 x = copy.deepcopy(d); x["target"] = "v9.9.9"; save(out[7], x)
+x = copy.deepcopy(d); [c.update(reason="  ") for c in x["candidates"] if c["kind"] == "E"]; save(out[8], x)
+x = copy.deepcopy(d); [c.update(reason="") for c in x["candidates"] if c["kind"] == "C"][:1]; save(out[9], x)
 PY
 
 DEC="$T/empty-c.yml" cmt > "$T/o" 2> "$T/e"; expect2 "empty candidate verdict exits 2" "candidates aaaaaaaaa core-ours verdict가 비어 있습니다" $?
@@ -378,6 +380,8 @@ DEC="$T/no-ev.yml" cmt > "$T/o" 2> "$T/e"; expect2 "empty evidence exits 2" "ups
 DEC="$T/missing-e.yml" cmt > "$T/o" 2> "$T/e"; expect2 "missing E candidate exits 2" "candidates에 E 항목이 없습니다 (ccccccccc)" $?
 DEC="$T/bad-e.yml" cmt > "$T/o" 2> "$T/e"; expect2 "E candidate with a C-only verdict exits 2" "verdict '버림'는 허용 값이 아닙니다 (흡수|보류|무관)" $?
 DEC="$T/wrong-target.yml" cmt > "$T/o" 2> "$T/e"; expect2 "decisions for another range exit 2" "target/from이 triage와 다릅니다" $?
+DEC="$T/no-reason-e.yml" cmt > "$T/o" 2> "$T/e"; expect2 "an E candidate without a reason exits 2" "candidates ccccccccc E reason이 비어 있습니다" $?
+DEC="$T/no-reason-c.yml" cmt > "$T/o" 2> "$T/e"; expect2 "a C candidate without a reason exits 2" "candidates aaaaaaaaa core-ours reason이 비어 있습니다" $?
 
 # Inventory coverage: the decisions must hold exactly one row per active/planned
 # feature and per open card outside the registry.
