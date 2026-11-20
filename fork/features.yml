@@ -808,7 +808,7 @@ features:
     cards: [CALA-327]
     origin:
       type: ours
-      commits: ["446785443", "2d13300d5", "069a16791"]
+      commits: ["446785443", "2d13300d5", "069a16791", "70c21f590"]
     files:
       - packages/core/shortcuts/definitions.ts
       - packages/core/shortcuts/definitions.test.ts
@@ -827,6 +827,8 @@ features:
       - packages/views/editor/use-lazy-editor.test.ts
       - packages/views/issues/components/issue-detail.tsx
       - packages/views/issues/components/issue-detail.test.tsx
+      - packages/views/settings/components/keyboard-shortcuts-tab.tsx
+      - packages/views/settings/components/keyboard-shortcuts-tab.test.tsx
       - apps/desktop/src/main/keyboard-shortcuts.ts
       - apps/desktop/src/main/keyboard-shortcuts.test.ts
       - apps/desktop/src/main/index.ts
@@ -859,8 +861,6 @@ features:
     watch:
       - path: packages/core/shortcuts/store.ts
         why: sanitizes persisted overrides through isShortcutAllowedForAction, which must keep accepting Mod+R for renameTitle
-      - path: packages/views/settings/components/keyboard-shortcuts-tab.tsx
-        why: records shortcuts and rejects reserved chords with isReservedShortcut before the per-action check
       - path: packages/views/chat/chat-page.tsx
         why: mounts ChatSessionHeader for the open chat
       - path: packages/views/chat/components/session-rename-input.tsx
@@ -869,6 +869,8 @@ features:
         why: mounts ChatWindow only where the floating window is shown
       - path: packages/ui/components/ui/popover.tsx
         why: PopoverContent passes initialFocus to Base UI, which must not take focus from the rename field
+      - path: packages/views/issues/components/issue-peek.tsx
+        why: mounts a second IssueDetail over the page; the title next to the focus must win
       - path: apps/desktop/src/renderer/src/components/issue-window.tsx
         why: a dedicated issue window, which also receives the relayed chord
       - path: packages/core/utils.ts
@@ -887,6 +889,10 @@ features:
         name: leaves Mod+R to the browser where nothing can be renamed
       - vitest: packages/views/layout/rename-title-shortcut.test.tsx
         name: renames the floating chat while focus is in it, and the page title otherwise
+      - vitest: packages/views/layout/rename-title-shortcut.test.tsx
+        name: renames the title next to the focus when two are on screen, the newest otherwise
+      - vitest: packages/views/settings/components/keyboard-shortcuts-tab.test.tsx
+        name: lets Rename take Mod+R back while it stays reserved for other actions
       - vitest: packages/views/chat/components/chat-session-header.test.tsx
         name: opens the title field with the title selected on Mod+R from the composer
       - vitest: packages/views/chat/components/chat-window.test.tsx
