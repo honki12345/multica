@@ -311,13 +311,29 @@ describe("applyChatSessionUpdatedToCache", () => {
 
     applyChatSessionUpdatedToCache(qc, WS_ID, {
       chat_session_id: "b",
-      pinned: true,
       pinned_at: "2026-11-20T00:00:00.000Z",
     });
 
     const rows = qc.getQueryData<ChatSession[]>(chatKeys.sessions(WS_ID))!;
     expect(rows.map((s) => s.id)).toEqual(["b", "a"]);
     expect(rows[0]!.pinned_at).toBe("2026-11-20T00:00:00.000Z");
+  });
+
+  it("does not pin a chat again when a reorder event arrives after it was unpinned", () => {
+    const qc = createQueryClient();
+    qc.setQueryData<ChatSession[]>(chatKeys.sessions(WS_ID), [
+      makeSession({ id: "a", pinned: false, pinned_at: null, updated_at: "2026-11-01T00:00:00Z" }),
+      makeSession({ id: "b", pinned: false, updated_at: "2026-11-02T00:00:00Z" }),
+    ]);
+
+    applyChatSessionUpdatedToCache(qc, WS_ID, {
+      chat_session_id: "a",
+      pinned_at: "2026-11-20T00:00:00.000Z",
+    });
+
+    const rows = qc.getQueryData<ChatSession[]>(chatKeys.sessions(WS_ID))!;
+    expect(rows.map((s) => s.id)).toEqual(["b", "a"]);
+    expect(rows.find((s) => s.id === "a")!.pinned).toBe(false);
   });
 
   it("clears the pin time when an older server unpins without one", () => {

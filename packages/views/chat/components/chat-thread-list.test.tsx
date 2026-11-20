@@ -424,10 +424,11 @@ describe("ChatThreadList pinned reorder", () => {
       });
   }
   const row = (id: string) => screen.getByText(`Chat ${id}`).closest<HTMLElement>("[tabindex]")!;
-  // Press on `el`, pass the 5px threshold, then move to `toY` and let go.
+  // Press on `el`, pass the 5px threshold, then move to `toY` (and `toX`)
+  // and let go.
   // Each step gets its own act so React renders the drag start before the
   // move is measured, as a browser would between frames.
-  async function drag(el: HTMLElement, fromY: number, toY: number) {
+  async function drag(el: HTMLElement, fromY: number, toY: number, toX = pointer.clientX) {
     await act(async () => {
       fireEvent.pointerDown(el, { ...pointer, clientY: fromY });
     });
@@ -435,10 +436,10 @@ describe("ChatThreadList pinned reorder", () => {
       fireEvent.pointerMove(document, { ...pointer, clientY: fromY + 10 });
     });
     await act(async () => {
-      fireEvent.pointerMove(document, { ...pointer, clientY: toY });
+      fireEvent.pointerMove(document, { ...pointer, clientX: toX, clientY: toY });
     });
     await act(async () => {
-      fireEvent.pointerUp(document, { ...pointer, clientY: toY });
+      fireEvent.pointerUp(document, { ...pointer, clientX: toX, clientY: toY });
       fireEvent.click(el);
     });
   }
@@ -502,6 +503,21 @@ describe("ChatThreadList pinned reorder", () => {
     }
   });
 
+  it("puts a pinned chat back when it is let go outside the list", async () => {
+    const rect = layOutRows();
+    try {
+      renderList(null, { renderedSessions: pinnedSessions });
+      // Over the third row's height, but right of the list.
+      await drag(row("p1"), 20, 20 + ROW_HEIGHT * 2, 600);
+      // Above the list.
+      await drag(row("p3"), 130, -200);
+      expect(reorderMutateAsync).not.toHaveBeenCalled();
+      expect(order()).toEqual(["p1", "p2", "p3", "u1"]);
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
   it("does not start a drag from a row's hover actions", async () => {
     const rect = layOutRows();
     try {
@@ -537,12 +553,15 @@ describe("ChatThreadList pinned reorder", () => {
         fireEvent.keyDown(p1, { code: "Space", key: " " });
       });
       expect(onSelectSession).not.toHaveBeenCalled();
+      // Keys go to the focused row, as they do in a browser, so the row's own
+      // handler sees them too.
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
-        fireEvent.keyDown(document, { code: "ArrowDown", key: "ArrowDown" });
+        fireEvent.keyDown(p1, { code: "ArrowDown", key: "ArrowDown" });
       });
       await act(async () => {
-        fireEvent.keyDown(document, { code: "Space", key: " " });
+        fireEvent.keyDown(p1, { code: "Space", key: " " });
+        fireEvent.keyUp(p1, { code: "Space", key: " " });
       });
       expect(reorderMutateAsync).toHaveBeenCalledWith(["p2", "p1", "p3"]);
       expect(onSelectSession).not.toHaveBeenCalled();

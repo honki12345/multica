@@ -18,7 +18,9 @@ type ReorderPinnedChatSessionsRequest struct {
 // chats into. The body must name exactly the pinned chats the caller's list
 // shows: a missing, extra, unpinned or foreign id means the client's view is
 // stale, so nothing is written and the client reloads (409). The order is
-// stored by restamping pinned_at, which the list already sorts by.
+// stored by restamping pinned_at, which the list already sorts by. A chat
+// pinned while this runs is not in the body and keeps its own, newer stamp,
+// so it stays on top, as any new pin does.
 func (h *Handler) ReorderPinnedChatSessions(w http.ResponseWriter, r *http.Request) {
 	userID, ok := requireUserID(w, r)
 	if !ok {
@@ -116,13 +118,14 @@ func (h *Handler) ReorderPinnedChatSessions(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	pinnedTrue := true
+	// No `pinned` in these events: one delivered after a later unpin must not
+	// pin the chat again on another device. A pin time on an unpinned row is
+	// ignored by the list order.
 	for _, s := range updated {
 		sessionID := uuidToString(s.ID)
 		h.publishChat(protocol.EventChatSessionUpdated, workspaceID, "member", userID, sessionID, protocol.ChatSessionUpdatedPayload{
 			ChatSessionID: sessionID,
 			Title:         s.Title,
-			Pinned:        &pinnedTrue,
 			PinnedAt:      timestampToNanoPtr(s.PinnedAt),
 			UpdatedAt:     timestampToString(s.UpdatedAt),
 		})

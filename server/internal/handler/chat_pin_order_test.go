@@ -103,7 +103,8 @@ func TestReorderPinnedChatSessions_SavesOrderWithoutTouchingActivity(t *testing.
 		t.Fatalf("reorder must not touch updated_at: before %v, after %v", updatedBefore, updatedAfter)
 	}
 
-	// A chat pinned after a reorder still goes on top.
+	// A chat pinned after a reorder still goes on top: reorder stamps step
+	// back from now(), so a later pin's now() is newer.
 	d := createHandlerTestChatSession(t, agentID)
 	pinReq := withURLParam(withChatTestWorkspaceCtx(t, newRequest(http.MethodPatch, "/api/chat/sessions/"+d+"/pin", map[string]any{"pinned": true})), "sessionId", d)
 	pinW := httptest.NewRecorder()
