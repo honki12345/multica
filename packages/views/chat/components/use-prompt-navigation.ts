@@ -91,8 +91,9 @@ function ownsKeypress(scrollEl: HTMLElement, target: EventTarget | null): boolea
 
 /**
  * Previous / next sent message (CALA-281): `chatPreviousPrompt` and
- * `chatNextPrompt` move the reader's own messages to the top of the list,
- * skipping replies; past the last one, "next" goes to the live end.
+ * `chatNextPrompt` move the reader's own messages and wakeup dividers
+ * (CALA-318) to the top of the list, skipping replies; past the last one,
+ * "next" goes to the live end.
  *
  * A press right after another steps from the previous press's target rather
  * than from what is on screen (opencode's fresh cursor): Virtuoso paints a jump
@@ -110,7 +111,7 @@ export function usePromptNavigation({
 }: {
   scrollEl: HTMLElement | null;
   enabled: boolean;
-  /** One entry per row, `true` for a message the reader sent. */
+  /** One entry per row, `true` for a message the reader sent or a wakeup turn. */
   prompts: readonly boolean[];
   hasOlder: boolean;
   /** Virtuoso's `firstItemIndex`, the offset of row 0's absolute index. */

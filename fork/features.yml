@@ -548,10 +548,10 @@ features:
     drop_when: upstream adds filtering and sorting to the chat list.
 
   - id: chat-prompt-navigation
-    summary: Mod+Alt+[ / ] scroll a chat to the previous / next message you sent, skipping replies, in the chat page, the floating window and the agent builder.
+    summary: Mod+Alt+[ / ] scroll a chat to the previous / next message you sent or wakeup divider, skipping replies, in the chat page, the floating window and the agent builder.
     status: active
     kind: web-ui
-    cards: [CALA-281, CALA-294]
+    cards: [CALA-281, CALA-294, CALA-318]
     origin:
       type: ours
       commits: ["fef6e83d1", "d8f841b55"]
@@ -603,11 +603,21 @@ features:
       - vitest: packages/views/chat/components/prompt-navigation.test.ts
         name: skips replies when stepping back
       - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
-        name: brings the previous sent message to the top, skipping replies and wakeup turns
+        name: brings the previous sent message to the top, skipping replies
+      - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
+        name: stops at a wakeup turn the same way as at a sent message
+      - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
+        name: counts every press of a burst through sent messages and wakeup turns alike
+      - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
+        name: reaches a wakeup turn that is the first row of the chat, and stops there
+      - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
+        name: stops at a wakeup turn at the bottom before going to the live end
+      - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
+        name: holds a wakeup turn at the top when a row above it grows after it lands
       - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
         name: moves the floating chat while its composer has focus, and the page chat otherwise
       - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
-        name: climbs to the oldest loaded row so the older page loads when no earlier sent message is loaded
+        name: climbs to the oldest loaded row so the older page loads when no earlier stop is loaded
       - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
         name: counts every press of a burst, even before the list has moved for the previous one
       - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
@@ -651,6 +661,18 @@ features:
           - '[data-mc="chat-window"] [data-chat-prompt-nav]'
         expect:
           - The floating window scrolls to your previous message.
+      - name: stop at wakeup dividers
+        path: /<workspace-slug>/chat
+        widths: [1440]
+        setup: a chat where an agent came back through a wakeup at least twice, with your messages and replies around the dividers
+        steps:
+          - Click into the composer; the list sits at the latest reply.
+          - Press Cmd+Option+[ until the list stops moving, then Cmd+Option+] until it reaches the latest reply.
+        selectors:
+          - '[data-slot="chat-wakeup-divider"]'
+          - '[data-mc="chat-message"][data-role="user"]'
+        expect:
+          - Each press puts either one of your messages or a wakeup divider at the top of the list, never a reply, in conversation order both ways.
       - name: listed in Settings
         path: /<workspace-slug>/settings
         widths: [1440]
@@ -658,8 +680,8 @@ features:
           - Open Settings, then Shortcuts.
         selectors: []
         expect:
-          - General lists "Previous sent message" (⌥⌘[) and "Next sent message" (⌥⌘]), recordable and resettable like the others.
-    drop_when: upstream ships keys that step a chat between the reader's own messages.
+          - General lists "Previous sent message or wakeup" (⌥⌘[) and "Next sent message or wakeup" (⌥⌘]), recordable and resettable like the others.
+    drop_when: upstream ships keys that step a chat between the reader's own messages and wakeup turns.
 
   - id: desktop-fork-build
     summary: Desktop app built from the fork (X.Y.Z-hoon.N, fork CLI bundled) that never auto-updates to the official release or runs its daemon from an official CLI.

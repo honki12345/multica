@@ -1,4 +1,5 @@
-// Step between the reader's own messages in a chat (CALA-281). Modelled on
+// Step between the turns' inputs in a chat: the reader's own messages
+// (CALA-281) and wakeup dividers (CALA-318). Modelled on
 // opencode's `findMessageBoundary`, which also skips assistant replies, but
 // indexed over the message array: the list is virtualized, so rows outside the
 // viewport have no DOM to measure.
@@ -20,7 +21,7 @@ export function findPromptTarget({
   hasOlder,
   direction,
 }: {
-  /** One entry per list row; `true` for a message the reader sent. */
+  /** One entry per list row; `true` for a message the reader sent or a wakeup turn. */
   prompts: readonly boolean[];
   anchor: PromptAnchor | null;
   /** The list already shows its live end and cannot scroll further down. */

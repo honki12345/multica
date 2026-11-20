@@ -108,8 +108,8 @@ export const SHORTCUT_ACTIONS: readonly ShortcutActionDefinition[] = [
     defaultShortcut: createShortcutChord("J", { primary: true, shift: true }),
     allowInEditable: true,
   },
-  // Step between the messages you sent in the open chat (opencode's
-  // `mod+alt+[` / `]`). Alt on the history brackets keeps them next to Go back /
+  // Step between the messages you sent and the wakeup dividers in the open
+  // chat (opencode's `mod+alt+[` / `]`). Alt on the history brackets keeps them next to Go back /
   // Go forward without taking them; neither variant is reserved anywhere.
   // `allowInEditable` because the caret usually sits in the chat composer.
   {
