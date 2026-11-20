@@ -808,7 +808,7 @@ features:
     cards: [CALA-327]
     origin:
       type: ours
-      commits: ["446785443", "2d13300d5", "069a16791", "70c21f590"]
+      commits: ["446785443", "2d13300d5", "069a16791", "70c21f590", "5250809ed"]
     files:
       - packages/core/shortcuts/definitions.ts
       - packages/core/shortcuts/definitions.test.ts
@@ -891,6 +891,8 @@ features:
         name: renames the floating chat while focus is in it, and the page title otherwise
       - vitest: packages/views/layout/rename-title-shortcut.test.tsx
         name: renames the title next to the focus when two are on screen, the newest otherwise
+      - vitest: packages/views/layout/rename-title-shortcut.test.tsx
+        name: prefers the newest title over a deeper-nested page title when focus is outside both
       - vitest: packages/views/settings/components/keyboard-shortcuts-tab.test.tsx
         name: lets Rename take Mod+R back while it stays reserved for other actions
       - vitest: packages/views/chat/components/chat-session-header.test.tsx
