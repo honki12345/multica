@@ -177,6 +177,10 @@ async page => {
     r.composerFocused = await focused();
     // The jump lands within a frame or two, then holds the row at the top for about a second.
     const mod = (await p.evaluate(() => navigator.platform)).toLowerCase().includes('mac') ? 'Meta' : 'Control';
+    r.seen = {};
+    const note = async () => {
+      for (const sel of cfg.selectors || []) r.seen[sel] = Math.max(r.seen[sel] || 0, (await p.$$(sel)).length);
+    };
     const press = async (key) => {
       await p.keyboard.press(`${mod}+Alt+${key}`);
       await p.waitForTimeout(250);
@@ -190,9 +194,9 @@ async page => {
     };
     const row = (s) => s ? { kind: s.kind, token: s.token, index: s.index, offset: s.offset } : { kind: null, token: null, index: null, offset: null };
     r.back = [];
-    for (let i = 0; i < cfg.expect.length; i++) r.back.push(row(await press('[')));
+    for (let i = 0; i < cfg.expect.length; i++) { r.back.push(row(await press('['))); await note(); }
     r.forward = [];
-    for (let i = 1; i < cfg.expect.length; i++) r.forward.push(row(await press(']')));
+    for (let i = 1; i < cfg.expect.length; i++) { r.forward.push(row(await press(']'))); await note(); }
     r.focusKept = await focused();
     return r;
   }
@@ -213,6 +217,9 @@ async page => {
         await p.screenshot({ path: `${C.outDir}/${shot.id}.${side.name}.png` });
         if (shot.probe === 'prompt-nav') {
           res.probe = await promptNavProbe(p, shot.promptNav);
+          // The list is virtualized: a row the probe stepped past may already be
+          // unmounted, so a selector counts if it matched before or during the run.
+          for (const [sel, n] of Object.entries(res.probe.seen || {})) res.selectors[sel] = Math.max(res.selectors[sel] || 0, n);
           await p.screenshot({ path: `${C.outDir}/${shot.id}-open.${side.name}.png` });
         }
         if (shot.probe === 'chat-bar') {

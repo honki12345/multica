@@ -216,6 +216,7 @@ skipped = [r for r in back3 if r["kind"] != "divider"]
 check("prompt nav: skipping the wakeup dividers fails", fv.judge_prompt_nav(s3, pn_res(s3, skipped, fwd3, rows=16))[0] == fv.FAIL)
 
 check("plan: the probe gets the judge's alignment tolerance", s1["promptNav"]["alignPx"] == fv.PROMPT_NAV_ALIGN_PX)
+check("plan: the probe re-counts the scenario's selectors while it steps (virtualized rows)", s1["promptNav"]["selectors"] == s1["selectors"] == ['[data-chat-prompt-nav]'])
 clipped = [dict(r, offset=-30) for r in back1]
 v, d = fv.judge_prompt_nav(s1, pn_res(s1, clipped, fwd1))
 check("prompt nav: right rows clipped 30px above the top fail", v == fv.FAIL and "맨 위에 맞지 않음" in d)

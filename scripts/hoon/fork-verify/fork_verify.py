@@ -972,6 +972,7 @@ def plan_shots(features, slug, screen_input=None):
                     elif PROMPT_NAV_RUNNERS[s["name"]]:
                         fixture = fixture or chat_fixture()
                         shot.update(prompt_nav_shot(fixture, *PROMPT_NAV_RUNNERS[s["name"]], slug))
+                        shot["promptNav"]["selectors"] = shot["selectors"]
                         shot["path"] += shot.pop("query", "")
                 shots.append(shot)
     extra = []
@@ -1349,7 +1350,9 @@ def main(argv):
         return 2
     short = sha[:9]
     version = resolve_version(args.ref, args.version, short)
-    out_dir = Path(args.out) if args.out else REPO / "out" / "fork-verify" / slugify_ref(args.ref)
+    # Absolute: vitest and go run from inside the exported tree, and a relative
+    # --out would land their reports there.
+    out_dir = (Path(args.out) if args.out else REPO / "out" / "fork-verify" / slugify_ref(args.ref)).resolve()
     shutil.rmtree(out_dir, ignore_errors=True)
     logdir = out_dir / "logs"
     logdir.mkdir(parents=True)
