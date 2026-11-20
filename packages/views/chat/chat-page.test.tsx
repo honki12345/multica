@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
+// Modified by honki12345, 2026: cover the list-step keys on the Chat page (CALA-328).
 
 import { StrictMode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import type { Agent } from "@multica/core/types";
+import type { Agent, ChatSession } from "@multica/core/types";
+import { configureShortcutPlatform } from "@multica/core/shortcuts";
 import { I18nProvider } from "@multica/core/i18n/react";
 import enCommon from "../locales/en/common.json";
 import enChat from "../locales/en/chat.json";
@@ -30,15 +32,25 @@ vi.mock("./components/chat-input", () => ({
 vi.mock("./components/chat-thread-list", () => ({
   ChatThreadList: ({
     onSelectSession,
+    onViewChange,
   }: {
     onSelectSession: (s: { id: string; agent_id: string }) => void;
+    onViewChange?: (view: "history" | "archived") => void;
   }) => (
-    <button
-      type="button"
-      onClick={() => onSelectSession({ id: "session-9", agent_id: "agent-9" })}
-    >
-      select-thread
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => onSelectSession({ id: "session-9", agent_id: "agent-9" })}
+      >
+        select-thread
+      </button>
+      <button type="button" onClick={() => onViewChange?.("archived")}>
+        open-archive
+      </button>
+      <button type="button" onClick={() => onViewChange?.("history")}>
+        close-archive
+      </button>
+    </>
   ),
 }));
 vi.mock("./components/chat-session-header", () => ({
@@ -104,6 +116,8 @@ const storeRef = vi.hoisted(() => ({
 const storeListeners = vi.hoisted(() => new Set<() => void>());
 const availableAgentsRef = vi.hoisted(() => ({ current: [] as Agent[] }));
 const agentsSettledRef = vi.hoisted(() => ({ current: true }));
+const sessionsRef = vi.hoisted(() => ({ current: [] as ChatSession[] }));
+const mockHandleSelectSession = vi.hoisted(() => vi.fn());
 const mockStartNewChat = vi.hoisted(() => vi.fn());
 const mockToastError = vi.hoisted(() => vi.fn());
 const mockSetActiveSession = vi.hoisted(() =>
@@ -138,7 +152,7 @@ vi.mock("./components/use-chat-controller", async () => {
       agents: availableAgentsRef.current,
       availableAgents: availableAgentsRef.current,
       agentsSettled: agentsSettledRef.current,
-      sessions: [],
+      sessions: sessionsRef.current,
       activeSessionId: useSyncExternalStore(
         subscribeToStore,
         () => storeRef.current,
@@ -168,7 +182,7 @@ vi.mock("./components/use-chat-controller", async () => {
       handleUploadFile: vi.fn(),
       handleNewChat: vi.fn(),
       handleStartNewChat: mockStartNewChat,
-      handleSelectSession: vi.fn(),
+      handleSelectSession: mockHandleSelectSession,
       advanceSelectionAfterArchive: vi.fn(),
       archiveSession: vi.fn(),
       setActiveSession: mockSetActiveSession,
@@ -257,6 +271,7 @@ beforeEach(() => {
   storeListeners.clear();
   availableAgentsRef.current = [agent];
   agentsSettledRef.current = true;
+  sessionsRef.current = [];
   platformWorkspace.slug = "acme";
   layout.width = DESKTOP;
 });
@@ -493,5 +508,146 @@ describe("ChatPage responsive layout", () => {
       screen.getByRole("button", { name: "select-thread" }),
     ).toBeInTheDocument();
     expect(screen.getByText("chat-input")).toBeInTheDocument();
+  });
+});
+
+describe("ChatPage list-step keys (CALA-328)", () => {
+  function session(id: string, fields: Partial<ChatSession> = {}): ChatSession {
+    return {
+      id,
+      workspace_id: "ws-1",
+      agent_id: "agent-1",
+      creator_id: "user-1",
+      title: id,
+      status: "active",
+      has_unread: false,
+      unread_count: 0,
+      last_message: null,
+      pinned: false,
+      created_at: "2026-11-01T00:00:00Z",
+      updated_at: "2026-11-01T00:00:00Z",
+      ...fields,
+    };
+  }
+
+  // Shown order: pinned p1, then u1, u2 by activity; the archive a1, a2.
+  const SESSIONS = [
+    session("u2", { updated_at: "2026-11-18T00:00:00Z" }),
+    session("u1", { updated_at: "2026-11-19T00:00:00Z" }),
+    session("p1", { pinned: true, pinned_at: "2026-11-03T00:00:00Z" }),
+    session("a1", { status: "archived", updated_at: "2026-11-17T00:00:00Z" }),
+    session("a2", { status: "archived", updated_at: "2026-11-16T00:00:00Z" }),
+  ];
+
+  function step(target: Element | Document, key: "[" | "]") {
+    return fireEvent.keyDown(target, {
+      key: key === "[" ? "{" : "}",
+      code: key === "[" ? "BracketLeft" : "BracketRight",
+      metaKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+  }
+  const opened = () => mockHandleSelectSession.mock.calls.map(([s]) => (s as ChatSession).id);
+
+  beforeEach(() => {
+    configureShortcutPlatform("macos");
+    sessionsRef.current = SESSIONS;
+    mockHandleSelectSession.mockClear();
+    // The controller opens the chat it is handed, as the real one does.
+    mockHandleSelectSession.mockImplementation((s: { id: string }) => mockSetActiveSession(s.id));
+  });
+  afterEach(() => {
+    // A press's cursor outlives the page for a second; a click ends it.
+    fireEvent.pointerDown(document);
+    configureShortcutPlatform(null);
+    mockHandleSelectSession.mockReset();
+  });
+
+  it("opens the chat below and above in the order the list shows, across the pinned boundary", () => {
+    storeRef.current = { activeSessionId: "p1" };
+    renderPage("session=p1");
+    step(document.body, "]");
+    step(document.body, "]");
+    step(document.body, "[");
+    expect(opened()).toEqual(["u1", "u2", "u1"]);
+  });
+
+  it("stops at either end and still claims the keys there", () => {
+    storeRef.current = { activeSessionId: "u2" };
+    renderPage("session=u2");
+    expect(step(document.body, "]")).toBe(false);
+    expect(opened()).toEqual([]);
+  });
+
+  it("walks the view the list shows: the archive once it is open, the history after", () => {
+    storeRef.current = { activeSessionId: "u1" };
+    renderPage("session=u1");
+    fireEvent.click(screen.getByRole("button", { name: "open-archive" }));
+    step(document.body, "]");
+    step(document.body, "]");
+    expect(opened()).toEqual(["a1", "a2"]);
+    fireEvent.click(screen.getByRole("button", { name: "close-archive" }));
+    step(document.body, "[");
+    expect(opened()).toEqual(["a1", "a2", "u2"]);
+  });
+
+  it("enters the list at the top when no chat is open", () => {
+    renderPage("");
+    step(document.body, "]");
+    expect(opened()).toEqual(["p1"]);
+  });
+
+  it("works from the composer while a compact layout shows only the conversation", () => {
+    layout.width = FOLD_INNER_PORTRAIT;
+    storeRef.current = { activeSessionId: "p1" };
+    renderPage("session=p1");
+    expect(screen.queryByRole("button", { name: "select-thread" })).not.toBeInTheDocument();
+    const composer = document.createElement("textarea");
+    document.body.appendChild(composer);
+    composer.focus();
+    try {
+      step(composer, "]");
+      expect(opened()).toEqual(["u1"]);
+      expect(document.activeElement).toBe(composer);
+    } finally {
+      composer.remove();
+    }
+  });
+
+  it("counts every press of a burst, even before the open chat has caught up", () => {
+    storeRef.current = { activeSessionId: "p1" };
+    renderPage("session=p1");
+    // The open chat has not moved yet when the second press arrives.
+    mockHandleSelectSession.mockImplementation(() => {});
+    step(document.body, "]");
+    step(document.body, "]");
+    expect(opened()).toEqual(["u1", "u2"]);
+  });
+
+  it("leaves the keys to the floating chat window, and to Go back / Go forward", () => {
+    storeRef.current = { activeSessionId: "p1" };
+    renderPage("session=p1");
+    const floating = document.createElement("div");
+    floating.setAttribute("data-mc", "chat-window");
+    const input = document.createElement("textarea");
+    floating.appendChild(input);
+    document.body.appendChild(floating);
+    try {
+      expect(step(input, "]")).toBe(true);
+    } finally {
+      floating.remove();
+    }
+    fireEvent.keyDown(document.body, { key: "]", code: "BracketRight", metaKey: true });
+    expect(opened()).toEqual([]);
+  });
+
+  it("stays off once the page is no longer the current route", () => {
+    storeRef.current = { activeSessionId: "p1" };
+    const view = renderPage("session=p1");
+    view.rerender({ pathname: "/acme/issues" });
+    expect(step(document.body, "]")).toBe(true);
+    expect(opened()).toEqual([]);
   });
 });

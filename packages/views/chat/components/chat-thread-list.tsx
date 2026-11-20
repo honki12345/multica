@@ -1,6 +1,6 @@
 "use client";
 
-// Modified by honki12345, 2026: drag pinned chats into order, saved on the server (CALA-316).
+// Modified by honki12345, 2026: drag pinned chats into order, saved on the server (CALA-316); scroll the chat opened from elsewhere on the page into view (CALA-328).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -23,6 +23,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import type { VirtuosoHandle } from "react-virtuoso";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlarmClock,
@@ -165,6 +166,8 @@ function toPreview(content: string): string {
     .trim();
 }
 
+
+export type ChatThreadListView = "history" | "archived";
 /**
  * IM-style conversation list: each row is agent avatar + session title + agent
  * name + last-message preview + time, with a red unread *count* badge. An
@@ -187,6 +190,8 @@ export function ChatThreadList({
   activeSessionId,
   onSelectSession,
   onArchive,
+  view: controlledView,
+  onViewChange,
 }: {
   sessions: ChatSession[];
   agents: Agent[];
@@ -196,6 +201,12 @@ export function ChatThreadList({
   // aware (desktop advances to the next chat; mobile drops back to the list)
   // and routes through the shared controller — see ChatPage.handleArchive.
   onArchive: (session: ChatSession) => void;
+  /**
+   * Which view is showing, for a parent that acts on it too (the Chat
+   * page's list-step keys walk the view on screen). Uncontrolled otherwise.
+   */
+  view?: ChatThreadListView;
+  onViewChange?: (view: ChatThreadListView) => void;
 }) {
   const { t } = useT("chat");
   const { t: tLayout } = useT("layout");
@@ -242,10 +253,29 @@ export function ChatThreadList({
   // Which view is showing. Falls back to history when the archived list drains
   // (last chat unarchived / deleted) so we never strand the user on an empty
   // archive.
-  const [view, setView] = useState<"history" | "archived">("history");
+  const [localView, setLocalView] = useState<ChatThreadListView>("history");
+  const view = controlledView ?? localView;
+  const setView = (next: ChatThreadListView) => {
+    setLocalView(next);
+    onViewChange?.(next);
+  };
   useEffect(() => {
     if (view === "archived" && archivedSessions.length === 0) setView("history");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setView only forwards to the parent
   }, [view, archivedSessions.length]);
+
+  // A chat opened from elsewhere on the page (the list-step keys) brings its
+  // row into view. Virtuoso's call is a no-op while the row is visible, so a
+  // click leaves the list where it is; mounting keeps its scroll position.
+  const listRef = useRef<VirtuosoHandle>(null);
+  const shownSessions = view === "archived" ? archivedSessions : historySessions;
+  const activeIndex = shownSessions.findIndex((s) => s.id === activeSessionId);
+  const shownActiveRef = useRef(activeSessionId);
+  useEffect(() => {
+    if (shownActiveRef.current === activeSessionId) return;
+    shownActiveRef.current = activeSessionId;
+    if (activeIndex >= 0) listRef.current?.scrollIntoView({ index: activeIndex });
+  }, [activeSessionId, activeIndex]);
 
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [confirmingStopId, setConfirmingStopId] = useState<string | null>(null);
@@ -789,7 +819,7 @@ export function ChatThreadList({
           </span>
         </button>
         <div className="min-h-0 flex-1">
-          {withDrag(<SessionHistoryList sessions={archivedSessions} renderRow={renderRow} />)}
+          {withDrag(<SessionHistoryList sessions={archivedSessions} renderRow={renderRow} listRef={listRef} />)}
         </div>
         {rowContextMenu}
       </div>
@@ -830,6 +860,7 @@ export function ChatThreadList({
           sessions={historySessions}
           renderRow={renderRow}
           footer={archivedEntry}
+          listRef={listRef}
         />,
       )}
       {rowContextMenu}
