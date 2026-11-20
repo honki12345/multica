@@ -7,6 +7,7 @@ import {
   REGION_TARGET_ATTR,
   findFocusRegions,
   focusRegionTarget,
+  focusRegionTargets,
   focusRowTarget,
   isRegionRendered,
   nextFocusRegion,
@@ -168,6 +169,17 @@ describe("focusRegionTarget", () => {
       `<div hidden ${REGION_TARGET_ATTR}><div contenteditable="true" id="ed"></div></div><div role="button" tabindex="0" id="shell" ${REGION_TARGET_ATTR}></div>`,
     );
     expect(focusRegionTarget(composer)?.id).toBe("shell");
+  });
+
+  it("enters a list with nothing open on its first row, not on a header control (the chat list)", () => {
+    const list = region(
+      "list",
+      `<button id="sidebar-toggle"></button><div data-focus-row tabindex="0" id="row-1"></div><div data-focus-row tabindex="0" id="row-2"></div>`,
+    );
+    for (const row of list.querySelectorAll<HTMLElement>("[data-focus-row]")) {
+      vi.spyOn(row, "getClientRects").mockReturnValue([{}] as unknown as DOMRectList);
+    }
+    expect(focusRegionTargets(list).map((el) => el.id).slice(0, 2)).toEqual(["row-1", "sidebar-toggle"]);
   });
 
   it("enters a list on the open row's link, not on a toggle in front of it (a sidebar tree row)", () => {

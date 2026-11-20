@@ -92,6 +92,31 @@ describe("useFocusRegionShortcuts", () => {
     expect(active()).toBe("editor");
   });
 
+  it("skips a control that refuses focus and lands on the first row, with no ring when nothing took focus", () => {
+    render(
+      <>
+        <Shortcuts />
+        <aside data-focus-region="list" id="list">
+          <button type="button" id="stuck">toggle</button>
+          <div data-focus-row="" tabIndex={0} id="row-a">a</div>
+        </aside>
+        <main data-focus-region="body" id="body" />
+      </>,
+    );
+    giveBoxes();
+    const stuck = document.getElementById("stuck")!;
+    stuck.focus = () => {};
+    document.getElementById("row-a")!.focus();
+    document.getElementById("row-a")!.blur();
+    press("F8");
+    expect(active()).toBe("row-a");
+
+    document.getElementById("row-a")!.remove();
+    document.body.focus();
+    press("F8");
+    expect(document.querySelector("[data-focus-flash]")).toBeNull();
+  });
+
   it("cycles regions with F8 and Shift+F8, wrapping at either end", () => {
     render(<Page />);
     giveBoxes();

@@ -15,7 +15,7 @@ import {
   FOCUS_ACTIVATE_ATTR,
   FOCUS_FLASH_ATTR,
   findFocusRegions,
-  focusRegionTarget,
+  focusRegionTargets,
   focusRowTarget,
   focusRowsOf,
   focusScopeOf,
@@ -70,18 +70,22 @@ function flash(element: HTMLElement) {
 
 /** Move keyboard focus into `region`. Returns whether anything took focus. */
 function enterRegion(region: FocusRegion): boolean {
-  const target = focusRegionTarget(region.element);
-  if (!target) return false;
-  if (target.hasAttribute(FOCUS_ACTIVATE_ATTR)) {
-    // A lazy editor shell mounts the real editor on click and focuses it.
-    target.click();
-  } else {
-    // preventScroll: focusing a box scrolls every scrollable ancestor to
-    // reveal it, which shoves the shell around on desktop (#3929).
-    target.focus({ preventScroll: true });
+  clearFlash();
+  for (const target of focusRegionTargets(region.element)) {
+    if (target.hasAttribute(FOCUS_ACTIVATE_ATTR)) {
+      // A lazy editor shell mounts the real editor on click and focuses it.
+      target.click();
+    } else {
+      // preventScroll: focusing a box scrolls every scrollable ancestor to
+      // reveal it, which shoves the shell around on desktop (#3929).
+      target.focus({ preventScroll: true });
+    }
+    if (region.element.contains(document.activeElement)) {
+      flash(region.element);
+      return true;
+    }
   }
-  flash(region.element);
-  return true;
+  return false;
 }
 
 function regionsAround(active: Element | null): FocusRegion[] {

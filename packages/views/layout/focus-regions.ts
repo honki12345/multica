@@ -155,22 +155,33 @@ function ownedBy(region: HTMLElement, element: Element): boolean {
 }
 
 /**
- * Where focus goes in `region`: its own marked target (or the first focusable
- * inside it), the region itself when it takes focus (a scroller with
- * tabindex), else its first focusable element. Targets of a region nested
- * inside (the comment box inside the issue body) do not count.
+ * Where focus may go in `region`, best first: its own marked target (the open
+ * row, the editor), the region itself when it takes focus (a scroller with
+ * tabindex), its first shown row (a list with nothing open), then any other
+ * control. Targets of a region nested inside (the comment box inside the issue
+ * body) do not count. The caller tries them in order, because an element can
+ * pass every check and still refuse focus (a control inside a collapsed bar).
  */
-export function focusRegionTarget(region: HTMLElement): HTMLElement | null {
+export function focusRegionTargets(region: HTMLElement): HTMLElement[] {
+  const targets: HTMLElement[] = [];
+  const add = (el: HTMLElement | null) => {
+    if (el && !targets.includes(el)) targets.push(el);
+  };
   for (const marked of region.querySelectorAll<HTMLElement>(`[${REGION_TARGET_ATTR}]`)) {
     if (!ownedBy(region, marked)) continue;
-    const target = marked.hasAttribute(FOCUS_ROW_ATTR) ? focusRowTarget(marked) : firstFocusableIn(marked);
-    if (target) return target;
+    add(marked.hasAttribute(FOCUS_ROW_ATTR) ? focusRowTarget(marked) : firstFocusableIn(marked));
   }
-  if (region.hasAttribute("tabindex") && isFocusable(region)) return region;
+  if (region.hasAttribute("tabindex") && isFocusable(region)) add(region);
+  const firstRow = focusRowsOf(region).find((row) => ownedBy(region, row));
+  if (firstRow) add(focusRowTarget(firstRow));
   for (const candidate of region.querySelectorAll(FOCUSABLE_SELECTOR)) {
-    if (ownedBy(region, candidate) && isFocusable(candidate)) return candidate;
+    if (ownedBy(region, candidate) && isFocusable(candidate)) add(candidate);
   }
-  return null;
+  return targets;
+}
+
+export function focusRegionTarget(region: HTMLElement): HTMLElement | null {
+  return focusRegionTargets(region)[0] ?? null;
 }
 
 /**
