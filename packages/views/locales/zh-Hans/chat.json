@@ -253,6 +253,7 @@
     "pin": "置顶",
     "unpin": "取消置顶",
     "pinned": "已置顶",
+    "reorder_failed": "无法保存置顶聊天的顺序",
     "archive": "归档",
     "unarchive": "取消归档",
     "archived_title": "已归档",

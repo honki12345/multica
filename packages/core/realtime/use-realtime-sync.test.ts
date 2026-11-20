@@ -1,3 +1,4 @@
+// Modified by honki12345, 2026: cover pinned_at on chat:session_updated (CALA-316).
 import {
   QueryClient,
   QueryObserver,
@@ -299,6 +300,37 @@ describe("applyChatSessionUpdatedToCache", () => {
     expect(row.status).toBe("active");
     expect(row.unread_count).toBe(2);
     expect(row.has_unread).toBe(true);
+  });
+
+  it("re-sorts pinned chats when another tab saves a new pinned order", () => {
+    const qc = createQueryClient();
+    qc.setQueryData<ChatSession[]>(chatKeys.sessions(WS_ID), [
+      makeSession({ id: "a", pinned: true, pinned_at: "2026-11-02T00:00:00Z" }),
+      makeSession({ id: "b", pinned: true, pinned_at: "2026-11-01T00:00:00Z" }),
+    ]);
+
+    applyChatSessionUpdatedToCache(qc, WS_ID, {
+      chat_session_id: "b",
+      pinned: true,
+      pinned_at: "2026-11-20T00:00:00.000Z",
+    });
+
+    const rows = qc.getQueryData<ChatSession[]>(chatKeys.sessions(WS_ID))!;
+    expect(rows.map((s) => s.id)).toEqual(["b", "a"]);
+    expect(rows[0]!.pinned_at).toBe("2026-11-20T00:00:00.000Z");
+  });
+
+  it("clears the pin time when an older server unpins without one", () => {
+    const qc = createQueryClient();
+    qc.setQueryData<ChatSession[]>(chatKeys.sessions(WS_ID), [
+      makeSession({ pinned: true, pinned_at: "2026-11-02T00:00:00Z" }),
+    ]);
+
+    applyChatSessionUpdatedToCache(qc, WS_ID, { chat_session_id: "s1", pinned: false });
+
+    const row = qc.getQueryData<ChatSession[]>(chatKeys.sessions(WS_ID))![0]!;
+    expect(row.pinned).toBe(false);
+    expect(row.pinned_at).toBeNull();
   });
 });
 

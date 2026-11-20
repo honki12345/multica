@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: PUT /api/chat/sessions/pin-order client (CALA-316).
+
 import type { ListWeixinInstallationsResponse, WeixinLogin } from "../types/weixin";
 import { ListWeixinInstallationsSchema, WeixinLoginSchema, EMPTY_WEIXIN_INSTALLATIONS, INVALID_WEIXIN_LOGIN } from "../weixin/schema";
 import type { ZodType } from "zod";
@@ -4186,6 +4188,13 @@ export class ApiClient {
     return this.fetch(`/api/chat/sessions/${id}/pin`, {
       method: "PATCH",
       body: JSON.stringify({ pinned }),
+    });
+  }
+
+  async reorderPinnedChatSessions(sessionIds: string[]): Promise<void> {
+    await this.fetch("/api/chat/sessions/pin-order", {
+      method: "PUT",
+      body: JSON.stringify({ session_ids: sessionIds }),
     });
   }
 

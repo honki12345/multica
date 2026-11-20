@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: carry pinned_at on chat:session_updated so other tabs follow a pinned-chat reorder (CALA-316).
+
 package protocol
 
 import "encoding/json"
@@ -449,6 +451,9 @@ type ChatSessionUpdatedPayload struct {
 	// Pinned is set only by the pin/unpin path; nil on a plain rename so a
 	// receiver leaves the existing pin state untouched.
 	Pinned *bool `json:"pinned,omitempty"`
+	// PinnedAt is the pin timestamp the pinned list sorts by, set by the pin
+	// and pinned-reorder paths.
+	PinnedAt *string `json:"pinned_at,omitempty"`
 	// Status is set only by the archive/unarchive path ("active"/"archived");
 	// nil on rename/pin so a receiver leaves the existing status untouched.
 	Status    *string `json:"status,omitempty"`

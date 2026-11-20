@@ -1,6 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
+// Modified by honki12345, 2026: cover reordering pinned chats (CALA-316).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
@@ -11,6 +12,7 @@ import type { ApiClient } from "../api/client";
 import {
   useConsumeChatDraftRestore,
   useMarkAllChatSessionsRead,
+  useReorderPinnedChatSessions,
   useSetChatSessionArchived,
   useSetChatSessionProject,
 } from "./mutations";
@@ -221,6 +223,67 @@ describe("useSetChatSessionArchived", () => {
     expect(row.status).toBe("active");
     expect(row.unread_count).toBe(2);
     expect(row.has_unread).toBe(true);
+  });
+});
+
+describe("useReorderPinnedChatSessions", () => {
+  let qc: QueryClient;
+  let reorderPinnedChatSessions: ReturnType<typeof vi.fn<(ids: string[]) => Promise<void>>>;
+
+  const pinnedList = () => [
+    makeSession({ id: "a", pinned: true, pinned_at: "2026-11-03T00:00:00Z" }),
+    makeSession({ id: "b", pinned: true, pinned_at: "2026-11-02T00:00:00Z" }),
+    makeSession({ id: "c", pinned: true, pinned_at: "2026-11-01T00:00:00Z" }),
+    makeSession({ id: "u", updated_at: "2026-11-19T00:00:00Z" }),
+  ];
+  const order = () =>
+    qc.getQueryData<ChatSession[]>(chatKeys.sessions(WS_ID))!.map((s) => s.id);
+
+  beforeEach(() => {
+    qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    reorderPinnedChatSessions = vi.fn();
+    setApiInstance({ reorderPinnedChatSessions } as unknown as ApiClient);
+  });
+
+  afterEach(() => {
+    qc.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("shows the new order before the server answers and sends every pinned id", async () => {
+    let resolve!: () => void;
+    reorderPinnedChatSessions.mockReturnValue(new Promise<void>((r) => { resolve = r; }));
+    qc.setQueryData<ChatSession[]>(chatKeys.sessions(WS_ID), pinnedList());
+
+    const { result } = renderHook(() => useReorderPinnedChatSessions(), {
+      wrapper: createWrapper(qc),
+    });
+
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.mutateAsync(["c", "a", "b"]);
+    });
+    await waitFor(() => expect(order()).toEqual(["c", "a", "b", "u"]));
+    expect(reorderPinnedChatSessions).toHaveBeenCalledWith(["c", "a", "b"]);
+
+    await act(async () => {
+      resolve();
+      await pending;
+    });
+  });
+
+  it("puts the old order back when the server refuses", async () => {
+    reorderPinnedChatSessions.mockRejectedValue(new Error("409"));
+    qc.setQueryData<ChatSession[]>(chatKeys.sessions(WS_ID), pinnedList());
+
+    const { result } = renderHook(() => useReorderPinnedChatSessions(), {
+      wrapper: createWrapper(qc),
+    });
+
+    await act(async () => {
+      await expect(result.current.mutateAsync(["c", "a", "b"])).rejects.toThrow("409");
+    });
+    expect(order()).toEqual(["a", "b", "c", "u"]);
   });
 });
 

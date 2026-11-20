@@ -1,5 +1,7 @@
+// Modified by honki12345, 2026: cover dragging pinned chats into order (CALA-316).
+
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VirtuosoMockContext } from "react-virtuoso";
 import { I18nProvider } from "@multica/core/i18n/react";
@@ -19,6 +21,10 @@ import enIssues from "../../locales/en/issues.json";
 
 const setActiveSession = vi.fn();
 const archiveMutate = vi.fn();
+const reorderMutateAsync = vi.fn<(ids: string[]) => Promise<void>>();
+const toastError = vi.hoisted(() => vi.fn());
+
+vi.mock("sonner", () => ({ toast: { error: toastError, success: vi.fn() } }));
 
 vi.mock("../../common/actor-avatar", () => ({
   ActorAvatar: ({ actorId }: { actorId: string }) => (
@@ -46,6 +52,7 @@ vi.mock("@multica/core/chat", () => ({
 vi.mock("@multica/core/chat/mutations", () => ({
   useDeleteChatSession: () => ({ mutate: vi.fn(), isPending: false }),
   useSetChatSessionPinned: () => ({ mutate: vi.fn(), isPending: false }),
+  useReorderPinnedChatSessions: () => ({ mutateAsync: reorderMutateAsync, isPending: false }),
   useSetChatSessionArchived: () => ({ mutate: archiveMutate, isPending: false }),
   useUpdateChatSession: () => ({ mutate: vi.fn(), isPending: false }),
 }));
@@ -383,5 +390,187 @@ describe("ChatThreadList right-click menu", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     expect(onArchive).not.toHaveBeenCalled();
     expect(onSelectSession).not.toHaveBeenCalled();
+  });
+});
+
+describe("ChatThreadList pinned reorder", () => {
+  // Pinned p1, p2, p3 (newest pin first), then unpinned u1.
+  const pinnedSessions: ChatSession[] = [
+    makeSession({ id: "p1", pinned: true, pinned_at: "2026-11-03T00:00:00Z" }),
+    makeSession({ id: "p2", pinned: true, pinned_at: "2026-11-02T00:00:00Z" }),
+    makeSession({ id: "p3", pinned: true, pinned_at: "2026-11-01T00:00:00Z" }),
+    makeSession({ id: "u1", updated_at: "2026-11-19T00:00:00Z" }),
+  ];
+  const ROW_HEIGHT = 56;
+  const pointer = { isPrimary: true, button: 0, clientX: 40 };
+
+  // jsdom has no layout: stack the rows 56px apart so dnd-kit can tell
+  // where a dragged row lands.
+  function layOutRows() {
+    return vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        const title = this.classList.contains("group/row")
+          ? (this.querySelector("span.truncate")?.textContent ?? "")
+          : "";
+        const index = ["Chat p1", "Chat p2", "Chat p3", "Chat u1"].indexOf(title);
+        // Anything that is not a row (the list's scroller) spans the list.
+        const top = index === -1 ? 0 : index * ROW_HEIGHT;
+        const height = index === -1 ? ROW_HEIGHT * 10 : ROW_HEIGHT;
+        return {
+          top, bottom: top + height, height, left: 0, right: 300, width: 300,
+          x: 0, y: top, toJSON: () => ({}),
+        } as DOMRect;
+      });
+  }
+  const row = (id: string) => screen.getByText(`Chat ${id}`).closest<HTMLElement>("[tabindex]")!;
+  // Press on `el`, pass the 5px threshold, then move to `toY` and let go.
+  // Each step gets its own act so React renders the drag start before the
+  // move is measured, as a browser would between frames.
+  async function drag(el: HTMLElement, fromY: number, toY: number) {
+    await act(async () => {
+      fireEvent.pointerDown(el, { ...pointer, clientY: fromY });
+    });
+    await act(async () => {
+      fireEvent.pointerMove(document, { ...pointer, clientY: fromY + 10 });
+    });
+    await act(async () => {
+      fireEvent.pointerMove(document, { ...pointer, clientY: toY });
+    });
+    await act(async () => {
+      fireEvent.pointerUp(document, { ...pointer, clientY: toY });
+      fireEvent.click(el);
+    });
+  }
+  const order = () =>
+    screen.getAllByText(/^Chat (p|u)\d$/).map((el) => el.textContent?.replace("Chat ", ""));
+
+  beforeEach(() => {
+    reorderMutateAsync.mockReset();
+    reorderMutateAsync.mockResolvedValue(undefined);
+    toastError.mockClear();
+  });
+
+  it("drags a pinned chat to a new slot and saves the whole pinned order, without opening it", async () => {
+    const rect = layOutRows();
+    try {
+      const { onSelectSession } = renderList(null, { renderedSessions: pinnedSessions });
+      const p1 = row("p1");
+      await drag(p1, 20, 20 + ROW_HEIGHT * 2);
+
+      expect(reorderMutateAsync).toHaveBeenCalledWith(["p2", "p3", "p1"]);
+      expect(onSelectSession).not.toHaveBeenCalled();
+      expect(order()).toEqual(["p2", "p3", "p1", "u1"]);
+
+      // Once the drag has settled, a click opens the chat again.
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      fireEvent.click(p1);
+      expect(onSelectSession).toHaveBeenCalledWith(expect.objectContaining({ id: "p1" }));
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
+  it("treats a press that moves less than 5px as a click", async () => {
+    const rect = layOutRows();
+    try {
+      const { onSelectSession } = renderList(null, { renderedSessions: pinnedSessions });
+      const p2 = row("p2");
+      await act(async () => {
+        fireEvent.pointerDown(p2, { ...pointer, clientY: 80 });
+        fireEvent.pointerMove(document, { ...pointer, clientY: 83 });
+        fireEvent.pointerUp(document, { ...pointer, clientY: 83 });
+        fireEvent.click(p2);
+      });
+      expect(reorderMutateAsync).not.toHaveBeenCalled();
+      expect(onSelectSession).toHaveBeenCalledWith(expect.objectContaining({ id: "p2" }));
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
+  it("does not drag an unpinned chat, and a pinned chat dropped among unpinned ones goes back", async () => {
+    const rect = layOutRows();
+    try {
+      renderList(null, { renderedSessions: pinnedSessions });
+      await drag(row("u1"), 190, 20);
+      await drag(row("p3"), 130, 130 + ROW_HEIGHT * 4);
+      expect(reorderMutateAsync).not.toHaveBeenCalled();
+      expect(order()).toEqual(["p1", "p2", "p3", "u1"]);
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
+  it("does not start a drag from a row's hover actions", async () => {
+    const rect = layOutRows();
+    try {
+      renderList(null, { renderedSessions: pinnedSessions });
+      const unpin = screen.getAllByRole("button", { name: enChat.list.unpin })[0]!;
+      await drag(unpin, 20, 20 + ROW_HEIGHT * 2);
+      expect(reorderMutateAsync).not.toHaveBeenCalled();
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
+  it("tells the user when the order could not be saved", async () => {
+    reorderMutateAsync.mockRejectedValue(new Error("409"));
+    const rect = layOutRows();
+    try {
+      renderList(null, { renderedSessions: pinnedSessions });
+      await drag(row("p1"), 20, 20 + ROW_HEIGHT);
+      expect(reorderMutateAsync).toHaveBeenCalledWith(["p2", "p1", "p3"]);
+      expect(toastError).toHaveBeenCalledWith(enChat.list.reorder_failed);
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
+  it("moves a pinned chat with Space and the arrow keys, and Enter still opens a chat", async () => {
+    const rect = layOutRows();
+    try {
+      const { onSelectSession } = renderList(null, { renderedSessions: pinnedSessions });
+      const p1 = row("p1");
+      p1.focus();
+      await act(async () => {
+        fireEvent.keyDown(p1, { code: "Space", key: " " });
+      });
+      expect(onSelectSession).not.toHaveBeenCalled();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        fireEvent.keyDown(document, { code: "ArrowDown", key: "ArrowDown" });
+      });
+      await act(async () => {
+        fireEvent.keyDown(document, { code: "Space", key: " " });
+      });
+      expect(reorderMutateAsync).toHaveBeenCalledWith(["p2", "p1", "p3"]);
+      expect(onSelectSession).not.toHaveBeenCalled();
+
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      fireEvent.keyDown(row("p3"), { code: "Enter", key: "Enter" });
+      expect(onSelectSession).toHaveBeenCalledWith(expect.objectContaining({ id: "p3" }));
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
+  it("does not drag in the archived view", async () => {
+    const rect = layOutRows();
+    try {
+      renderList(null, {
+        renderedSessions: [
+          ...pinnedSessions,
+          makeSession({ id: "a1", status: "archived", pinned: true, pinned_at: "2026-11-05T00:00:00Z" }),
+          makeSession({ id: "a2", status: "archived", pinned: true, pinned_at: "2026-11-04T00:00:00Z" }),
+        ],
+      });
+      fireEvent.click(screen.getByRole("button", { name: /Archived/ }));
+      const a1 = screen.getByText("Chat a1").closest<HTMLElement>("[tabindex]")!;
+      await drag(a1, 20, 120);
+      expect(reorderMutateAsync).not.toHaveBeenCalled();
+    } finally {
+      rect.mockRestore();
+    }
   });
 });

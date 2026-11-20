@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: pinned_at orders pinned chats; drag pinned chats into order (CALA-316).
+
 import type { AgentTask } from "./agent";
 
 /** A user's pinned "quick agent" for the Chat list top bar. */
@@ -107,6 +109,9 @@ export interface ChatSession {
   /** True when the user has pinned this chat to the top of the list.
    *  Optional so older clients / non-list payloads stay valid. */
   pinned?: boolean;
+  /** When the chat was pinned, or the stamp a pinned-order drag gave it.
+   *  Pinned chats list newest first. Absent from older servers. */
+  pinned_at?: string | null;
   /** Present for Chats created by an external Channel. Historical Chats keep
    *  their source even after a newer route generation becomes current. */
   channel_source?: ChatChannelSource;

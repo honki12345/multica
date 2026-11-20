@@ -1,7 +1,10 @@
+// Modified by honki12345, 2026: stamp pinned_at on optimistic pin; reorder pinned chats (CALA-316).
+
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useWorkspaceId } from "../hooks";
 import { chatKeys, sortChatSessions, QUICK_ACTIONS_PENDING_TIMEOUT_MS } from "./queries";
+import { applyPinnedOrder } from "./pin-order";
 import { createLogger } from "../logger";
 import type {
   ChatSession,
@@ -370,15 +373,65 @@ export function useSetChatSessionPinned() {
 
       const prevSessions = qc.getQueryData<ChatSession[]>(chatKeys.sessions(wsId));
 
+      // Same stamp rule as the server: a new pin is stamped now (top of the
+      // pinned group), re-pinning keeps the existing stamp, unpin clears it.
+      const nowIso = new Date().toISOString();
       const patch = (old?: ChatSession[]) =>
         old &&
-        sortChatSessions(old.map((s) => (s.id === sessionId ? { ...s, pinned } : s)));
+        sortChatSessions(
+          old.map((s) =>
+            s.id === sessionId
+              ? {
+                  ...s,
+                  pinned,
+                  pinned_at: pinned ? (s.pinned && s.pinned_at) || nowIso : null,
+                }
+              : s,
+          ),
+        );
       qc.setQueryData<ChatSession[]>(chatKeys.sessions(wsId), patch);
 
       return { prevSessions };
     },
     onError: (err, vars, ctx) => {
       logger.error("setChatSessionPinned.error.rollback", { sessionId: vars.sessionId, err });
+      if (ctx?.prevSessions) qc.setQueryData(chatKeys.sessions(wsId), ctx.prevSessions);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: chatKeys.sessions(wsId) });
+    },
+  });
+}
+
+/**
+ * Saves the order the user dragged their pinned chats into (`sessionIds`,
+ * top first; every pinned chat in the list). The list re-sorts at once by
+ * restamping pinned_at the way the server does; on failure the previous list
+ * comes back, and the refetch on settle picks up whatever the server holds
+ * (a 409 means the pinned set changed elsewhere). Other tabs and devices
+ * follow through the `chat:session_updated` events the server sends.
+ */
+export function useReorderPinnedChatSessions() {
+  const qc = useQueryClient();
+  const wsId = useWorkspaceId();
+
+  return useMutation({
+    mutationFn: (sessionIds: string[]) => {
+      logger.info("reorderPinnedChatSessions.start", { count: sessionIds.length });
+      return api.reorderPinnedChatSessions(sessionIds);
+    },
+    onMutate: async (sessionIds) => {
+      await qc.cancelQueries({ queryKey: chatKeys.sessions(wsId) });
+      const prevSessions = qc.getQueryData<ChatSession[]>(chatKeys.sessions(wsId));
+      const now = Date.now();
+      qc.setQueryData<ChatSession[]>(
+        chatKeys.sessions(wsId),
+        (old) => old && applyPinnedOrder(old, sessionIds, now),
+      );
+      return { prevSessions };
+    },
+    onError: (err, _vars, ctx) => {
+      logger.error("reorderPinnedChatSessions.error.rollback", { err });
       if (ctx?.prevSessions) qc.setQueryData(chatKeys.sessions(wsId), ctx.prevSessions);
     },
     onSettled: () => {
