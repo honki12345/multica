@@ -1,6 +1,6 @@
 // Added by honki12345, 2026: the list-step keys on an issue opened from the Work panel's Inbox section (CALA-328).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent } from "@testing-library/react";
+import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { agentTaskSnapshotOptions } from "@multica/core/agents";
 import { useInboxFilterStore } from "@multica/core/inbox/filter-store";
@@ -80,7 +80,7 @@ function setup(pathname = "/acme/issues/MUL-1") {
     nav.pathname = next;
     rerender(shell());
   };
-  return Object.assign(nav, { go, pushed: () => vi.mocked(nav.push).mock.calls.map(([href]) => href) });
+  return Object.assign(nav, { go, qc, pushed: () => vi.mocked(nav.push).mock.calls.map(([href]) => href) });
 }
 
 function step(target: Element | Document, key: "[" | "]") {
@@ -147,6 +147,18 @@ describe("WorkInboxListStep (CALA-328)", () => {
     nav.go("/acme/issues/MUL-2");
     step(document.body, "]");
     expect(nav.pushed()).toEqual(["/acme/issues/MUL-3"]);
+  });
+
+  it("steps on from a notification archived elsewhere, whose row the section keeps in place", async () => {
+    const nav = setup("/acme/issues/MUL-2");
+    useInboxSelectionStore.setState({ sidebarIssueByWorkspace: { ws: "issue-2" } });
+    nav.go("/acme/issues/MUL-2");
+    // The section held the open row while it was listed; then another window archives it.
+    await waitFor(() => expect(useInboxSelectionStore.getState().heldRows["ws:section"]?.key).toBe("issue-2"));
+    act(() => nav.qc.setQueryData(inboxListOptions("ws").queryKey, [ROWS[0]!, ROWS[2]!]));
+    step(document.body, "]");
+    step(document.body, "[");
+    expect(nav.pushed()).toEqual(["/acme/issues/MUL-3", "/acme/issues/MUL-2#comment-c-9"]);
   });
 
   it("stops at the last notification and still claims the key", () => {

@@ -9,7 +9,7 @@ import { useInboxSelectionStore } from "@multica/core/inbox/selection-store";
 import type { InboxItem } from "@multica/core/types";
 import { useListStepShortcut } from "../../common/use-list-step-shortcut";
 import { inboxRowHref } from "../../inbox/components/inbox-display";
-import { useFilteredInboxRows } from "../../inbox/components/use-filtered-inbox-rows";
+import { INBOX_SECTION_LIST, useFilteredInboxRows } from "../../inbox/components/use-filtered-inbox-rows";
 import { useSidebarInboxIssue } from "../../inbox/components/use-sidebar-inbox-issue";
 import { useNavigation } from "../../navigation";
 
@@ -38,9 +38,15 @@ export function WorkInboxListStep() {
   const { pathname, push } = useNavigation();
   const wsId = useCurrentWorkspace()?.id ?? "";
   const segment = issueSegment(pathname, p.issues());
-  // Every live notification, so a filter that hides the open row still finds it.
+  // Every live notification, so a filter that hides the open row still finds
+  // it, and the row the section keeps in place once its notification left on
+  // its own (archived or snoozed elsewhere), which the section still lists.
   const { notifications } = useFilteredInboxRows(wsId, null, !!wsId && !!segment);
-  const openIssueId = segment ? (notifications.find(isRowOf(segment))?.issue_id ?? null) : null;
+  const held = useInboxSelectionStore((s) => (wsId ? s.heldRows[`${wsId}:${INBOX_SECTION_LIST}`] : undefined));
+  const openRow = segment
+    ? (notifications.find(isRowOf(segment)) ?? (held && isRowOf(segment)(held.item) ? held.item : undefined))
+    : undefined;
+  const openIssueId = openRow?.issue_id ?? null;
   const { fromInbox } = useSidebarInboxIssue(wsId, openIssueId);
   // The rows exactly as the section and the issue header list them.
   const { rows } = useFilteredInboxRows(wsId, fromInbox ? openIssueId : null, !!wsId && fromInbox);
