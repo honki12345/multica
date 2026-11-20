@@ -551,7 +551,7 @@ features:
     summary: Mod+Alt+[ / ] scroll a chat to the previous / next message you sent, skipping replies, in the chat page, the floating window and the agent builder.
     status: active
     kind: web-ui
-    cards: [CALA-281]
+    cards: [CALA-281, CALA-294]
     origin:
       type: ours
       commits: ["fef6e83d1", "d8f841b55"]
@@ -608,6 +608,18 @@ features:
         name: moves the floating chat while its composer has focus, and the page chat otherwise
       - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
         name: climbs to the oldest loaded row so the older page loads when no earlier sent message is loaded
+      - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
+        name: counts every press of a burst, even before the list has moved for the previous one
+      - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
+        name: steps from the list again once the reader scrolls it
+      - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
+        name: puts the message back at the top when a row above it grows after it lands
+      - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
+        name: lets Jump to latest, pressed from the keyboard, take the list
+      - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
+        name: aims again when the message ends up outside the rendered rows
+      - vitest: packages/views/chat/components/prompt-navigation.test.ts
+        name: does nothing when no row is measured, instead of jumping to either end
       - vitest: packages/core/shortcuts/definitions.test.ts
         name: steps between sent chat messages with Mod+Alt+[ and ] everywhere, composer included
     scenarios:
@@ -620,6 +632,7 @@ features:
           - Press Cmd+Option+[ three times.
           - Press Cmd+Option+] twice.
           - Press Cmd+Option+] until the list stops moving.
+          - Press Cmd+Option+[ five times quickly, then hold Cmd+Option+] for half a second.
         selectors:
           - '[data-chat-prompt-nav]'
           - '[data-mc="chat-message"][data-role="user"]'
@@ -627,6 +640,7 @@ features:
           - Each press puts one of your messages at the top of the list, never a reply; the caret stays in the composer.
           - The two forward presses land on the two sent messages after the third one back.
           - After your last message the list goes to the latest reply, and further presses do nothing.
+          - The quick presses move exactly five sent messages back and the list stops on a sent message, not a reply; the held key moves one sent message per repeat.
       - name: floating window takes the keys while focused
         path: /<workspace-slug>/issues
         widths: [1440]
