@@ -37,13 +37,27 @@ export FPC_GH="$T/gh/gh"
 R="$T/remote"
 git init -q -b main "$R"
 cd "$R" || exit 1
-mkdir -p scripts/hoon server/internal/a apps/web packages/core apps/mobile fork .github/workflows
+mkdir -p scripts/hoon server/internal/a server/internal/b server/internal/gone apps/web/app packages/core fork .github/workflows apps/mobile
 printf '#!/bin/sh\necho "license-check: ok"\n' > scripts/hoon/license-check.sh
 printf '#!/bin/sh\necho "features-check: base=v1.0.0 features=3 errors=0 warnings=0"\n' > scripts/hoon/features-check.sh
 printf '#!/bin/sh\necho "old"\n' > scripts/hoon/other.sh
 printf '#!/bin/sh\necho "other tests ok"\n' > scripts/hoon/other.test.sh
 printf '#!/bin/sh\necho "feature tests ok"\n' > scripts/hoon/features-check.test.sh
 printf 'package a\n' > server/internal/a/a.go
+printf 'package b\n' > server/internal/b/b.go
+printf 'package b\n' > server/internal/b/extra.go
+printf 'package gone\n' > server/internal/gone/gone.go
+printf 'module x\n' > server/go.mod
+printf 'x v1\n' > server/go.sum
+printf 'lockfileVersion: 9\n' > pnpm-lock.yaml
+printf 'packages:\n' > pnpm-workspace.yaml
+printf '{}\n' > package.json
+printf '{}\n' > turbo.json
+printf 'export {};\n' > apps/web/app/gone.ts
+printf 'export {};\n' > apps/web/app/keep.ts
+printf '#!/bin/sh\necho gone\n' > scripts/hoon/gone.sh
+printf '#!/bin/sh\necho gone tests\n' > scripts/hoon/gone.test.sh
+printf '#!/bin/sh\necho solo\n' > scripts/hoon/solo.sh
 printf '{"name":"@multica/web","devDependencies":{"vitest":"catalog:"}}\n' > apps/web/package.json
 printf '{"name":"@multica/core","devDependencies":{"vitest":"catalog:"}}\n' > packages/core/package.json
 printf '{"name":"@multica/mobile","devDependencies":{"vitest":"catalog:"}}\n' > apps/mobile/package.json
@@ -52,13 +66,15 @@ git add -A && git commit -qm "chore: upstream base" && git tag v1.0.0
 BASE_SHA="$(git rev-parse HEAD)"
 git update-ref refs/heads/other-base HEAD
 
-# mkpr <n> — commit the files named on stdin ("path<TAB>content") onto a branch
+# mkpr <n> — commit the files named on stdin ("path<TAB>content", content
+# @DELETE removes the file) onto a branch
 # off main and publish it as refs/pull/<n>/head.
 mkpr() {
   local n="$1" path content
   git -C "$R" checkout -q -b "pr$n" main
   while IFS=$'\t' read -r path content; do
     [ -n "$path" ] || continue
+    if [ "$content" = @DELETE ]; then git -C "$R" rm -q "$path"; continue; fi
     mkdir -p "$R/$(dirname "$path")"
     printf '%b' "$content" > "$R/$path"
   done
@@ -177,6 +193,86 @@ git -C "$R" checkout -q main && printf 'x\n' > "$R/m.txt" && git -C "$R" add -A 
 git -C "$R" update-ref refs/pull/12/head main && setview 12 "$(git -C "$R" rev-parse main)"
 hasnt "plan: merged PR (head inside base) has nothing to select" "$(plan 12)" "pnpm"
 has "plan: merged PR with --base <old base> selects from the real diff" "$(fpc plan 12 --base "$BASE_SHA" 2>&1)" "git diff --check $BASE_SHA..HEAD"
+
+# --- plan: dependency and config changes, deletions
+mkpr 40 <<'EOF'
+server/go.sum	x v2\n
+EOF
+out="$(plan 40)"
+has "plan: go.sum change builds and vets the module" "$out" "cd server && go build ./... && go vet ./cmd/... ./internal/... ./pkg/..."
+hasnt "plan: go.sum change does not run the full go test" "$out" "go test ./..."
+hasnt "plan: go.sum change alone does not install JS" "$out" "pnpm"
+mkpr 41 <<'EOF'
+server/go.mod	module y\n
+server/internal/a/a.go	package a\nvar Y = 2\n
+EOF
+out="$(plan 41)"
+has "plan: go.mod change builds and vets the module" "$out" "cd server && go build ./... && go vet ./cmd/... ./internal/... ./pkg/..."
+has "plan: go.mod plus a Go file also tests the changed package" "$out" "cd server && go test -p 2 ./internal/a"
+hasnt "plan: a Go-only PR does not build the module" "$(plan 8)" "go vet"
+
+n=100
+for cfg in pnpm-lock.yaml pnpm-workspace.yaml package.json turbo.json apps/web/tsconfig.json apps/web/package.json packages/core/turbo.json packages/core/tsconfig.base.json; do
+  n=$((n + 1))
+  mkpr "$n" <<EOF
+$cfg	changed\\n
+EOF
+  out="$(plan "$n")"
+  has "plan: $cfg change installs frozen" "$out" "pnpm install --frozen-lockfile --prefer-offline"
+  has "plan: $cfg change typechecks" "$out" "pnpm typecheck"
+  hasnt "plan: $cfg change runs no vitest" "$out" "vitest"
+done
+mkpr 60 <<'EOF'
+apps/mobile/package.json	{"name":"@multica/mobile"}\n
+apps/mobile/tsconfig.json	{}\n
+EOF
+hasnt "plan: mobile package.json and tsconfig trigger no pnpm" "$(plan 60)" "pnpm"
+
+mkpr 61 <<'EOF'
+server/internal/gone/gone.go	@DELETE
+EOF
+out="$(plan 61)"
+has "plan: deleting the last Go file of a package builds the module" "$out" "cd server && go build ./... && go vet ./cmd/... ./internal/... ./pkg/..."
+hasnt "plan: no go test on a package dir that is gone" "$out" "go test"
+mkpr 62 <<'EOF'
+server/internal/b/extra.go	@DELETE
+EOF
+out="$(plan 62)"
+has "plan: deleting a Go file selects its package that still exists" "$out" "cd server && go test -p 2 ./internal/b"
+hasnt "plan: deleting a Go file from a live package needs no module build" "$out" "go vet"
+
+mkpr 63 <<'EOF'
+apps/web/app/gone.ts	@DELETE
+EOF
+out="$(plan 63)"
+has "plan: deleting a TS file installs" "$out" "pnpm install --frozen-lockfile --prefer-offline"
+has "plan: deleting a TS file typechecks" "$out" "pnpm typecheck"
+hasnt "plan: deleting the only changed TS file runs no vitest related" "$out" "vitest"
+mkpr 64 <<'EOF'
+apps/web/app/gone.ts	@DELETE
+apps/web/app/keep.ts	export const k = 1;\n
+EOF
+out="$(plan 64)"
+has "plan: vitest related lists only files that still exist" "$out" "pnpm --filter @multica/web exec vitest related app/keep.ts --run --maxWorkers=2"
+hasnt "plan: vitest related never lists a deleted file" "$out" "gone.ts"
+
+mkpr 65 <<'EOF'
+scripts/hoon/gone.sh	@DELETE
+EOF
+out="$(plan 65)"
+has "plan: deleting X.sh runs X.test.sh while it exists" "$out" "bash scripts/hoon/gone.test.sh"
+hasnt "plan: deleting X.sh does not shellcheck the deleted file" "$out" "shellcheck"
+mkpr 66 <<'EOF'
+scripts/hoon/gone.sh	@DELETE
+scripts/hoon/gone.test.sh	@DELETE
+EOF
+out="$(plan 66)"
+hasnt "plan: deleting X.sh and X.test.sh runs no test" "$out" "gone.test.sh"
+mkpr 67 <<'EOF'
+scripts/hoon/solo.sh	@DELETE
+EOF
+out="$(plan 67)"
+[ "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" = 3 ] && pass "plan: deleting a script without a test selects only the always-checks" || { bad "plan: deleting a script without a test selects only the always-checks"; echo "$out"; }
 
 # --- run: pass, fail, head moved, cleanup
 mkpr 20 <<'EOF'

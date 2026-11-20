@@ -98,11 +98,12 @@ checks are chosen from the files the PR changes:
 | Changed | Check |
 |---|---|
 | anything | `license-check.sh`, `features-check.sh` (after fetching upstream tags into `refs/upstream-tags/`), `git diff --check` |
-| `scripts/hoon/X*` | `scripts/hoon/X.test.sh` when it exists, `shellcheck -S warning` on changed `.sh` |
+| `scripts/hoon/X*` | `scripts/hoon/X.test.sh` when it exists at the head (also when `X.sh` was deleted), `shellcheck -S warning` on changed `.sh` that still exist |
 | `fork/features.yml` | `features-check.test.sh` |
 | `.github/**`, `scripts/*.mjs` | `node --test scripts/ci-scope.test.mjs` |
-| `server/**/*.go` | `go test -p 2 <changed packages>`; DB-backed tests skip (no `DATABASE_URL`). Run them against a throwaway `pgvector/pgvector:pg17` on calabii-02 when the PR touches SQL |
-| TS/TSX in `apps/` or `packages/` (not mobile) | `pnpm typecheck` and `vitest related <changed files> --run --maxWorkers=2` per package (no full `vitest run`) |
+| `server/go.mod`, `server/go.sum` | `cd server && go build ./... && go vet ./cmd/... ./internal/... ./pkg/...` (never the full `go test ./...`: the Mac is shared) |
+| `server/**/*.go` | `go test -p 2 <changed packages>`; DB-backed tests skip (no `DATABASE_URL`). A deleted Go file selects its package dir if the dir still has Go files, else the module build above. Run them against a throwaway `pgvector/pgvector:pg17` on calabii-02 when the PR touches SQL |
+| TS/TSX in `apps/` or `packages/` (not mobile), `pnpm-lock.yaml`, `pnpm-workspace.yaml`, any `package.json`, `tsconfig*.json`, `turbo.json` (root, `apps/`, `packages/`, not mobile) | `pnpm install --frozen-lockfile --prefer-offline`, `pnpm typecheck`, and `vitest related <changed files that still exist> --run --maxWorkers=2` per package (skipped when none; no full `vitest run`) |
 
 The comment carries the full 40-character head SHA, the base, the machine,
 each command with its exit code, result line and time, the verdict, and a

@@ -27,16 +27,23 @@
 #         gh pr merge <n> --merge --match-head-commit <sha from gate=ok>
 #
 # Check selection (from the files changed between merge-base(base, head) and
-# head, deleted files excluded):
+# head; deleted files count, see below):
 #   always            license-check.sh, features-check.sh, git diff --check
-#   scripts/hoon/X*   scripts/hoon/X.test.sh when it exists; shellcheck -S warning
-#                     on the changed scripts/hoon .sh files
+#   scripts/hoon/X*   scripts/hoon/X.test.sh when it exists at head; shellcheck
+#                     -S warning on the changed scripts/hoon .sh files that
+#                     still exist
 #   fork/features.yml features-check.test.sh
 #   .github/**, scripts/*.mjs   node --test scripts/ci-scope.test.mjs
-#   server/**/*.go    cd server && go test -p 2 <changed package dirs>
-#   apps|packages TS  pnpm install, pnpm typecheck, and per package
-#                     vitest related <changed files> (apps/mobile excluded;
-#                     never a full vitest run)
+#   server/go.mod, go.sum   cd server && go build ./... && go vet ./cmd/...
+#                     ./internal/... ./pkg/... (never the full go test)
+#   server/**/*.go    cd server && go test -p 2 <changed package dirs>; a
+#                     deleted Go file selects its dir when that dir still has Go
+#                     files at head, else the module build above
+#   apps|packages TS, pnpm-lock.yaml, pnpm-workspace.yaml, package.json,
+#   tsconfig*.json, turbo.json (root/apps/packages, not apps/mobile)
+#                     pnpm install, pnpm typecheck, and per package vitest
+#                     related <changed files that still exist> (skipped when
+#                     none; never a full vitest run)
 # Checks run with DATABASE_URL/DIRECT_URL/TEST_DATABASE_URL unset, so DB-backed Go
 # tests skip; no database is started.
 #
@@ -136,7 +143,10 @@ IFS= read -r -d '' PLAN_PY <<'PY'
 import json, os, shlex, subprocess, sys
 
 sha, mergebase = sys.argv[1], sys.argv[2]
-files = [f for f in sys.stdin.buffer.read().decode("utf-8", "replace").split("\0") if f]
+tok = [t for t in sys.stdin.buffer.read().decode("utf-8", "replace").split("\0") if t]
+changed = dict((tok[i + 1], tok[i][0]) for i in range(0, len(tok) - 1, 2))
+files = sorted(changed)
+alive = [f for f in files if changed[f] != "D"]
 q = shlex.quote
 
 
@@ -146,6 +156,10 @@ def git(*a):
 
 def exists(path):
     return git("cat-file", "-e", f"{sha}:{path}").returncode == 0
+
+
+def has_go(d):
+    return any(n.endswith(".go") for n in git("ls-tree", "--name-only", f"{sha}:{d}" if d else sha).stdout.split("\n"))
 
 
 cmds = [
@@ -166,7 +180,7 @@ for f in files:
         names.add(rest[: -len(".test.sh")])
     elif rest.endswith(".sh"):
         names.add(rest[: -len(".sh")])
-    if f.endswith(".sh"):
+    if f.endswith(".sh") and f in alive:
         shells.append(f)
 for name in sorted(names):
     t = f"{HOON}{name}.test.sh"
@@ -182,17 +196,41 @@ ci_scope = "scripts/ci-scope.test.mjs"
 if any(f.startswith(".github/") or (f.startswith("scripts/") and f.endswith(".mjs") and f.count("/") == 1) for f in files):
     cmds.append(f"node --test {ci_scope}")
 
-go_dirs = sorted({"./" + os.path.dirname(f)[len("server/"):] if os.path.dirname(f) != "server" else "."
-                  for f in files if f.startswith("server/") and f.endswith(".go")})
+GO_MODULE = "cd server && go build ./... && go vet ./cmd/... ./internal/... ./pkg/..."
+go_files = [f for f in files if f.startswith("server/") and f.endswith(".go")]
+go_dirs, module_build = set(), any(f in ("server/go.mod", "server/go.sum") for f in files)
+for f in go_files:
+    d = os.path.dirname(f)
+    if has_go(d):
+        go_dirs.add("./" + d[len("server/"):] if d != "server" else ".")
+    else:
+        module_build = True
+if module_build:
+    cmds.append(GO_MODULE)
 if go_dirs:
-    cmds.append("cd server && go test -p 2 " + " ".join(q(d) for d in go_dirs))
+    cmds.append("cd server && go test -p 2 " + " ".join(q(d) for d in sorted(go_dirs)))
 
-ts = [f for f in files
-      if f.endswith((".ts", ".tsx")) and f.startswith(("apps/", "packages/")) and not f.startswith("apps/mobile/")]
-if ts:
+
+def js_scope(f):
+    return not f.startswith("apps/mobile/") and (f.startswith(("apps/", "packages/")) or "/" not in f)
+
+
+def js_config(f):
+    base = os.path.basename(f)
+    if not js_scope(f):
+        return False
+    if "/" not in f and base in ("pnpm-lock.yaml", "pnpm-workspace.yaml"):
+        return True
+    return base in ("package.json", "turbo.json") or (base.startswith("tsconfig") and base.endswith(".json"))
+
+
+ts = [f for f in files if f.endswith((".ts", ".tsx")) and f.startswith(("apps/", "packages/")) and not f.startswith("apps/mobile/")]
+if ts or any(js_config(f) for f in files):
     cmds += ["pnpm install --frozen-lockfile --prefer-offline", "pnpm typecheck"]
     by_pkg = {}
     for f in ts:
+        if f not in alive:
+            continue
         d = os.path.dirname(f)
         while d and not exists(d + "/package.json"):
             d = os.path.dirname(d)
@@ -299,7 +337,7 @@ g fetch -q --no-tags "$REPO_URL" "+refs/heads/$BASEREF:refs/fork-pr-check/base-$
 BASESHA="$(g rev-parse -q --verify "${BASE_REV:-refs/fork-pr-check/base-$PR}^{commit}")" || die "base is not a commit"
 MB="$(g merge-base "$BASESHA" "$OID")" || die "no merge base between $BASEREF and $OID"
 
-PLAN="$(g diff --name-only -z --no-renames --diff-filter=d "$MB" "$OID" | python3 -c "$PLAN_PY" "$OID" "$MB")" \
+PLAN="$(g diff --name-status -z --no-renames "$MB" "$OID" | python3 -c "$PLAN_PY" "$OID" "$MB")" \
   || die "could not plan checks"
 if [ "$CMD" = plan ]; then
   printf '%s\n' "$PLAN"
