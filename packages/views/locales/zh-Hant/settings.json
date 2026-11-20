@@ -418,6 +418,14 @@
         "label": "問 Multica",
         "description": "在懸浮聊天窗裡開始新對話。"
       },
+      "chatPreviousPrompt": {
+        "label": "上一則已傳訊息",
+        "description": "在目前聊天中捲動到你在可見內容之前傳送的訊息。"
+      },
+      "chatNextPrompt": {
+        "label": "下一則已傳訊息",
+        "description": "在目前聊天中捲動到你傳送的下一則訊息，已是最後一則時捲到最新回覆。"
+      },
       "findInIssue": {
         "label": "在任務中查詢",
         "description": "搜尋當前開啟的任務詳情。"

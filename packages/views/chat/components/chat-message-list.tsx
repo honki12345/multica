@@ -1,5 +1,7 @@
 "use client";
 
+// Modified by honki12345, 2026: previous/next sent-message shortcuts (CALA-281).
+
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
@@ -52,6 +54,7 @@ import { CHAT_COLUMN, CHAT_GUTTER } from "./chat-column";
 import { FOLLOW_EDGE_THRESHOLD } from "../../common/task-transcript/transcript-follow";
 import { LIVE_END_ROW_ATTR, useStickToBottom } from "./stick-to-bottom";
 import { JumpToLiveEndButton, useJumpToLiveEnd } from "./jump-to-live-end";
+import { PROMPT_NAV_ATTR, usePromptNavigation } from "./use-prompt-navigation";
 import { formatElapsedMs } from "../lib/format";
 import {
   canonicalAnswerText,
@@ -333,6 +336,34 @@ export function ChatMessageList({
     tailIsReply: tailItem?.kind === "live" || tailItem?.message.role === "assistant",
   });
 
+  // Wakeup turns render as dividers: the reader did not type them.
+  const prompts = useMemo(
+    () =>
+      renderItems.map(
+        (item) =>
+          item.kind === "message" &&
+          item.message.role === "user" &&
+          item.message.message_kind !== "wakeup",
+      ),
+    [renderItems],
+  );
+  const scrollToPrompt = useCallback(
+    (index: number) => {
+      disengage();
+      virtuosoRef.current?.scrollToIndex({ index, align: "start" });
+    },
+    [disengage],
+  );
+  usePromptNavigation({
+    scrollEl: scrollContainerEl,
+    enabled: active && hasReachedLiveEnd,
+    prompts,
+    hasOlder: hasOlderMessages,
+    firstIndex,
+    scrollToRow: scrollToPrompt,
+    scrollToLiveEnd: jumpToLiveEnd.jump,
+  });
+
   const listContext: ChatListContext = {
     isFetchingOlderMessages,
     showStatusPill,
@@ -369,6 +400,7 @@ export function ChatMessageList({
     <div
       ref={setScrollContainerRef}
       data-tab-scroll-root
+      {...{ [PROMPT_NAV_ATTR]: "" }}
       style={fadeStyle}
       // The gutter lives on the scroll container, so it applies once to the
       // whole list — rows, header, footer — and the scrollbar still rides the

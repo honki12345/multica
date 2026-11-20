@@ -424,6 +424,14 @@
         "label": "Pregunta a Multica",
         "description": "Inicia un chat nuevo en la ventana de chat flotante."
       },
+      "chatPreviousPrompt": {
+        "label": "Mensaje enviado anterior",
+        "description": "Desplaza el chat abierto al mensaje que enviaste antes del que está a la vista."
+      },
+      "chatNextPrompt": {
+        "label": "Siguiente mensaje enviado",
+        "description": "Desplaza el chat abierto al siguiente mensaje que enviaste y, después, a la última respuesta."
+      },
       "findInIssue": {
         "label": "Buscar en la tarea",
         "description": "Busca dentro del detalle de la tarea abierta."

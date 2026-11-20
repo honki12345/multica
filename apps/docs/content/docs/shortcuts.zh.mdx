@@ -3,6 +3,8 @@ title: 搜索、快捷键与偏好设置
 description: 用 ⌘K 搜索和执行命令，查看和修改键盘快捷键，在任务里查找文字，调整主题、语言、时区等个人偏好。
 ---
 
+{/* Modified by honki12345, 2026: document the previous/next sent-message chat shortcuts (CALA-281). */}
+
 import { Callout } from "fumadocs-ui/components/callout";
 import { Step, Steps } from "fumadocs-ui/components/steps";
 
@@ -35,6 +37,8 @@ import { Step, Steps } from "fumadocs-ui/components/steps";
 | 显示或隐藏右侧边栏 | `⌘/` | `Ctrl+/` | 只在有右侧栏的页面可用，例如任务详情。 |
 | 显示或隐藏聊天窗 | `⌘J` | `Ctrl+J` | 打开时光标落在输入框里。见[悬浮聊天窗](/chat#在任意页面打开悬浮聊天窗)。 |
 | 问 Multica | `⇧⌘J` | `Ctrl+Shift+J` | 在悬浮聊天窗里开始新对话。 |
+| 上一条已发消息 | `⌥⌘[` | `Ctrl+Alt+[` | 在聊天中滚动到你在可见内容之前发送的消息，跳过智能体回复。输入时也可用。 |
+| 下一条已发消息 | `⌥⌘]` | `Ctrl+Alt+]` | 滚动到你发送的下一条消息，已是最后一条时滚到最新回复。光标在悬浮聊天窗里时作用于该窗口，否则作用于页面上的聊天。 |
 | 在任务中查找 | `⌘F` | `Ctrl+F` | 见下文。 |
 | 归档通知 | `E` | `E` | 在从收件箱打开的任务上，归档它的通知并打开下一条；查看已归档时则取消归档当前打开的通知。见[收件箱](/inbox#处理通知)。 |
 | 延后通知 | `H` | `H` | 在从收件箱打开的任务上，延后它并打开下一条；已延后的任务则让它现在回来。 |

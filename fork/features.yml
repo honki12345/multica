@@ -546,6 +546,106 @@ features:
       keywords: [chat list filter, chat sort]
     drop_when: upstream adds filtering and sorting to the chat list.
 
+  - id: chat-prompt-navigation
+    summary: Mod+Alt+[ / ] scroll a chat to the previous / next message you sent, skipping replies, in the chat page, the floating window and the agent builder.
+    status: active
+    kind: web-ui
+    cards: [CALA-281]
+    origin:
+      type: ours
+      commits: ["fef6e83d1", "d8f841b55"]
+    files:
+      - packages/core/shortcuts/definitions.ts
+      - packages/core/shortcuts/definitions.test.ts
+      - packages/views/chat/components/prompt-navigation.ts
+      - packages/views/chat/components/prompt-navigation.test.ts
+      - packages/views/chat/components/use-prompt-navigation.ts
+      - packages/views/chat/components/chat-message-list.tsx
+      - packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
+      - packages/views/locales/en/settings.json
+      - packages/views/locales/es/settings.json
+      - packages/views/locales/fr/settings.json
+      - packages/views/locales/ja/settings.json
+      - packages/views/locales/ko/settings.json
+      - packages/views/locales/ru/settings.json
+      - packages/views/locales/zh-Hans/settings.json
+      - packages/views/locales/zh-Hant/settings.json
+      - apps/docs/content/docs/shortcuts.mdx
+      - apps/docs/content/docs/shortcuts.ko.mdx
+      - apps/docs/content/docs/shortcuts.ja.mdx
+      - apps/docs/content/docs/shortcuts.zh.mdx
+      - apps/docs/content/docs/shortcuts.zh-Hant.mdx
+      - apps/docs/content/docs/shortcuts.fr.mdx
+    watch:
+      - path: packages/core/shortcuts/**
+        why: shortcutMatchesEvent, the reserved-chord policy and the Settings store the two actions go through
+      - path: packages/views/settings/components/keyboard-shortcuts-tab.tsx
+        why: lists the actions under General and reads their locale labels
+      - path: packages/views/layout/global-shortcuts.tsx
+        why: a new global default on Mod+Alt+[ or ] would fire alongside this one
+      - path: packages/views/chat/components/stick-to-bottom.ts
+        why: disengage and isAtLiveEnd decide when "next" stops at the live end
+      - path: packages/views/chat/components/jump-to-live-end.tsx
+        why: useJumpToLiveEnd's jump is the "past the last message" target
+      - path: packages/views/chat/components/chat-window.tsx
+        why: data-mc="chat-window" tells the floating window from the page chat
+      - path: packages/views/chat/chat-page.tsx
+        why: page chat that answers when focus is outside the floating window
+      - path: packages/views/agents/create/builder-conversation.tsx
+        why: another page chat mounting ChatMessageList
+      - path: packages/core/utils.ts
+        why: isImeComposing guards Korean/Japanese composition
+    upstream_equivalent:
+      symbols: [chatPreviousPrompt, chatNextPrompt, findPromptTarget]
+      keywords: [previous user message, next user message, previous prompt, jump to message]
+    tests:
+      - vitest: packages/views/chat/components/prompt-navigation.test.ts
+        name: skips replies when stepping back
+      - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
+        name: brings the previous sent message to the top, skipping replies and wakeup turns
+      - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
+        name: moves the floating chat while its composer has focus, and the page chat otherwise
+      - vitest: packages/views/chat/components/chat-message-list.prompt-nav.test.tsx
+        name: climbs to the oldest loaded row so the older page loads when no earlier sent message is loaded
+      - vitest: packages/core/shortcuts/definitions.test.ts
+        name: steps between sent chat messages with Mod+Alt+[ and ] everywhere, composer included
+    scenarios:
+      - name: step through sent messages
+        path: /<workspace-slug>/chat
+        widths: [1440]
+        setup: a chat with at least five messages you sent and long replies between them, opened from the chat list
+        steps:
+          - Click into the composer; the list sits at the latest reply.
+          - Press Cmd+Option+[ three times.
+          - Press Cmd+Option+] twice.
+          - Press Cmd+Option+] until the list stops moving.
+        selectors:
+          - '[data-chat-prompt-nav]'
+          - '[data-mc="chat-message"][data-role="user"]'
+        expect:
+          - Each press puts one of your messages at the top of the list, never a reply; the caret stays in the composer.
+          - The two forward presses land on the two sent messages after the third one back.
+          - After your last message the list goes to the latest reply, and further presses do nothing.
+      - name: floating window takes the keys while focused
+        path: /<workspace-slug>/issues
+        widths: [1440]
+        setup: the floating chat window open on a long conversation
+        steps:
+          - Click into the floating window's composer and press Cmd+Option+[.
+        selectors:
+          - '[data-mc="chat-window"] [data-chat-prompt-nav]'
+        expect:
+          - The floating window scrolls to your previous message.
+      - name: listed in Settings
+        path: /<workspace-slug>/settings
+        widths: [1440]
+        steps:
+          - Open Settings, then Shortcuts.
+        selectors: []
+        expect:
+          - General lists "Previous sent message" (⌥⌘[) and "Next sent message" (⌥⌘]), recordable and resettable like the others.
+    drop_when: upstream ships keys that step a chat between the reader's own messages.
+
   - id: desktop-fork-build
     summary: Desktop app built from the fork (X.Y.Z-hoon.N, fork CLI bundled) that never auto-updates to the official release or runs its daemon from an official CLI.
     status: active
