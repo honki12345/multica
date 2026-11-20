@@ -596,6 +596,8 @@ features:
         why: another page chat mounting ChatMessageList
       - path: packages/core/utils.ts
         why: isImeComposing guards Korean/Japanese composition
+      - path: packages/core/types/chat.ts
+        why: every user-role row is a stop, so a new user-role ChatMessageKind upstream would become one too
     upstream_equivalent:
       symbols: [chatPreviousPrompt, chatNextPrompt, findPromptTarget]
       keywords: [previous user message, next user message, previous prompt, jump to message]
@@ -636,7 +638,7 @@ features:
       - name: step through sent messages
         path: /<workspace-slug>/chat
         widths: [1440]
-        setup: a chat with at least five messages you sent and long replies between them, opened from the chat list
+        setup: a chat with at least five messages you sent and long replies between them, and no wakeup turns, opened from the chat list
         steps:
           - Click into the composer; the list sits at the latest reply.
           - Press Cmd+Option+[ three times.

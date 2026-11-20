@@ -34,7 +34,7 @@ export function findPromptTarget({
   // yet; stepping from a guess would jump to the wrong end of the chat.
   if (!anchor) return null;
   if (direction === "previous") {
-    // A sent message cut off at the top counts as "not reached yet": the first
+    // A stop cut off at the top counts as "not reached yet": the first
     // press brings back its start, the next press moves past it.
     const from = anchor.startVisible ? anchor.index - 1 : anchor.index;
     for (let i = Math.min(from, prompts.length - 1); i >= 0; i--) {

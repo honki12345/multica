@@ -430,7 +430,7 @@
       },
       "chatNextPrompt": {
         "label": "Next sent message or wakeup",
-        "description": "Scroll the open chat to the next message you sent or wakeup, then to the latest reply."
+        "description": "Scroll the open chat to the next message you sent or the next wakeup, then to the latest reply."
       },
       "findInIssue": {
         "label": "Find in issue",

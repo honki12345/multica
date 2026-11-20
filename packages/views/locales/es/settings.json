@@ -430,7 +430,7 @@
       },
       "chatNextPrompt": {
         "label": "Siguiente mensaje enviado o recordatorio",
-        "description": "Desplaza el chat abierto al siguiente mensaje que enviaste o recordatorio y, después, a la última respuesta."
+        "description": "Desplaza el chat abierto al siguiente mensaje que enviaste o al siguiente recordatorio y, después, a la última respuesta."
       },
       "findInIssue": {
         "label": "Buscar en la tarea",
