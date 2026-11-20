@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: cover the window following a reordered chip (CALA-300).
+
 import { act, fireEvent, render } from "@testing-library/react";
 import { useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";

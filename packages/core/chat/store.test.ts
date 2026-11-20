@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: cover the remembered bottom-bar chip order (CALA-300).
+
 import { beforeEach, describe, expect, it } from "vitest";
 import { createChatStore, DRAFT_NEW_SESSION } from "./store";
 import type { StorageAdapter } from "../types";
