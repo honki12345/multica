@@ -84,19 +84,29 @@ const apiLogger = createLogger("chat.api");
 const DRAG_MODIFIERS = [restrictToVerticalAxis, restrictToFirstScrollableAncestor];
 
 // Where a dragged pinned row lands. With a pointer, the pointer itself must be
-// over the pinned rows: let go outside the list, or below the last pinned
-// row, and the row goes back to its place. The modifiers keep the row's own
-// box inside the list, so its box alone cannot tell. With the keyboard there
-// is no pointer, so the nearest pinned row the moved box overlaps wins.
+// over the pinned rows the list shows: let go outside the list, or below the
+// last pinned row, and the row goes back to its place. The modifiers keep the
+// row's own box inside the list, so its box alone cannot tell. Rows just
+// scrolled out of view stay mounted, so the pinned rows' bounds are clipped
+// to the list's scroller. With the keyboard there is no pointer, so the
+// nearest pinned row the moved box overlaps wins.
 const pinnedRowCollision: CollisionDetection = (args) => {
-  const { pointerCoordinates: pointer, droppableRects, droppableContainers } = args;
+  const { active, pointerCoordinates: pointer, droppableRects, droppableContainers } = args;
   if (pointer) {
     const rects = droppableContainers.flatMap((c) => droppableRects.get(c.id) ?? []);
     if (rects.length === 0) return [];
-    const top = Math.min(...rects.map((r) => r.top));
-    const bottom = Math.max(...rects.map((r) => r.top + r.height));
-    const left = Math.min(...rects.map((r) => r.left));
-    const right = Math.max(...rects.map((r) => r.left + r.width));
+    let top = Math.min(...rects.map((r) => r.top));
+    let bottom = Math.max(...rects.map((r) => r.top + r.height));
+    let left = Math.min(...rects.map((r) => r.left));
+    let right = Math.max(...rects.map((r) => r.left + r.width));
+    const activeNode = droppableContainers.find((c) => c.id === active.id)?.node.current;
+    const viewport = activeNode?.closest("[data-virtuoso-scroller]")?.getBoundingClientRect();
+    if (viewport) {
+      top = Math.max(top, viewport.top);
+      bottom = Math.min(bottom, viewport.bottom);
+      left = Math.max(left, viewport.left);
+      right = Math.min(right, viewport.right);
+    }
     if (pointer.y < top || pointer.y > bottom || pointer.x < left || pointer.x > right) return [];
     return closestCenter(args);
   }

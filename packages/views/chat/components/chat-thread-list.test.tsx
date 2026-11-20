@@ -406,7 +406,9 @@ describe("ChatThreadList pinned reorder", () => {
 
   // jsdom has no layout: stack the rows 56px apart so dnd-kit can tell
   // where a dragged row lands.
-  function layOutRows() {
+  // `scrolledBy` shifts the rows up as if the list were scrolled, while the
+  // scroller stays put; rows above it stay mounted, like Virtuoso's overscan.
+  function layOutRows(scrolledBy = 0) {
     return vi
       .spyOn(HTMLElement.prototype, "getBoundingClientRect")
       .mockImplementation(function (this: HTMLElement) {
@@ -415,7 +417,7 @@ describe("ChatThreadList pinned reorder", () => {
           : "";
         const index = ["Chat p1", "Chat p2", "Chat p3", "Chat u1"].indexOf(title);
         // Anything that is not a row (the list's scroller) spans the list.
-        const top = index === -1 ? 0 : index * ROW_HEIGHT;
+        const top = index === -1 ? 0 : index * ROW_HEIGHT - scrolledBy;
         const height = index === -1 ? ROW_HEIGHT * 10 : ROW_HEIGHT;
         return {
           top, bottom: top + height, height, left: 0, right: 300, width: 300,
@@ -513,6 +515,18 @@ describe("ChatThreadList pinned reorder", () => {
       await drag(row("p3"), 130, -200);
       expect(reorderMutateAsync).not.toHaveBeenCalled();
       expect(order()).toEqual(["p1", "p2", "p3", "u1"]);
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
+  it("puts a pinned chat back when let go above a scrolled list, over a row scrolled out of view", async () => {
+    // p1 sits above the scroller's top edge (y < 0) but is still mounted.
+    const rect = layOutRows(ROW_HEIGHT);
+    try {
+      renderList(null, { renderedSessions: pinnedSessions });
+      await drag(row("p3"), 80, -20);
+      expect(reorderMutateAsync).not.toHaveBeenCalled();
     } finally {
       rect.mockRestore();
     }
