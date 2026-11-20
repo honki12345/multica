@@ -1,4 +1,3 @@
-// Modified by honki12345, 2026: cover the list-step keys on an issue opened from the Inbox section (CALA-328).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -9,7 +8,6 @@ import type { ApiClient } from "@multica/core/api/client";
 import { useInboxFilterStore } from "@multica/core/inbox/filter-store";
 import { inboxListOptions, snoozedInboxOptions } from "@multica/core/inbox/queries";
 import { useInboxSelectionStore } from "@multica/core/inbox/selection-store";
-import { configureShortcutPlatform } from "@multica/core/shortcuts";
 import { childIssuesOptions, issueDetailOptions, issueSubscribersOptions } from "@multica/core/issues/queries";
 import { agentListOptions } from "@multica/core/workspace/queries";
 import type { InboxItem, Issue, SnoozedInboxIssue } from "@multica/core/types";
@@ -491,78 +489,5 @@ describe("IssueInboxActions once an action is undone or never saved", () => {
     expect(nav.push).not.toHaveBeenCalled();
     act(() => nav.qc.setQueryData(inboxListOptions("ws").queryKey, []));
     expect(await screen.findByText("Notification archived")).toBeInTheDocument();
-  });
-});
-
-describe("IssueInboxActions list-step keys (CALA-328)", () => {
-  const THREE = [
-    ...ROWS,
-    item({ id: "n-3", issue_id: "issue-3", issue_identifier: "MUL-3", created_at: "2026-11-10T08:00:00Z" }),
-  ];
-
-  function step(target: Element | Document, key: "[" | "]") {
-    return fireEvent.keyDown(target, {
-      key: key === "[" ? "{" : "}",
-      code: key === "[" ? "BracketLeft" : "BracketRight",
-      metaKey: true,
-      shiftKey: true,
-      bubbles: true,
-      cancelable: true,
-    });
-  }
-
-  beforeEach(() => configureShortcutPlatform("macos"));
-  afterEach(() => {
-    // A press's cursor outlives the list for a second; a click ends it.
-    fireEvent.pointerDown(document);
-    configureShortcutPlatform(null);
-  });
-
-  it("opens the notification below and above, as a row click would, while focus stays in a comment box", () => {
-    const nav = setup({ rows: THREE });
-    const comment = document.createElement("textarea");
-    document.body.appendChild(comment);
-    comment.focus();
-    try {
-      step(comment, "]");
-      expect(nav.push).toHaveBeenLastCalledWith("/acme/issues/issue-2#comment-c-9");
-      expect(useInboxSelectionStore.getState().sidebarIssueByWorkspace.ws).toBe("issue-2");
-      expect(useInboxSelectionStore.getState().landing).toMatchObject({ issueId: "issue-2", landed: false });
-      expect(document.activeElement).toBe(comment);
-
-      nav.arrive("issue-2");
-      step(comment, "[");
-      expect(nav.push).toHaveBeenLastCalledWith("/acme/issues/issue-1");
-      // Stepping leaves the notification where it was.
-      expect(state.archiveInbox).not.toHaveBeenCalled();
-    } finally {
-      comment.remove();
-    }
-  });
-
-  it("counts every press of a burst while the next issue is still loading", () => {
-    const nav = setup({ rows: THREE });
-    step(document.body, "]");
-    // The route has not reached issue-2 yet; the next press still goes on from it.
-    step(document.body, "]");
-    expect(vi.mocked(nav.push).mock.calls.map(([href]) => href)).toEqual([
-      "/acme/issues/issue-2#comment-c-9",
-      "/acme/issues/MUL-3",
-    ]);
-  });
-
-  it("stops at the last notification and still claims the key", () => {
-    const nav = setup({ rows: THREE, issueId: "issue-3" });
-    useInboxSelectionStore.setState({ sidebarIssueByWorkspace: { ws: "issue-3" } });
-    nav.arrive("issue-3");
-    expect(step(document.body, "]")).toBe(false);
-    expect(nav.push).not.toHaveBeenCalled();
-  });
-
-  it("leaves the keys alone on an issue that was not opened from the Inbox", () => {
-    useInboxSelectionStore.setState({ sidebarIssueByWorkspace: { ws: "issue-2" } });
-    const nav = setup({ rows: THREE });
-    expect(step(document.body, "]")).toBe(true);
-    expect(nav.push).not.toHaveBeenCalled();
   });
 });

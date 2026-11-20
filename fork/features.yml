@@ -828,8 +828,10 @@ features:
       - packages/views/inbox/components/inbox-page.test.tsx
       - packages/views/issues/components/comment-input.tsx
       - packages/views/issues/components/comment-composers.test.tsx
-      - packages/views/issues/actions/issue-inbox-actions.tsx
-      - packages/views/issues/actions/__tests__/issue-inbox-actions.test.tsx
+      - packages/views/layout/panels/work-inbox-list-step.tsx
+      - packages/views/layout/panels/work-inbox-list-step.test.tsx
+      - packages/views/layout/space-panel.tsx
+      - packages/views/layout/space-panel.test.tsx
       - packages/views/locales/en/settings.json
       - packages/views/locales/es/settings.json
       - packages/views/locales/fr/settings.json
@@ -856,15 +858,19 @@ features:
       - path: packages/views/editor/use-lazy-editor.ts
         why: activate() is how the next issue's comment box takes the caret
       - path: packages/views/layout/panels/inbox-section.tsx
-        why: useInboxSectionRows and the row click (requestLanding, rememberSidebarIssue) the issue header repeats when it steps
+        why: useInboxSectionRows and the row click (requestLanding, rememberSidebarIssue) a step repeats
       - path: packages/views/layout/panels/work-panel.tsx
         why: rememberClickedIssue records an Inbox row click; a step records the same through the selection store
       - path: packages/views/inbox/components/use-filtered-inbox-rows.ts
-        why: the filtered rows, in order, that the issue header steps through
+        why: the filtered rows, in order, that a step walks on an issue opened from the section
       - path: packages/views/inbox/components/use-sidebar-inbox-issue.ts
         why: fromInbox decides whether the open issue takes the keys
       - path: packages/views/inbox/components/inbox-display.ts
         why: inboxRowHref is where a step lands, as a row click does
+      - path: packages/views/issues/components/issue-detail-route.tsx
+        why: shows only a skeleton while the next issue loads, which is why the Work Inbox keys live with the shell
+      - path: packages/views/issues/actions/issue-inbox-actions.tsx
+        why: the issue header that lists the same rows; a list-step listener added there would fire alongside the shell's
       - path: packages/core/inbox/open-row.ts
         why: inboxRowKey, the key both inbox lists step by
       - path: packages/views/layout/global-shortcuts.tsx
@@ -905,11 +911,13 @@ features:
         name: steps within the archive in the archived view
       - vitest: packages/views/inbox/components/inbox-list.test.tsx
         name: scrolls a row selected from outside the list into view, and leaves the list alone on mount
-      - vitest: packages/views/issues/actions/__tests__/issue-inbox-actions.test.tsx
+      - vitest: packages/views/layout/panels/work-inbox-list-step.test.tsx
         name: opens the notification below and above, as a row click would, while focus stays in a comment box
-      - vitest: packages/views/issues/actions/__tests__/issue-inbox-actions.test.tsx
-        name: counts every press of a burst while the next issue is still loading
-      - vitest: packages/views/issues/actions/__tests__/issue-inbox-actions.test.tsx
+      - vitest: packages/views/layout/panels/work-inbox-list-step.test.tsx
+        name: counts every press of a burst, the route still on the issue before or already on the next one loading
+      - vitest: packages/views/layout/panels/work-inbox-list-step.test.tsx
+        name: steps on from an issue whose page has not loaded, named by its identifier
+      - vitest: packages/views/layout/panels/work-inbox-list-step.test.tsx
         name: stops at the last notification and still claims the key
       - vitest: packages/views/issues/components/comment-composers.test.tsx
         name: takes the caret back in the next issue when the press came from the comment box

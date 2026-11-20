@@ -1,3 +1,4 @@
+// Modified by honki12345, 2026: stub the Work Inbox list-step host like the other shell panels (CALA-328).
 import { act, fireEvent, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SidebarProvider, useSidebar } from "@multica/ui/components/ui/sidebar";
@@ -14,6 +15,7 @@ vi.mock("./panels/work-panel", () => ({
   WorkPanel: () => <div data-testid="work-panel" />,
   KeptRowsRelease: () => null,
 }));
+vi.mock("./panels/work-inbox-list-step", () => ({ WorkInboxListStep: () => null }));
 vi.mock("./panels/team-panel", () => ({ TeamPanel: () => <div data-testid="team-panel" /> }));
 vi.mock("./panels/autopilots-panel", () => ({
   AutopilotsPanel: () => <div data-testid="autopilots-panel" />,
