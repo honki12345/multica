@@ -77,38 +77,28 @@ import { useLocale, useT } from "../../i18n";
 import { SessionHistoryList } from "./session-history-list";
 import { SessionRenameInput } from "./session-rename-input";
 import { useDragClickGuard } from "../../layout/use-drag-click-guard";
-import { pinnedOrderAfterDrop } from "./pinned-chat-order";
+import { pinnedOrderAfterDrop, pointerOverPinnedRows } from "./pinned-chat-order";
 
 const apiLogger = createLogger("chat.api");
 
 const DRAG_MODIFIERS = [restrictToVerticalAxis, restrictToFirstScrollableAncestor];
 
 // Where a dragged pinned row lands. With a pointer, the pointer itself must be
-// over the pinned rows the list shows: let go outside the list, or below the
-// last pinned row, and the row goes back to its place. The modifiers keep the
-// row's own box inside the list, so its box alone cannot tell. Rows just
-// scrolled out of view stay mounted, so the pinned rows' bounds are clipped
-// to the list's scroller. With the keyboard there is no pointer, so the
-// nearest pinned row the moved box overlaps wins.
+// over the pinned rows the list shows (see pointerOverPinnedRows): the
+// modifiers keep the row's own box inside the list, so its box alone cannot
+// tell a release outside the list. The visible area comes from whichever
+// pinned row is mounted, not the dragged one, which may have scrolled out.
+// With the keyboard there is no pointer, so the nearest pinned row the moved
+// box overlaps wins.
 const pinnedRowCollision: CollisionDetection = (args) => {
-  const { active, pointerCoordinates: pointer, droppableRects, droppableContainers } = args;
+  const { pointerCoordinates: pointer, droppableRects, droppableContainers } = args;
   if (pointer) {
-    const rects = droppableContainers.flatMap((c) => droppableRects.get(c.id) ?? []);
-    if (rects.length === 0) return [];
-    let top = Math.min(...rects.map((r) => r.top));
-    let bottom = Math.max(...rects.map((r) => r.top + r.height));
-    let left = Math.min(...rects.map((r) => r.left));
-    let right = Math.max(...rects.map((r) => r.left + r.width));
-    const activeNode = droppableContainers.find((c) => c.id === active.id)?.node.current;
-    const viewport = activeNode?.closest("[data-virtuoso-scroller]")?.getBoundingClientRect();
-    if (viewport) {
-      top = Math.max(top, viewport.top);
-      bottom = Math.min(bottom, viewport.bottom);
-      left = Math.max(left, viewport.left);
-      right = Math.min(right, viewport.right);
-    }
-    if (pointer.y < top || pointer.y > bottom || pointer.x < left || pointer.x > right) return [];
-    return closestCenter(args);
+    const rows = droppableContainers.flatMap((c) => droppableRects.get(c.id) ?? []);
+    const scroller = droppableContainers
+      .map((c) => c.node.current?.closest("[data-virtuoso-scroller]"))
+      .find((el) => el != null);
+    const viewport = scroller ? scroller.getBoundingClientRect() : null;
+    return pointerOverPinnedRows(pointer, rows, viewport) ? closestCenter(args) : [];
   }
   return rectIntersection(args).length > 0 ? closestCenter(args) : [];
 };
