@@ -810,7 +810,7 @@ features:
     cards: [CALA-328]
     origin:
       type: ours
-      commits: ["759ab3826", "92e9a4273", "b8a1e9ce6"]
+      commits: ["759ab3826", "92e9a4273", "b8a1e9ce6", "77a821d37"]
     files:
       - packages/core/shortcuts/definitions.ts
       - packages/core/shortcuts/definitions.test.ts
