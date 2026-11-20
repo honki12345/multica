@@ -810,7 +810,7 @@ features:
     cards: [CALA-328]
     origin:
       type: ours
-      commits: ["759ab3826", "92e9a4273"]
+      commits: ["759ab3826", "92e9a4273", "b8a1e9ce6"]
     files:
       - packages/core/shortcuts/definitions.ts
       - packages/core/shortcuts/definitions.test.ts
@@ -888,7 +888,7 @@ features:
       - vitest: packages/views/chat/chat-page.test.tsx
         name: stops at either end and still claims the keys there
       - vitest: packages/views/chat/chat-page.test.tsx
-        name: walks the view the list shows: the archive once it is open, the history after
+        name: "walks the view the list shows: the archive once it is open, the history after"
       - vitest: packages/views/chat/chat-page.test.tsx
         name: works from the composer while a compact layout shows only the conversation
       - vitest: packages/views/chat/chat-page.test.tsx
