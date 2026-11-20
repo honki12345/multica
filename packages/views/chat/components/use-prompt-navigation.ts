@@ -44,8 +44,14 @@ function measureAnchor(scrollEl: HTMLElement, firstIndex: number): PromptAnchor 
  */
 const CURSOR_FRESH_MS = 1000;
 
-/** Input that means the reader moved the list themselves. */
+/**
+ * Input that hands the list back to the reader. Any other key counts too (see
+ * `onKeyDown`): scroll keys from a focused row, Enter on Jump to latest.
+ */
 const READER_INPUTS = ["wheel", "touchstart", "pointerdown"] as const;
+
+/** Keys that only build up the chord between repeated presses. */
+const MODIFIER_KEYS = new Set(["Meta", "Alt", "Control", "Shift", "OS"]);
 
 /**
  * Frames a landed message is held at the top, about a second. Rows above it
@@ -156,7 +162,10 @@ export function usePromptNavigation({
       let direction: PromptDirection;
       if (shortcutMatchesEvent(getShortcut("chatPreviousPrompt"), event)) direction = "previous";
       else if (shortcutMatchesEvent(getShortcut("chatNextPrompt"), event)) direction = "next";
-      else return;
+      else {
+        if (!MODIFIER_KEYS.has(event.key)) dropCursor();
+        return;
+      }
       if (isPortalLayerShortcutTarget(event.target)) return;
       if (!ownsKeypress(scrollEl, event.target)) return;
       event.preventDefault();

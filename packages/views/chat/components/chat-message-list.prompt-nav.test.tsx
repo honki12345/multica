@@ -293,6 +293,56 @@ describe("ChatMessageList previous/next sent message", () => {
     expect(promptMoves("p0")).toHaveLength(1);
   });
 
+  it("leaves the list alone after the reader scrolls it with the keyboard", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "uauaua") }]);
+    const list = lists[0]!;
+    layOut(list, { topRow: 4 });
+    press(document.body, "[");
+    layOut(list, { topRow: 2 });
+    frames();
+
+    fireEvent.keyDown(list, { key: "PageUp", code: "PageUp" });
+    layOut(list, { topRow: 1, offset: 100 });
+    frames(3);
+
+    expect(promptMoves("p0")).toHaveLength(1);
+  });
+
+  it("lets Jump to latest, pressed from the keyboard, take the list", () => {
+    const { view, lists } = renderChats([{ messages: conversation("p", "uauaua") }]);
+    const list = lists[0]!;
+    layOut(list, { topRow: 4 });
+    press(document.body, "[");
+    layOut(list, { topRow: 2 });
+    frames();
+
+    // The button shows once the list is a screen away from the end.
+    fireEvent.scroll(list);
+    frames();
+    const button = view.getByRole("button", { name: "Jump to latest" });
+    fireEvent.keyDown(button, { key: "Enter", code: "Enter" });
+    fireEvent.click(button);
+    layOut(list, { topRow: 0, atEnd: true });
+    frames(3);
+
+    expect(promptMoves("p0")).toHaveLength(1);
+  });
+
+  it("keeps the burst going while the modifiers are pressed again between taps", () => {
+    const { lists } = renderChats([{ messages: conversation("p", "uauauaua") }]);
+    layOut(lists[0]!, { topRow: 6 });
+
+    press(document.body, "[");
+    fireEvent.keyDown(document.body, { key: "Meta", code: "MetaLeft", metaKey: true });
+    fireEvent.keyDown(document.body, { key: "Alt", code: "AltLeft", metaKey: true, altKey: true });
+    press(document.body, "[");
+
+    expect(promptMoves("p0")).toEqual([
+      { index: 4, align: "start" },
+      { index: 2, align: "start" },
+    ]);
+  });
+
   it("stops holding the message once it has stayed put for a while", () => {
     const { lists } = renderChats([{ messages: conversation("p", "uauaua") }]);
     const list = lists[0]!;
