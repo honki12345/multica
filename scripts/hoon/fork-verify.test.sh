@@ -58,7 +58,7 @@ r = fv.parse_go_test_output(go_out, ["TestA", "TestB", "TestC", "TestD"])
 check("go: pass/fail/skip/missing", r == {"TestA": "PASS", "TestB": "FAIL", "TestC": "SKIP", "TestD": None})
 
 # --- vitest json
-data = {"testResults": [{"name": "/x/packages/views/chat/components/chat-bar.test.tsx", "assertionResults": [
+data = {"testResults": [{"name": "/x/packages/views/chat/components/chat-bar.test.tsx", "status": "passed", "assertionResults": [
     {"title": "shows a chip for every chat", "fullName": "ChatBar shows a chip for every chat", "status": "passed"},
     {"title": "scrolls", "fullName": "ChatBar scrolls", "status": "failed"}]}]}
 check("vitest: named case passes", fv.parse_vitest_json(data, None, "packages/views/chat/components/chat-bar.test.tsx", "shows a chip for every chat")[0] == fv.PASS)
@@ -66,6 +66,10 @@ check("vitest: named failing case fails", fv.parse_vitest_json(data, None, "pack
 check("vitest: missing case fails", fv.parse_vitest_json(data, None, "packages/views/chat/components/chat-bar.test.tsx", "nope")[0] == fv.FAIL)
 check("vitest: whole file with a failure fails", fv.parse_vitest_json(data, None, "packages/views/chat/components/chat-bar.test.tsx", None)[0] == fv.FAIL)
 check("vitest: file that failed to load fails", fv.parse_vitest_json({"testResults": [{"name": "/x/a.test.ts", "status": "failed", "message": "SyntaxError", "assertionResults": []}]}, None, "a.test.ts", None)[0] == fv.FAIL)
+hook = {"testResults": [{"name": "/x/a.test.ts", "status": "failed", "message": "afterAll hook failed", "assertionResults": [{"title": "t", "fullName": "t", "status": "passed"}]}]}
+check("vitest: failed file with passing cases fails (hook error)", fv.parse_vitest_json(hook, None, "a.test.ts", "t")[0] == fv.FAIL)
+mixed = {"testResults": [{"name": "/x/a.test.ts", "status": "failed", "assertionResults": [{"title": "ok", "fullName": "ok", "status": "passed"}, {"title": "bad", "fullName": "bad", "status": "failed"}]}]}
+check("vitest: a passing case next to a failing one still passes", fv.parse_vitest_json(mixed, None, "a.test.ts", "ok")[0] == fv.PASS)
 check("vitest: all skipped fails", fv.parse_vitest_json({"testResults": [{"name": "/x/a.test.ts", "status": "passed", "assertionResults": [{"title": "t", "status": "skipped"}]}]}, None, "a.test.ts", None)[0] == fv.FAIL)
 check("vitest: file not run fails", fv.parse_vitest_json(data, None, "packages/views/layout/bottom-bar.test.tsx", None)[0] == fv.FAIL)
 

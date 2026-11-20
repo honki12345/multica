@@ -245,7 +245,7 @@ failed.
 | Layer | What runs | Where |
 |---|---|---|
 | test | each feature's `tests`: `go test -run` per package (`-p 2`), vitest files/cases (`--maxWorkers=2`); `real_agent` tests only with `--real-agent` | this Mac, on an export of the candidate |
-| scenario | `server`/`cli`/`daemon` scenarios for real: a resident test issue (`issue get`, three `daemon status`, `repo checkout`, `environment list`, `ls -a ..`), a steer (comment with `--steer` during `sleep 60`, the same turn must answer `CODE=PINEAPPLE`), Quick Create through `POST /api/issues/quick-create`, and the inbox CLI reads | candidate stack + a test daemon and test Hermes gateway on this Mac |
+| scenario | `server`/`cli`/`daemon` scenarios for real: a resident test issue (`issue get`, `daemon status`, `repo checkout`, `environment list`, `ls -a ..`), a steer (comment with `--steer` during `sleep 60`, the same turn must answer `CODE=PINEAPPLE`), Quick Create through `POST /api/issues/quick-create`, and the inbox CLI reads | candidate stack + a test daemon and test Hermes gateway on this Mac |
 | screen | `web-ui` scenarios: production and candidate web in the same headless browser at each `widths` entry; `production \| candidate \| diff` sheets and the pixel share that changed in the bottom bar; DOM selectors and the chat-bar probe (chip count, no `+N`, wheel scroll, click opens the window) | this Mac (`playwright-cli`) |
 
 The candidate stack runs on **calabii-02** (amd64, idle): the candidate's
@@ -262,7 +262,7 @@ Safety:
 
 - **Production is read only.** The screen layer uses the runtime owner's PAT
   from `~/.multica/config.json` in a throwaway browser context that aborts
-  every non-GET `/api`·`/auth` request and stubs the realtime socket. The
+  every non-GET request (any origin or path) and stubs every WebSocket. The
   report counts the blocked writes. The candidate replays the GET responses
   production returned in the same run, so both draw the same data; the chat
   list and pending tasks are a synthetic fixture on both sides, so no real chat

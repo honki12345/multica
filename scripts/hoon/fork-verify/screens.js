@@ -2,8 +2,8 @@
 // fork_verify.py replaces __CONFIG__ with a JSON object and deletes the file
 // after the run (it carries the two bearer tokens).
 //
-// Production is read only: every non-GET request under /api and /auth is
-// aborted and counted, and the realtime socket is replaced by a silent stub.
+// Production is read only: every non-GET request, to any origin or path, is
+// aborted and counted, and every WebSocket is replaced by a silent stub.
 // The candidate replays production's GET responses recorded in this run, so
 // both frontends draw the same data; a request production never made goes to
 // the candidate backend with the production workspace id swapped for the

@@ -153,9 +153,12 @@ def parse_vitest_json(data, tree, rel_file, case):
     if not files:
         return FAIL, "결과 없음(파일이 실행되지 않음)"
     results = [a for f in files for a in f.get("assertionResults", [])]
-    broken = [f for f in files if f.get("status") not in (None, "passed") and not f.get("assertionResults")]
+    # A file that failed with no failing case (load error, failing hook) fails
+    # every entry in it; a failing case only fails the entries it covers.
+    broken = [f for f in files if f.get("status") != "passed"
+              and not any(a.get("status") == "failed" for a in f.get("assertionResults", []))]
     if broken:
-        return FAIL, "파일 로드 실패: %s" % (broken[0].get("message") or "")[:200]
+        return FAIL, "파일 상태 %s: %s" % (broken[0].get("status"), (broken[0].get("message") or "")[:200])
     if case:
         hits = [a for a in results if a.get("title") == case or a.get("fullName") == case or a.get("fullName", "").endswith(" " + case)]
         if not hits:
@@ -244,8 +247,13 @@ def run_vitest(tree, features, env, logdir):
             data = json.loads(out.read_text())
         except (OSError, ValueError):
             data = {}
+        # A non-zero exit with no failing case or file (unhandled error, no JSON)
+        # fails everything in the run; otherwise each entry stands on its own.
+        explained = data.get("numFailedTests", 0) or data.get("numFailedTestSuites", 0)
         for fid, f, case in items:
             v, d = parse_vitest_json(data, tree, f, case)
+            if v == PASS and p.returncode != 0 and not explained:
+                v, d = FAIL, "vitest exit %d (처리되지 않은 오류 등): %s" % (p.returncode, d)
             checks.append(Check(fid, "test", "vitest %s%s" % (f, " · " + case if case else ""), v, d, [str(out)]))
     return checks
 
@@ -361,13 +369,14 @@ class Stack:
                 self.tunnel.wait(10)
             except subprocess.TimeoutExpired:
                 self.tunnel.kill()
-        p = self.ssh("bash %s/stack-remote.sh down ~/%s %s 2>&1 || true" % (self.rdir, self.rdir, self.name), timeout=300)
-        if "stack-remote.sh" in p.stdout and "No such file" in p.stdout:
-            # The directory is already gone; remove containers by name anyway.
-            p = self.ssh("docker rm -f -v fv-{n}-web fv-{n}-backend fv-{n}-pg; docker volume rm -f fv-{n}-pgdata fv-{n}-uploads; "
-                         "docker network rm fv-{n}-net; docker image rm -f fv-{n}-backend:candidate fv-{n}-web:candidate; "
-                         "rm -rf ~/{d}".format(n=self.name, d=self.rdir), timeout=300)
-        left = self.ssh("docker ps -aq --filter name=fv-%s- | wc -l; docker volume ls -q --filter name=fv-%s- | wc -l" % (self.name, self.name))
+        # Stop a remote `up` still building (local ssh may have died first), then
+        # remove by name; stack-remote.sh may already be gone with its directory.
+        p = self.ssh("for pid in $(pgrep -f '^bash [^ ]*stack-remote.sh up [^ ]*/{d} {n} '); do kill $pid; done; sleep 2; "
+                     "docker rm -f -v fv-{n}-web fv-{n}-backend fv-{n}-pg; docker volume rm -f fv-{n}-pgdata fv-{n}-uploads; "
+                     "docker network rm fv-{n}-net; docker image rm -f fv-{n}-backend:candidate fv-{n}-web:candidate; "
+                     "rm -rf ~/{d}; true".format(n=self.name, d=self.rdir), timeout=300)
+        left = self.ssh("docker ps -aq --filter name=fv-{n}- | wc -l; docker volume ls -q --filter name=fv-{n}- | wc -l; "
+                        "docker images -q 'fv-{n}-*' | wc -l".format(n=self.name))
         self.info["left_after_down"] = " ".join(left.stdout.split())
         (self.logdir / "stack-down.log").write_text(p.stdout + p.stderr)
 
@@ -1207,19 +1216,23 @@ def main(argv):
         checks.append(Check("(run)", "scenario", "실행", FAIL, "중단: %s" % (describe_error(e) or type(e).__name__)))
         log("aborted: %s" % describe_error(e))
     finally:
-        if res:
-            res.stop()
+        # A second signal during cleanup must not stop it.
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
+        steps = [res.stop if res else None]
         if not args.keep:
-            for step in ((res.cleanup if res else None), (stack.down if stack.remote_started else None),
-                         lambda: shutil.rmtree(tree, ignore_errors=True)):
-                if step:
-                    try:
-                        step()
-                    except Exception as e:  # keep cleaning up; report it
-                        checks.append(Check("(run)", "scenario", "정리", FAIL, "정리 실패: %s" % describe_error(e)))
-            left = stack.info.get("left_after_down", "0 0")
-            if stack.remote_started and left != "0 0":
-                checks.append(Check("(run)", "scenario", "정리", FAIL, "후보 스택 정리 뒤 컨테이너/볼륨이 남음: %s" % left))
+            steps += [res.cleanup if res else None, stack.down if stack.remote_started else None,
+                      lambda: shutil.rmtree(tree, ignore_errors=True)]
+        for step in steps:
+            if step:
+                try:
+                    step()
+                except (Exception, KeyboardInterrupt) as e:  # keep cleaning up; report it
+                    checks.append(Check("(run)", "scenario", "정리", FAIL, "정리 실패: %s" % (describe_error(e) or type(e).__name__)))
+        if not args.keep:
+            left = stack.info.get("left_after_down", "0 0 0")
+            if stack.remote_started and left != "0 0 0":
+                checks.append(Check("(run)", "scenario", "정리", FAIL, "후보 스택 정리 뒤 컨테이너/볼륨/이미지가 남음: %s" % left))
 
     if stack.info:
         i = stack.info
@@ -1232,7 +1245,7 @@ def main(argv):
             stack_lines.append("기동 직후 자원: " + "; ".join(i["stats"]))
         if i.get("stats_after_scenarios"):
             stack_lines.append("시나리오 뒤 자원: " + "; ".join(i["stats_after_scenarios"]))
-        stack_lines.append("정리: %s" % ("남긴 채 종료(--keep)" if args.keep else "컨테이너/볼륨 남은 수 %s" % i.get("left_after_down", "?")))
+        stack_lines.append("정리: %s" % ("남긴 채 종료(--keep)" if args.keep else "컨테이너/볼륨/이미지 남은 수 %s" % i.get("left_after_down", "?")))
     stack_lines.append("단계별 시간: " + ", ".join("%s %.0fs" % kv for kv in timings.items()))
     safety_lines.append("후보 DB는 운영 백업 사본. 시험 사용자 `fork-verify@example.invalid`와 빈 작업 공간 `fork-verify`만 새로 만들어 씀. 운영 컨테이너·DB·데몬은 건드리지 않음.")
     safety_lines.append("시험 데몬·Hermes gateway: 별도 HOME·HERMES_HOME(임시 폴더), 프로필 `fork-verify`, 자동 업데이트·재시작 끔. 끝나면 프로세스와 폴더 삭제.")
