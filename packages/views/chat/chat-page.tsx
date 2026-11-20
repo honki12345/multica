@@ -28,7 +28,7 @@ import { ChatMessageList, ChatMessageSkeleton } from "./components/chat-message-
 import { ChatInput } from "./components/chat-input";
 import { ChatQueue } from "./components/chat-queue";
 import { ChatWakeupStrip, useChatWakeups } from "./components/chat-wakeups";
-import { ChatThreadList } from "./components/chat-thread-list";
+import { ChatThreadList, type ChatThreadListView } from "./components/chat-thread-list";
 import { ChatSessionHeader } from "./components/chat-session-header";
 import { EmptyState } from "./components/chat-empty-state";
 import { NewChatButton } from "./components/new-chat-button";
@@ -178,13 +178,15 @@ export function ChatPage() {
     c.archiveSession(session.id);
   };
 
-  // The list-step keys walk the chat list in the order it shows: pinned
-  // first, then by activity; from an archived chat, the archive. Owned here,
-  // not by the list, which a compact layout unmounts while a chat is open.
-  const stepSessions = useMemo(() => {
-    const openArchived = c.sessions.some((s) => s.id === c.activeSessionId && s.status === "archived");
-    return sortChatSessions(c.sessions.filter((s) => (s.status === "archived") === openArchived));
-  }, [c.sessions, c.activeSessionId]);
+  // The list-step keys walk the view the chat list shows, in its order:
+  // pinned first, then by activity; in the archive, the archive. Owned here,
+  // with the view, because a compact layout unmounts the list while a chat is
+  // open.
+  const [listView, setListView] = useState<ChatThreadListView>("history");
+  const stepSessions = useMemo(
+    () => sortChatSessions(c.sessions.filter((s) => (s.status === "archived") === (listView === "archived"))),
+    [c.sessions, listView],
+  );
   const stepSessionIds = useMemo(() => stepSessions.map((s) => s.id), [stepSessions]);
   useListStepShortcut({
     scope: "chat",
@@ -294,6 +296,8 @@ export function ChatPage() {
         activeSessionId={c.activeSessionId}
         onSelectSession={handleSelect}
         onArchive={handleArchive}
+        view={listView}
+        onViewChange={setListView}
       />
     </div>
   );

@@ -166,6 +166,8 @@ function toPreview(content: string): string {
     .trim();
 }
 
+
+export type ChatThreadListView = "history" | "archived";
 /**
  * IM-style conversation list: each row is agent avatar + session title + agent
  * name + last-message preview + time, with a red unread *count* badge. An
@@ -188,6 +190,8 @@ export function ChatThreadList({
   activeSessionId,
   onSelectSession,
   onArchive,
+  view: controlledView,
+  onViewChange,
 }: {
   sessions: ChatSession[];
   agents: Agent[];
@@ -197,6 +201,12 @@ export function ChatThreadList({
   // aware (desktop advances to the next chat; mobile drops back to the list)
   // and routes through the shared controller — see ChatPage.handleArchive.
   onArchive: (session: ChatSession) => void;
+  /**
+   * Which view is showing, for a parent that acts on it too (the Chat
+   * page's list-step keys walk the view on screen). Uncontrolled otherwise.
+   */
+  view?: ChatThreadListView;
+  onViewChange?: (view: ChatThreadListView) => void;
 }) {
   const { t } = useT("chat");
   const { t: tLayout } = useT("layout");
@@ -243,9 +253,15 @@ export function ChatThreadList({
   // Which view is showing. Falls back to history when the archived list drains
   // (last chat unarchived / deleted) so we never strand the user on an empty
   // archive.
-  const [view, setView] = useState<"history" | "archived">("history");
+  const [localView, setLocalView] = useState<ChatThreadListView>("history");
+  const view = controlledView ?? localView;
+  const setView = (next: ChatThreadListView) => {
+    setLocalView(next);
+    onViewChange?.(next);
+  };
   useEffect(() => {
     if (view === "archived" && archivedSessions.length === 0) setView("history");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setView only forwards to the parent
   }, [view, archivedSessions.length]);
 
   // A chat opened from elsewhere on the page (the list-step keys) brings its

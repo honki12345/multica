@@ -32,15 +32,25 @@ vi.mock("./components/chat-input", () => ({
 vi.mock("./components/chat-thread-list", () => ({
   ChatThreadList: ({
     onSelectSession,
+    onViewChange,
   }: {
     onSelectSession: (s: { id: string; agent_id: string }) => void;
+    onViewChange?: (view: "history" | "archived") => void;
   }) => (
-    <button
-      type="button"
-      onClick={() => onSelectSession({ id: "session-9", agent_id: "agent-9" })}
-    >
-      select-thread
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => onSelectSession({ id: "session-9", agent_id: "agent-9" })}
+      >
+        select-thread
+      </button>
+      <button type="button" onClick={() => onViewChange?.("archived")}>
+        open-archive
+      </button>
+      <button type="button" onClick={() => onViewChange?.("history")}>
+        close-archive
+      </button>
+    </>
   ),
 }));
 vi.mock("./components/chat-session-header", () => ({
@@ -571,12 +581,16 @@ describe("ChatPage list-step keys (CALA-328)", () => {
     expect(opened()).toEqual([]);
   });
 
-  it("steps within the archive from an archived chat", () => {
-    storeRef.current = { activeSessionId: "a1" };
-    renderPage("session=a1");
+  it("walks the view the list shows: the archive once it is open, the history after", () => {
+    storeRef.current = { activeSessionId: "u1" };
+    renderPage("session=u1");
+    fireEvent.click(screen.getByRole("button", { name: "open-archive" }));
     step(document.body, "]");
     step(document.body, "]");
-    expect(opened()).toEqual(["a2"]);
+    expect(opened()).toEqual(["a1", "a2"]);
+    fireEvent.click(screen.getByRole("button", { name: "close-archive" }));
+    step(document.body, "[");
+    expect(opened()).toEqual(["a1", "a2", "u2"]);
   });
 
   it("enters the list at the top when no chat is open", () => {

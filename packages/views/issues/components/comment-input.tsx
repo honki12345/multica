@@ -118,7 +118,7 @@ function CommentInput({ issueId, onSubmit, onAccepted, onEditAnnotation, annotat
   // A list-step press made from the previous issue's comment box keeps the
   // caret in this one once it mounts for the next issue.
   useEffect(() => {
-    if (takeListStepFocus(COMMENT_COMPOSER)) lazy.activate();
+    if (takeListStepFocus(COMMENT_COMPOSER, issueId)) lazy.activate();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
   }, []);
   // Inactive shells must not mount query observers or duplicate cold reads.

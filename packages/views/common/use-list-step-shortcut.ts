@@ -27,7 +27,11 @@ const cursors = new Map<string, { key: string; at: number }>();
 
 const FLOATING_CHAT_WINDOW = '[data-mc="chat-window"]';
 
-const dropCursors = () => cursors.clear();
+/** A click picks a row, or a place for the caret, by hand. */
+const dropCursors = () => {
+  cursors.clear();
+  carriedFocus = null;
+};
 
 /**
  * How long, in ms, the next row's composer may take to mount and still take
@@ -45,18 +49,23 @@ export type ListStepFocusComposer = (typeof LIST_STEP_FOCUS_COMPOSERS)[number];
 
 const FOCUS_COMPOSER_SELECTOR = LIST_STEP_FOCUS_COMPOSERS.map((name) => `[data-mc="${name}"]`).join(", ");
 
-/** The composer the last press left the caret in. */
-let carriedFocus: { composer: ListStepFocusComposer; at: number } | null = null;
+/**
+ * The composer a burst of presses started from, and the row the last press
+ * of the burst opened. A press made while the next row is still loading
+ * has nothing focused, so it keeps the burst's composer and moves it on.
+ */
+let carriedFocus: { composer: ListStepFocusComposer; key: string; at: number } | null = null;
 
 /**
- * Whether `composer`, mounting for the next row, takes the caret: the press
- * that opened the row came from the same composer of the row before. The
- * first composer to ask consumes it.
+ * Whether `composer`, mounting for the row `key`, takes the caret: the
+ * presses that opened that row started from the same composer. Only the row
+ * the burst ended on takes it, once.
  */
-export function takeListStepFocus(composer: ListStepFocusComposer): boolean {
+export function takeListStepFocus(composer: ListStepFocusComposer, key: string): boolean {
   const carried = carriedFocus;
+  if (!carried || carried.key !== key) return false;
   carriedFocus = null;
-  return !!carried && carried.composer === composer && performance.now() - carried.at < FOCUS_CARRY_MS;
+  return carried.composer === composer && performance.now() - carried.at < FOCUS_CARRY_MS;
 }
 
 /**
@@ -110,12 +119,16 @@ export function useListStepShortcut({
       const fresh = cursor && now - cursor.at < CURSOR_FRESH_MS && rows.includes(cursor.key);
       const index = stepListIndex(rows, fresh ? cursor.key : open, direction);
       if (index === null) return;
-      cursors.set(scope, { key: rows[index]!, at: now });
+      const key = rows[index]!;
+      cursors.set(scope, { key, at: now });
       const composer =
         event.target instanceof Element
-          ? (event.target.closest(FOCUS_COMPOSER_SELECTOR)?.getAttribute("data-mc") as ListStepFocusComposer | undefined)
-          : undefined;
-      carriedFocus = composer ? { composer, at: now } : null;
+          ? (event.target.closest(FOCUS_COMPOSER_SELECTOR)?.getAttribute("data-mc") as ListStepFocusComposer | null | undefined)
+          : null;
+      const focusLeft = !(event.target instanceof Element) || event.target === document.body;
+      if (composer) carriedFocus = { composer, key, at: now };
+      else if (focusLeft && carriedFocus && now - carriedFocus.at < FOCUS_CARRY_MS) carriedFocus = { ...carriedFocus, key, at: now };
+      else carriedFocus = null;
       step(index);
     };
     document.addEventListener("keydown", onKeyDown);

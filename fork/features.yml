@@ -888,7 +888,7 @@ features:
       - vitest: packages/views/chat/chat-page.test.tsx
         name: stops at either end and still claims the keys there
       - vitest: packages/views/chat/chat-page.test.tsx
-        name: steps within the archive from an archived chat
+        name: walks the view the list shows: the archive once it is open, the history after
       - vitest: packages/views/chat/chat-page.test.tsx
         name: works from the composer while a compact layout shows only the conversation
       - vitest: packages/views/chat/chat-page.test.tsx
@@ -914,7 +914,11 @@ features:
       - vitest: packages/views/issues/components/comment-composers.test.tsx
         name: takes the caret back in the next issue when the press came from the comment box
       - vitest: packages/views/issues/components/comment-composers.test.tsx
+        name: keeps the caret through a burst while the next issue is still loading
+      - vitest: packages/views/issues/components/comment-composers.test.tsx
         name: leaves the next issue's comment box closed when the press came from elsewhere
+      - vitest: packages/views/issues/components/comment-composers.test.tsx
+        name: drops the carried caret when the reader clicks somewhere before the next issue loads
     scenarios:
       - name: step through chats from the composer
         path: /<workspace-slug>/chat

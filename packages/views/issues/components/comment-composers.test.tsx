@@ -1,7 +1,7 @@
 // Modified by honki12345, 2026: cover the caret a list-step press carries to the next issue's comment box (CALA-328).
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ComponentProps, type ReactNode, type Ref } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import type { UploadResult } from "@multica/core/hooks/use-file-upload";
 import type { AgentSkillSummary, Attachment } from "@multica/core/types";
@@ -1573,53 +1573,88 @@ describe.each(["reply", "description"])("annotations in %s drafts", (source) => 
 });
 
 describe("comment box after a list-step press (CALA-328)", () => {
-  /** An issue page: its comment box remounts per issue, as IssueDetail keys it. */
-  function IssuePage({ issueId, onStep }: { issueId: string; onStep: () => void }) {
-    useListStepShortcut({ scope: "test-issues", enabled: true, keys: ["issue-1", "issue-2"], openKey: issueId, onStep });
-    return <CommentInput key={issueId} issueId={issueId} onSubmit={vi.fn().mockResolvedValue(true)} />;
+  const ISSUES = ["issue-1", "issue-2", "issue-3"];
+
+  /**
+   * An issue page: its comment box remounts per issue, as IssueDetail keys
+   * it, and is gone while the next issue loads.
+   */
+  function IssuePage({ issueId, loading, onStep }: { issueId: string; loading: boolean; onStep: (index: number) => void }) {
+    useListStepShortcut({ scope: "test-issues", enabled: true, keys: ISSUES, openKey: issueId, onStep });
+    return loading ? <p>loading</p> : <CommentInput key={issueId} issueId={issueId} onSubmit={vi.fn().mockResolvedValue(true)} />;
+  }
+
+  function setup() {
+    configureShortcutPlatform("macos");
+    const state = { issueId: "issue-1", loading: false };
+    const client = new QueryClient();
+    const page = () => (
+      <QueryClientProvider client={client}>
+        <IssuePage issueId={state.issueId} loading={state.loading} onStep={(index) => {
+          state.issueId = ISSUES[index]!;
+          state.loading = true;
+        }} />
+      </QueryClientProvider>
+    );
+    const view = renderWithI18n(page());
+    return {
+      view,
+      /** The route reaches the issue the last press named and it finishes loading. */
+      arrive: () => { state.loading = false; view.rerender(page()); },
+      /** The last press's issue starts loading; the comment box is gone. */
+      leave: () => view.rerender(page()),
+    };
   }
 
   function stepNext(target: Element) {
     fireEvent.keyDown(target, { key: "}", code: "BracketRight", metaKey: true, shiftKey: true, bubbles: true });
   }
 
-  it("takes the caret back in the next issue when the press came from the comment box", async () => {
-    configureShortcutPlatform("macos");
-    try {
-      let issueId = "issue-1";
-      const view = renderWithProviders(<IssuePage issueId={issueId} onStep={() => { issueId = "issue-2"; }} />);
-      activateComposer("comment-composer-shell");
-      await waitFor(() => expect(focusCalls.focused).toBe(1));
+  afterEach(() => {
+    fireEvent.pointerDown(document);
+    configureShortcutPlatform(null);
+  });
 
-      stepNext(view.container.querySelector('[data-mc="comment-composer"]')!);
-      view.rerender(
-        <QueryClientProvider client={new QueryClient()}>
-          <IssuePage issueId={issueId} onStep={() => {}} />
-        </QueryClientProvider>,
-      );
-      await waitFor(() => expect(focusCalls.focused).toBe(2));
-    } finally {
-      fireEvent.pointerDown(document);
-      configureShortcutPlatform(null);
-    }
+  it("takes the caret back in the next issue when the press came from the comment box", async () => {
+    const page = setup();
+    activateComposer("comment-composer-shell");
+    await waitFor(() => expect(focusCalls.focused).toBe(1));
+    stepNext(page.view.container.querySelector('[data-mc="comment-composer"]')!);
+    page.leave();
+    page.arrive();
+    await waitFor(() => expect(focusCalls.focused).toBe(2));
+  });
+
+  it("keeps the caret through a burst while the next issue is still loading", async () => {
+    const page = setup();
+    activateComposer("comment-composer-shell");
+    await waitFor(() => expect(focusCalls.focused).toBe(1));
+    stepNext(page.view.container.querySelector('[data-mc="comment-composer"]')!);
+    page.leave();
+    // Nothing is focused while issue-2 loads; the next press moves on to issue-3.
+    stepNext(document.body);
+    page.arrive();
+    await waitFor(() => expect(focusCalls.focused).toBe(2));
   });
 
   it("leaves the next issue's comment box closed when the press came from elsewhere", async () => {
-    configureShortcutPlatform("macos");
-    try {
-      let issueId = "issue-1";
-      const view = renderWithProviders(<IssuePage issueId={issueId} onStep={() => { issueId = "issue-2"; }} />);
-      stepNext(document.body);
-      view.rerender(
-        <QueryClientProvider client={new QueryClient()}>
-          <IssuePage issueId={issueId} onStep={() => {}} />
-        </QueryClientProvider>,
-      );
-      expect(await screen.findByTestId("comment-composer-shell")).toBeInTheDocument();
-      expect(focusCalls.focused).toBe(0);
-    } finally {
-      fireEvent.pointerDown(document);
-      configureShortcutPlatform(null);
-    }
+    const page = setup();
+    stepNext(document.body);
+    page.leave();
+    page.arrive();
+    expect(await screen.findByTestId("comment-composer-shell")).toBeInTheDocument();
+    expect(focusCalls.focused).toBe(0);
+  });
+
+  it("drops the carried caret when the reader clicks somewhere before the next issue loads", async () => {
+    const page = setup();
+    activateComposer("comment-composer-shell");
+    await waitFor(() => expect(focusCalls.focused).toBe(1));
+    stepNext(page.view.container.querySelector('[data-mc="comment-composer"]')!);
+    page.leave();
+    fireEvent.pointerDown(document.body);
+    page.arrive();
+    expect(await screen.findByTestId("comment-composer-shell")).toBeInTheDocument();
+    expect(focusCalls.focused).toBe(1);
   });
 });
