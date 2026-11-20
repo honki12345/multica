@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: the status group (trial, team) never shrinks beside scrolling chat chips (CALA-72).
+
 import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NavigationProvider, type NavigationAdapter } from "../navigation";

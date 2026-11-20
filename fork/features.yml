@@ -415,6 +415,7 @@ features:
       - packages/views/chat/components/chat-bar-sessions.test.ts
       - packages/views/chat/components/use-chat-window-anchor.ts
       - packages/views/layout/bottom-bar.tsx
+      - packages/views/layout/bottom-bar.test.tsx
     watch:
       - path: packages/views/chat/components/**
         why: chat-bar-history.tsx renders in the bar; chat-window.tsx anchors on [data-slot="chat-bar"] via use-chat-window-anchor
