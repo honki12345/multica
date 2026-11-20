@@ -215,6 +215,16 @@ check("prompt nav: wakeup dividers count as stops", fv.judge_prompt_nav(s3, pn_r
 skipped = [r for r in back3 if r["kind"] != "divider"]
 check("prompt nav: skipping the wakeup dividers fails", fv.judge_prompt_nav(s3, pn_res(s3, skipped, fwd3, rows=16))[0] == fv.FAIL)
 
+check("plan: the probe gets the judge's alignment tolerance", s1["promptNav"]["alignPx"] == fv.PROMPT_NAV_ALIGN_PX)
+clipped = [dict(r, offset=-30) for r in back1]
+v, d = fv.judge_prompt_nav(s1, pn_res(s1, clipped, fwd1))
+check("prompt nav: right rows clipped 30px above the top fail", v == fv.FAIL and "맨 위에 맞지 않음" in d)
+below = [dict(r, offset=200) for r in fwd1]
+check("prompt nav: right rows left below the top fail", fv.judge_prompt_nav(s1, pn_res(s1, back1, below))[0] == fv.FAIL)
+unsettled = [dict(back1[0], offset=None)] + back1[1:]
+check("prompt nav: a press that never settled fails", fv.judge_prompt_nav(s1, pn_res(s1, unsettled, fwd1))[0] == fv.FAIL)
+check("prompt nav: within the tolerance passes", fv.judge_prompt_nav(s1, pn_res(s1, [dict(r, offset=-fv.PROMPT_NAV_ALIGN_PX) for r in back1], fwd1))[0] == fv.PASS)
+
 sel_missing = {"cand": {"selectors": {"[data-chat-prompt-nav]": 0}, "probe": None, "error": None}, "prod": {}}
 check("judge_shot: no runner is unverified even with missing selectors", fv.judge_shot(pn["a scenario nobody wrote a runner for"], sel_missing)[0] == fv.UNVERIFIED)
 res_ok = pn_res(s1, back1, fwd1)
@@ -222,6 +232,11 @@ res_ok["cand"]["selectors"] = {"[data-chat-prompt-nav]": 0}
 check("judge_shot: a missing selector still fails a passing probe", fv.judge_shot(s1, res_ok)[0] == fv.FAIL)
 res_ok["cand"]["selectors"] = {"[data-chat-prompt-nav]": 1}
 check("judge_shot: prompt-nav probe goes through the judge", fv.judge_shot(s1, res_ok)[0] == fv.PASS)
+
+no_runner = fv.judge_shot(pn["a scenario nobody wrote a runner for"], sel_missing)
+check("shot verdict: a big pixel diff never turns a no-runner shot into a fail", fv.shot_verdict(no_runner, 0.5, 0.5, 0.01)[0] == fv.UNVERIFIED)
+check("shot verdict: a big pixel diff fails a judged shot", fv.shot_verdict((fv.PASS, "ok"), 0.5, 0.5, 0.01)[0] == fv.FAIL)
+check("shot verdict: a small pixel diff keeps the judged verdict", fv.shot_verdict((fv.PASS, "ok"), 0.001, 0.2, 0.01)[0] == fv.PASS)
 
 # --- go test DB: the candidate's migrated test DB, or unverified with a reason
 check("go db: ok state never explains a failure away", fv.go_db_unavailable("Failed to connect to handler test database configured by DATABASE_URL", "ok") is None)
@@ -250,6 +265,11 @@ check("run_go_tests: a fixture failure on a DB said to be migrated still fails",
 check("run_go_tests: a passing test passes", go_run("--- PASS: TestReorderPinnedChatSessions_SavesOrderWithoutTouchingActivity (0.01s)\nPASS\n", "ok", "0") == [fv.PASS])
 check("run_go_tests: a failing test stays a fail when the DB is unavailable but reachable output is a real failure",
       go_run("--- FAIL: TestReorderPinnedChatSessions_SavesOrderWithoutTouchingActivity (0.01s)\nFAIL\n", "failed") == [fv.FAIL])
+mixed_out = ("Failed to connect to handler test database configured by DATABASE_URL\n"
+             "--- FAIL: TestReorderPinnedChatSessions_SavesOrderWithoutTouchingActivity (0.01s)\nFAIL\n")
+check("run_go_tests: an explicit FAIL next to a DB marker stays a fail", go_run(mixed_out, "failed") == [fv.FAIL])
+check("run_go_tests: a test that never ran next to a DB marker is unverified",
+      go_run("Failed to connect to handler test database configured by DATABASE_URL\nFAIL\n", "no-stack") == [fv.UNVERIFIED])
 st = fv.Stack(type("A", (), {"host": "h", "port_base": 100, "repo_url": ""})(), "sha", "sha7", "0.1.0", "sha7", T)
 check("stack: no up means no test DB", st.gotest_db_state() == "no-stack")
 st.up_ok = True

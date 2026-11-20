@@ -183,7 +183,7 @@ async page => {
       let last = null;
       for (let t0 = Date.now(); Date.now() - t0 < 3000; await p.waitForTimeout(120)) {
         const s = await read();
-        if (s && last && s.scroll === last.scroll && Math.abs(s.offset) <= 3) return s;
+        if (s && last && s.scroll === last.scroll && Math.abs(s.offset) <= cfg.alignPx) return s;
         last = s;
       }
       return read();

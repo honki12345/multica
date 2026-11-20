@@ -235,7 +235,7 @@ def run_go_tests(tree, features, env, logdir, real_agent, hermes_env, gotest_db=
         no_db = go_db_unavailable(p.stdout + p.stderr, gotest_db)
         for fid, n in items:
             r = res.get(n)
-            if r != "PASS" and no_db:
+            if r not in ("PASS", "FAIL") and no_db:
                 checks.append(Check(fid, "test", "go %s %s" % (pkg, n), UNVERIFIED, no_db, [str(lf)]))
             elif r == "PASS":
                 checks.append(Check(fid, "test", "go %s %s" % (pkg, n), PASS, "통과 (%.0fs)" % (time.time() - t0), [str(lf)]))
@@ -932,6 +932,11 @@ PROMPT_NAV_RUNNERS = {
 }
 
 
+# How far (px) the stopped row's top may sit from the list's top edge; the
+# probe waits for the same tolerance before it reads the row.
+PROMPT_NAV_ALIGN_PX = 3
+
+
 def prompt_nav_shot(fixture, kind, where, slug):
     """Probe settings for one chat-prompt-navigation scenario: which fixture chat opens, how, and what each press must land on."""
     n, _ = PROMPT_NAV_SESSIONS[kind]
@@ -940,7 +945,7 @@ def prompt_nav_shot(fixture, kind, where, slug):
     shot = {"probe": "prompt-nav", "interact": False,
             "promptNav": {"session": sid, "kind": kind, "scope": scope, "listSelector": scope + "[data-chat-prompt-nav]",
                           "composerSelector": scope + '[data-slot="chat-input-surface"] [contenteditable="true"]',
-                          "expect": prompt_nav_stops(fixture["messages"][sid])}}
+                          "expect": prompt_nav_stops(fixture["messages"][sid]), "alignPx": PROMPT_NAV_ALIGN_PX}}
     if where == "window":
         shot["localStorage"] = {"multica:chat:isOpen": "true", "multica:chat:activeSessionId:%s" % slug: sid}
     else:
@@ -1103,6 +1108,11 @@ def judge_prompt_nav(shot, res):
         problems.append("뒤로 %d번이 보낸 메시지 순서(최근→처음)와 다름" % len(expect))
     if [r.get("token") for r in fwd] != want_fwd:
         problems.append("앞으로 %d번이 보낸 메시지 순서와 다름" % len(want_fwd))
+    misaligned = [i + 1 for i, r in enumerate(back + fwd)
+                  if not isinstance(r.get("offset"), (int, float)) or abs(r["offset"]) > PROMPT_NAV_ALIGN_PX]
+    if misaligned:
+        problems.append("%d번째 입력 뒤 멈춘 행이 목록 맨 위에 맞지 않음(어긋남 %spx, 허용 %dpx)" % (
+            misaligned[0], (back + fwd)[misaligned[0] - 1].get("offset"), PROMPT_NAV_ALIGN_PX))
     idx = [r.get("index") for r in back]
     if not all(isinstance(i, int) for i in idx) or any(a <= b for a, b in zip(idx, idx[1:])):
         problems.append("뒤로 갈 때 행 번호가 줄지 않음")
@@ -1133,6 +1143,20 @@ def judge_shot(shot, sres):
         v, d = (FAIL, "후보 화면 오류: %s" % sres["cand"]["error"]) if sres["cand"].get("error") else (PASS, "화면 열림")
     if missing:
         v, d = FAIL, "기대 요소 없음: %s; %s" % (", ".join(missing), d)
+    return v, d
+
+
+def shot_verdict(judged, region_ratio, page_ratio, threshold):
+    """Fold the pixel diff into a shot's judged (verdict, detail).
+
+    A shot with no runner stays unverified: its pixels are evidence, not a check.
+    """
+    v, d = judged
+    if v != UNVERIFIED and region_ratio is not None and region_ratio > threshold:
+        v = FAIL
+        d = "개조 영역 픽셀 차이 %.2f%% > 기준 %.2f%%; %s" % (region_ratio * 100, threshold * 100, d)
+    d += " · 픽셀 차이: 개조 영역 %s, 전체 %s" % ("-" if region_ratio is None else "%.2f%%" % (region_ratio * 100),
+                                         "-" if page_ratio is None else "%.2f%%" % (page_ratio * 100))
     return v, d
 
 
@@ -1195,12 +1219,7 @@ def run_screens(args, stack, prod, features, out_dir, logdir, screen_input):
             if po.exists() and co.exists():
                 triptych(po, co, shot_dir / ("%s-open.compare.png" % sid), scale=0.5)
                 evidence.append(str(shot_dir / ("%s-open.compare.png" % sid)))
-            v, d = judge_shot(shot, sres)
-            if region_ratio is not None and region_ratio > args.region_threshold:
-                v = FAIL
-                d = "개조 영역 픽셀 차이 %.2f%% > 기준 %.2f%%; %s" % (region_ratio * 100, args.region_threshold * 100, d)
-            d += " · 픽셀 차이: 개조 영역 %s, 전체 %s" % ("-" if region_ratio is None else "%.2f%%" % (region_ratio * 100),
-                                                 "-" if page_ratio is None else "%.2f%%" % (page_ratio * 100))
+            v, d = shot_verdict(judge_shot(shot, sres), region_ratio, page_ratio, args.region_threshold)
             checks.append(Check(shot["feature"], "screen", "%s @%dpx" % (shot["scenario"], shot["width"]), v, d, evidence))
     finally:
         pw("close", timeout=60)
