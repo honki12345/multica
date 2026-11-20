@@ -1,5 +1,7 @@
 # Fork license obligations and feature registry (FORK.md "License obligations",
-# "Fork feature registry"). Not part of upstream.
+# "Fork feature registry"). Not part of upstream. This fork does not use GitHub
+# Actions; scripts/hoon/fork-pr-check.sh runs the same checks locally (FORK.md
+# "Verification"). The file stays as the description of the checks.
 name: Fork license check
 
 on:
@@ -45,3 +47,9 @@ jobs:
 
       - name: Upstream triage self-test
         run: bash scripts/hoon/upstream-triage.test.sh
+
+      - name: Local PR check self-test
+        run: bash scripts/hoon/fork-pr-check.test.sh
+
+      - name: Absorb gate self-test
+        run: bash scripts/hoon/absorb-gate.test.sh
