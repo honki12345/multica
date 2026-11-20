@@ -853,3 +853,144 @@ features:
           - ShipIt is not running and no staged update is in ~/Library/Caches; updater-preferences.json says automaticUpdates false.
           - The app daemon reports cli_version X.Y.Z-hoon.N and the Mac mini runtimes are online.
     drop_when: upstream desktop builds can point updates and CLI downloads at a self-hosted source.
+
+  - id: focus-regions
+    summary: Keyboard focus regions (list, content, message box) with Buzz-style keys to jump between them (Mod+Shift+H / Mod+Shift+L / Mod+L, F8 / Shift+F8), Esc back to the message box, and arrow keys that step list rows only while the list has focus, on the chat page, the inbox and the issues pages.
+    status: planned
+    kind: web-ui
+    cards: [CALA-332]
+    origin:
+      type: ours
+      commits: []
+    files:
+      - packages/core/shortcuts/definitions.ts
+      - packages/core/shortcuts/definitions.test.ts
+      - packages/core/shortcuts/index.ts
+      - packages/core/shortcuts/store.ts
+      - packages/core/shortcuts/store.test.ts
+      - apps/desktop/src/main/keyboard-shortcuts.test.ts
+      - packages/views/layout/focus-regions.ts
+      - packages/views/layout/focus-regions.test.ts
+      - packages/views/layout/use-focus-region-shortcuts.ts
+      - packages/views/layout/use-focus-region-shortcuts.test.tsx
+      - packages/views/layout/global-shortcuts.tsx
+      - packages/views/layout/list-column.tsx
+      - packages/views/layout/space-panel.tsx
+      - packages/views/layout/panel-nav.tsx
+      - packages/views/chat/components/chat-message-list.tsx
+      - packages/views/chat/components/chat-input.tsx
+      - packages/views/chat/components/chat-window.tsx
+      - packages/views/chat/components/chat-thread-list.tsx
+      - packages/views/inbox/components/inbox-list-item.tsx
+      - packages/views/issues/components/issue-detail.tsx
+      - packages/views/issues/components/comment-input.tsx
+      - packages/views/issues/components/list-view.tsx
+      - packages/views/issues/components/board-view.tsx
+      - packages/ui/styles/base.css
+      - packages/views/locales/en/settings.json
+      - packages/views/locales/es/settings.json
+      - packages/views/locales/fr/settings.json
+      - packages/views/locales/ja/settings.json
+      - packages/views/locales/ko/settings.json
+      - packages/views/locales/ru/settings.json
+      - packages/views/locales/zh-Hans/settings.json
+      - packages/views/locales/zh-Hant/settings.json
+      - apps/docs/content/docs/shortcuts.mdx
+      - apps/docs/content/docs/shortcuts.ko.mdx
+      - apps/docs/content/docs/shortcuts.ja.mdx
+      - apps/docs/content/docs/shortcuts.zh.mdx
+      - apps/docs/content/docs/shortcuts.zh-Hant.mdx
+      - apps/docs/content/docs/shortcuts.fr.mdx
+    watch:
+      - path: packages/core/shortcuts/**
+        why: shortcutMatchesEvent, the reserved-chord policy and the Settings store the five actions go through
+      - path: packages/views/settings/components/keyboard-shortcuts-tab.tsx
+        why: lists the actions under General and records overrides through isShortcutAllowedForAction
+      - path: packages/views/inbox/components/inbox-list.tsx
+        why: owns its own arrow-key row stepping on the archive list scroller (MUL-5622); the region keys step only where no handler claimed the key
+      - path: packages/views/layout/collection-list/collection-list.tsx
+        why: grid arrow/j/k handling and the page-level arrow capture when focus is on <body>
+      - path: packages/views/issues/components/issue-peek.tsx
+        why: document-level arrow and Esc handling for the board peek, which reads the same keys
+      - path: packages/views/editor/extensions/highlight.ts
+        why: Tiptap binds Mod+Shift+H to highlight; the region key yields to it only while text is selected
+      - path: packages/views/editor/use-lazy-editor.ts
+        why: the comment composer shell is clicked to mount the editor; a rename of its activate path breaks Focus message box on issues
+      - path: apps/desktop/src/main/keyboard-shortcuts.ts
+        why: a new main-process accelerator on Mod+L, Mod+Shift+H/L or F8 would swallow the key before the renderer
+      - path: packages/views/chat/components/use-prompt-navigation.ts
+        why: reads which chat (page or floating window) the caret is in from the same DOM; data-mc="chat-window" marks the window
+      - path: packages/views/layout/panels/sidebar-tree.tsx
+        why: tree rows carry panelRowAnchor, so their arrow Left/Right expand handlers sit inside the list region
+    upstream_equivalent:
+      symbols: [focusList, focusBody, focusComposer, focusNextRegion, focus-region]
+      keywords: [focus pane, focus region, F6 pane, move focus between panes, focus composer shortcut]
+    tests:
+      - vitest: packages/core/shortcuts/definitions.test.ts
+        name: ships Buzz's region keys in the desktop app
+      - vitest: packages/core/shortcuts/definitions.test.ts
+        name: leaves the two Safari-owned keys unassigned on the web instead of guessing a substitute
+      - vitest: packages/core/shortcuts/store.test.ts
+        name: resolves runtime-specific defaults and resets an override back to them
+      - vitest: packages/views/layout/focus-regions.test.ts
+        name: skips regions that are not rendered, inert, or aria-hidden (a collapsed list, the closed chat window)
+      - vitest: packages/views/layout/focus-regions.test.ts
+        name: cycles between list and body on a screen with no composer
+      - vitest: packages/views/layout/use-focus-region-shortcuts.test.tsx
+        name: jumps to the list, the body and the composer, each on its own key, even from inside an editor
+      - vitest: packages/views/layout/use-focus-region-shortcuts.test.tsx
+        name: sends Esc from the body or the list back to the composer, and leaves it alone elsewhere
+      - vitest: packages/views/layout/use-focus-region-shortcuts.test.tsx
+        name: steps through list rows with the arrow keys only while the list has focus
+      - vitest: packages/views/layout/use-focus-region-shortcuts.test.tsx
+        name: keeps the floating chat window's regions to itself
+      - vitest: apps/desktop/src/main/keyboard-shortcuts.test.ts
+        name: passes the region chords through on every platform
+    scenarios:
+      - name: chat page by keyboard only
+        path: /<workspace-slug>/chat
+        widths: [1440]
+        setup: the desktop app (or the web app with Focus list / Focus message box bound in Settings), a chat open with a long conversation
+        steps:
+          - Click into the composer.
+          - Press F8, then ArrowDown three times.
+          - Press Shift+F8, then ArrowDown.
+          - Press Escape.
+          - Press Mod+Shift+H, ArrowDown, Enter.
+        selectors:
+          - '[data-focus-region]'
+          - '[data-focus-flash]'
+        expect:
+          - F8 outlines the chat list for a moment and focus sits on the open chat; ArrowDown moves focus down the list and does not scroll the conversation.
+          - Shift+F8 from the list wraps to the composer; F8 again goes list, content, composer in order.
+          - With focus on the content, ArrowDown scrolls the conversation and the list does not move.
+          - Escape from the content puts the caret back in the composer.
+          - Mod+Shift+H focuses the open chat in the list, ArrowDown moves to the next row and Enter opens it.
+      - name: inbox and issue by keyboard only
+        path: /<workspace-slug>/inbox
+        widths: [1440]
+        setup: an inbox with at least three notifications for issues, one open
+        steps:
+          - Press Mod+Shift+H, ArrowDown, Enter.
+          - Press Mod+Shift+L, then PageDown.
+          - Press Mod+L, then Escape.
+        selectors:
+          - '[data-slot="space-panel"][data-focus-region="list"]'
+          - '[data-focus-region="body"]'
+          - '[data-mc="comment-composer"]'
+        expect:
+          - Mod+Shift+H lands on the open notification in the Work panel; ArrowDown and Enter open the next one.
+          - Mod+Shift+L outlines the issue body; PageDown scrolls the issue, not the panel.
+          - Mod+L opens the comment editor with the caret in it; Escape there does nothing to focus.
+      - name: browser keys
+        path: /<workspace-slug>/chat
+        widths: [1440]
+        setup: the web app in Safari and in Chrome
+        steps:
+          - Press F8, Shift+F8 and Mod+Shift+L.
+          - Open Settings, then Shortcuts.
+        selectors: []
+        expect:
+          - All three move focus in both browsers.
+          - Focus list and Focus message box are unassigned on the web and can be bound there.
+    drop_when: upstream ships keyboard focus regions or pane-focus shortcuts for list-and-detail pages.

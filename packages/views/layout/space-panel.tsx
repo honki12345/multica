@@ -1,5 +1,6 @@
 "use client";
 
+// Modified by honki12345, 2026: mark the space panel as a keyboard focus region (CALA-332).
 import { useEffect, useRef } from "react";
 import type { AppSpaceId } from "@multica/core/paths";
 import { cn } from "@multica/ui/lib/utils";
@@ -69,6 +70,7 @@ export function SpacePanel() {
           ref={panelRef}
           data-slot="space-panel"
           data-mc="sidebar"
+          data-focus-region="list"
           data-state={open ? "expanded" : "collapsed"}
           inert={!open}
           className={cn(

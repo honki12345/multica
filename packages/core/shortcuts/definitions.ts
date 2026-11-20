@@ -1,4 +1,4 @@
-// Modified by honki12345, 2026: add chat previous/next sent-message shortcuts (CALA-281).
+// Modified by honki12345, 2026: add chat previous/next sent-message shortcuts (CALA-281), focus region keys (CALA-332).
 import {
   getShortcutPlatform,
   getShortcutRuntime,
@@ -15,6 +15,11 @@ export type ShortcutActionId =
   | "newChat"
   | "chatPreviousPrompt"
   | "chatNextPrompt"
+  | "focusList"
+  | "focusBody"
+  | "focusComposer"
+  | "focusNextRegion"
+  | "focusPreviousRegion"
   | "findInIssue"
   | "archiveInboxItem"
   | "unsubscribeArchiveInboxItem"
@@ -59,6 +64,11 @@ export interface ShortcutActionDefinition {
   id: ShortcutActionId;
   category: ShortcutCategory;
   defaultShortcut: ShortcutChord | null;
+  /**
+   * Default in a browser tab when it differs from `defaultShortcut`, because
+   * the browser takes that chord before the page sees it.
+   */
+  webDefaultShortcut?: ShortcutChord | null;
   /** Whether the global handler may run while focus is inside an editor/control. */
   allowInEditable: boolean;
 }
@@ -125,6 +135,46 @@ export const SHORTCUT_ACTIONS: readonly ShortcutActionDefinition[] = [
     defaultShortcut: createShortcutChord("]", { primary: true, alt: true }),
     allowInEditable: true,
   },
+  // Move keyboard focus between the regions of a list-and-detail page: the
+  // list, the body being read, and the composer (Buzz's ⌘⇧H / ⌘⇧L / ⌘L and
+  // F8 / ⇧F8). All of them work with the caret in an editor, which is where
+  // the reader usually is when they want to leave it. Safari takes ⌘L
+  // (address bar) and ⌘⇧H (home page) before the page sees them, and their
+  // Option variants are taken too (⌥⌘L opens Downloads, ⌥⌘H hides other
+  // apps), so on the web those two ship unassigned; F8 / ⇧F8 reach every
+  // region there.
+  {
+    id: "focusList",
+    category: "general",
+    defaultShortcut: createShortcutChord("H", { primary: true, shift: true }),
+    webDefaultShortcut: null,
+    allowInEditable: true,
+  },
+  {
+    id: "focusBody",
+    category: "general",
+    defaultShortcut: createShortcutChord("L", { primary: true, shift: true }),
+    allowInEditable: true,
+  },
+  {
+    id: "focusComposer",
+    category: "general",
+    defaultShortcut: primary("L"),
+    webDefaultShortcut: null,
+    allowInEditable: true,
+  },
+  {
+    id: "focusNextRegion",
+    category: "general",
+    defaultShortcut: createShortcutChord("F8"),
+    allowInEditable: true,
+  },
+  {
+    id: "focusPreviousRegion",
+    category: "general",
+    defaultShortcut: createShortcutChord("F8", { shift: true }),
+    allowInEditable: true,
+  },
   { id: "findInIssue", category: "general", defaultShortcut: primary("F"), allowInEditable: true },
   {
     id: "archiveInboxItem",
@@ -180,6 +230,18 @@ export const SHORTCUT_ACTIONS: readonly ShortcutActionDefinition[] = [
 export const SHORTCUT_ACTION_BY_ID = Object.fromEntries(
   SHORTCUT_ACTIONS.map((action) => [action.id, action]),
 ) as Record<ShortcutActionId, ShortcutActionDefinition>;
+
+/** The shipped binding for `actionId` in `runtime`, before user overrides. */
+export function getShortcutDefault(
+  actionId: ShortcutActionId,
+  runtime: ShortcutRuntime = getShortcutRuntime(),
+): ShortcutChord | null {
+  const action = SHORTCUT_ACTION_BY_ID[actionId];
+  if (runtime === "web" && action.webDefaultShortcut !== undefined) {
+    return action.webDefaultShortcut;
+  }
+  return action.defaultShortcut;
+}
 
 const MODIFIER_KEYS = new Set([
   "Alt", "AltGraph", "CapsLock", "Control", "Fn", "FnLock", "Hyper",
@@ -488,6 +550,16 @@ const BROWSER_ONLY_PRIMARY_RESERVED_KEYS = new Set([
   "P", "L", "T", "N", "D", "U",
 ]);
 
+// Extra-modifier variants of the keys above that every supported browser and
+// window manager hands to the page (checked in Chrome and Safari on macOS).
+const FREE_PRIMARY_VARIANTS: Record<string, readonly string[]> = {
+  L: ["shift"],
+};
+
+function isFunctionKey(key: string): boolean {
+  return /^F([1-9]|1[0-9]|2[0-4])$/.test(key);
+}
+
 /** Browser/window/OS accelerators the app cannot reliably own in `runtime`. */
 export function isReservedShortcut(
   shortcut: ShortcutChord,
@@ -498,8 +570,9 @@ export function isReservedShortcut(
   if (key === "F5") return true;
   if (modifiers.primary) {
     if (isReservedIn(PRIMARY_RESERVED_VARIANTS, shortcut)) return true;
-    if (BROWSER_ONLY_PRIMARY_RESERVED_KEYS.has(key)) {
-      if (runtime !== "desktop" || extraModifiers(modifiers) !== "") return true;
+    const extra = extraModifiers(modifiers);
+    if (BROWSER_ONLY_PRIMARY_RESERVED_KEYS.has(key) && !FREE_PRIMARY_VARIANTS[key]?.includes(extra)) {
+      if (runtime !== "desktop" || extra !== "") return true;
     }
     const mac = platform === "macos";
     if (mac && isReservedIn(MACOS_PRIMARY_RESERVED_VARIANTS, shortcut)) return true;
@@ -573,6 +646,9 @@ export function isShortcutAllowedForAction(
     return hasCommand || (shortcut.modifiers.alt && (shortcut.key === "Space" || shortcut.key.length > 1));
   }
   if (SHORTCUT_ACTION_BY_ID[actionId].allowInEditable) {
+    // A bare or Shift function key types nothing, so it is as safe inside an
+    // editor as a Command chord.
+    if (isFunctionKey(shortcut.key) && !shortcut.modifiers.alt && !hasCommand) return true;
     return hasCommand;
   }
   return hasModifier || !PLAIN_GLOBAL_RESERVED_KEYS.has(shortcut.key);

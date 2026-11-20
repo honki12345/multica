@@ -432,6 +432,26 @@
         "label": "Next sent message or wakeup",
         "description": "Scroll the open chat to the next message you sent or the next wakeup, then to the latest reply."
       },
+      "focusList": {
+        "label": "Focus list",
+        "description": "Move keyboard focus to the list beside the page: chats, inbox notifications, or the sidebar."
+      },
+      "focusBody": {
+        "label": "Focus content",
+        "description": "Move keyboard focus to what you are reading, so arrow keys scroll it."
+      },
+      "focusComposer": {
+        "label": "Focus message box",
+        "description": "Move keyboard focus to the message or comment box."
+      },
+      "focusNextRegion": {
+        "label": "Next pane",
+        "description": "Move keyboard focus to the next of list, content and message box."
+      },
+      "focusPreviousRegion": {
+        "label": "Previous pane",
+        "description": "Move keyboard focus to the previous of list, content and message box."
+      },
       "findInIssue": {
         "label": "Find in issue",
         "description": "Search within the open issue detail."

@@ -426,6 +426,26 @@
         "label": "下一条已发消息或唤醒",
         "description": "在当前聊天中滚动到你发送的下一条消息或唤醒分隔线，已是最后一条时滚到最新回复。"
       },
+      "focusList": {
+        "label": "聚焦列表",
+        "description": "将键盘焦点移到页面旁的列表：聊天、收件箱通知或侧边栏。"
+      },
+      "focusBody": {
+        "label": "聚焦正文",
+        "description": "将键盘焦点移到正在阅读的内容，方向键随后滚动它。"
+      },
+      "focusComposer": {
+        "label": "聚焦输入框",
+        "description": "将键盘焦点移到消息或评论输入框。"
+      },
+      "focusNextRegion": {
+        "label": "下一个区域",
+        "description": "将键盘焦点移到列表、正文、输入框中的下一个。"
+      },
+      "focusPreviousRegion": {
+        "label": "上一个区域",
+        "description": "将键盘焦点移到列表、正文、输入框中的上一个。"
+      },
       "findInIssue": {
         "label": "在任务中查找",
         "description": "搜索当前打开的任务详情。"

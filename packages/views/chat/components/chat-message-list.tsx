@@ -1,6 +1,6 @@
 "use client";
 
-// Modified by honki12345, 2026: previous/next sent-message shortcuts (CALA-281), wakeup stops (CALA-318).
+// Modified by honki12345, 2026: previous/next sent-message shortcuts (CALA-281), wakeup stops (CALA-318), body focus region (CALA-332).
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -395,6 +395,10 @@ export function ChatMessageList({
     <div
       ref={setScrollContainerRef}
       data-tab-scroll-root
+      data-focus-region="body"
+      // Programmatically focusable, so the region keys can land here and the
+      // arrow keys then scroll the conversation; it adds no tab stop.
+      tabIndex={-1}
       {...{ [PROMPT_NAV_ATTR]: "" }}
       style={fadeStyle}
       // The gutter lives on the scroll container, so it applies once to the
@@ -404,7 +408,7 @@ export function ChatMessageList({
       // container paints nothing for that whole window anyway — the rows are
       // not measured yet — so this costs no visible time and spares the
       // reader a frame of the wrong messages (see stick-to-bottom.ts).
-      className={cn("flex-1 overflow-y-auto", CHAT_GUTTER, !hasReachedLiveEnd && "invisible")}
+      className={cn("flex-1 overflow-y-auto outline-none", CHAT_GUTTER, !hasReachedLiveEnd && "invisible")}
     >
       {/* Already inside the gutter + column, so this pre-mount frame renders the
        *  skeleton BODY rather than <ChatMessageSkeleton>, which brings its own

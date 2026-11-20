@@ -1,5 +1,6 @@
 "use client";
 
+// Modified by honki12345, 2026: mark the issue body as a keyboard focus region (CALA-332).
 import { subIssueCreateDefaults } from "@multica/core/issues";
 import {
   issueBehavesAs,
@@ -3763,7 +3764,11 @@ export function IssueDetail({ issueId, onDelete, onDone, onUnsubscribeArchive, d
         <div
           ref={attachScrollContainer}
           data-tab-scroll-root={isPeek ? undefined : scrollContainerKey}
-          className="@container relative flex-1 overflow-y-auto [scrollbar-gutter:stable_both-edges]"
+          data-focus-region="body"
+          // Programmatically focusable so the region keys and Esc can land
+          // here and the arrow keys then scroll the issue; no tab stop.
+          tabIndex={-1}
+          className="@container relative flex-1 overflow-y-auto outline-none [scrollbar-gutter:stable_both-edges]"
           onContextMenu={pageMenu.onContextMenu}
         >
         {/* Gutters: 32px is a comfortable reading margin on a desktop column

@@ -1,5 +1,6 @@
 "use client";
 
+// Modified by honki12345, 2026: the board is the body focus region of the issues page (CALA-332).
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import { cn } from "@multica/ui/lib/utils";
 
@@ -855,8 +856,10 @@ function BoardViewImpl({
         onLostPointerCapture={pan.onLostPointerCapture}
         data-board-scroller=""
         data-tab-scroll-root="board"
+        data-focus-region="body"
+        tabIndex={-1}
         className={cn(
-          "flex flex-1 min-h-0 gap-4 overflow-x-auto p-2",
+          "flex flex-1 min-h-0 gap-4 overflow-x-auto p-2 outline-none",
           // While a side peek is open, a trailing spacer as wide as the panel
           // lets every column scroll clear of it (IssuePeekHost).
           "group-data-[peek-open]/peek:after:w-(--issue-peek-width) group-data-[peek-open]/peek:after:shrink-0 group-data-[peek-open]/peek:after:content-['']",

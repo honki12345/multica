@@ -426,6 +426,26 @@
         "label": "下一則已傳訊息或喚醒",
         "description": "在目前聊天中捲動到你傳送的下一則訊息或喚醒分隔線，已是最後一則時捲到最新回覆。"
       },
+      "focusList": {
+        "label": "聚焦列表",
+        "description": "將鍵盤焦點移到頁面旁的列表：聊天、收件匣通知或側邊欄。"
+      },
+      "focusBody": {
+        "label": "聚焦內文",
+        "description": "將鍵盤焦點移到正在閱讀的內容，方向鍵隨後捲動它。"
+      },
+      "focusComposer": {
+        "label": "聚焦輸入框",
+        "description": "將鍵盤焦點移到訊息或留言輸入框。"
+      },
+      "focusNextRegion": {
+        "label": "下一個區域",
+        "description": "將鍵盤焦點移到列表、內文、輸入框中的下一個。"
+      },
+      "focusPreviousRegion": {
+        "label": "上一個區域",
+        "description": "將鍵盤焦點移到列表、內文、輸入框中的上一個。"
+      },
       "findInIssue": {
         "label": "在任務中查詢",
         "description": "搜尋當前開啟的任務詳情。"

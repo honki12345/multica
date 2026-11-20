@@ -1,8 +1,9 @@
-// Modified by honki12345, 2026: cover the chat previous/next sent-message defaults (CALA-281).
+// Modified by honki12345, 2026: cover the chat previous/next sent-message defaults (CALA-281), focus region keys (CALA-332).
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createShortcutChord,
   formatShortcut,
+  getShortcutDefault,
   isShortcutAllowedForAction,
   isReservedShortcut,
   parseLegacyShortcut,
@@ -48,21 +49,16 @@ afterEach(() => {
 describe("keyboard shortcut definitions", () => {
   it("keeps every shipped default inside the action safety policy", () => {
     for (const action of SHORTCUT_ACTIONS) {
-      if (!action.defaultShortcut) continue;
-      expect(
-        isShortcutAllowedForAction(
-          action.id,
-          action.defaultShortcut,
-          "macos",
-        ),
-      ).toBe(true);
-      expect(
-        isShortcutAllowedForAction(
-          action.id,
-          action.defaultShortcut,
-          "windows",
-        ),
-      ).toBe(true);
+      for (const runtime of ["web", "desktop"] as const) {
+        const shortcut = getShortcutDefault(action.id, runtime);
+        if (!shortcut) continue;
+        for (const platform of ["macos", "windows"] as const) {
+          expect(
+            isShortcutAllowedForAction(action.id, shortcut, platform, runtime),
+            `${action.id} on ${platform}/${runtime}`,
+          ).toBe(true);
+        }
+      }
     }
   });
 
@@ -294,8 +290,10 @@ describe("keyboard shortcut definitions", () => {
       expect(isReservedShortcut(chord, "macos", "desktop")).toBe(false);
       expect(isReservedShortcut(chord, "windows", "desktop")).toBe(false);
       // Only the bare primary chord opens up — extra modifiers keep the
-      // historical reservation on every runtime.
+      // historical reservation on every runtime, except Shift+L, which both
+      // Chrome and Safari hand to the page.
       for (const extra of [{ shift: true }, { alt: true }, { control: true }]) {
+        if (key === "L" && "shift" in extra) continue;
         const variant = createShortcutChord(key, { primary: true, ...extra });
         expect(isReservedShortcut(variant, "macos", "desktop")).toBe(true);
         expect(isReservedShortcut(variant, "macos", "web")).toBe(true);
@@ -574,6 +572,104 @@ describe("keyboard shortcut definitions", () => {
         "macos",
       ),
     ).toBe(false);
+  });
+
+  describe("focus region shortcuts", () => {
+    const REGION_ACTIONS = [
+      "focusList",
+      "focusBody",
+      "focusComposer",
+      "focusNextRegion",
+      "focusPreviousRegion",
+    ] as const;
+    const chord = (key: string, modifiers: Parameters<typeof createShortcutChord>[1] = {}) =>
+      createShortcutChord(key, modifiers);
+
+    it("ships Buzz's region keys in the desktop app", () => {
+      configureShortcutRuntime("desktop");
+      expect(getShortcutDefault("focusList")).toEqual(chord("H", { primary: true, shift: true }));
+      expect(getShortcutDefault("focusBody")).toEqual(chord("L", { primary: true, shift: true }));
+      expect(getShortcutDefault("focusComposer")).toEqual(chord("L", { primary: true }));
+      expect(getShortcutDefault("focusNextRegion")).toEqual(chord("F8"));
+      expect(getShortcutDefault("focusPreviousRegion")).toEqual(chord("F8", { shift: true }));
+    });
+
+    it("leaves the two Safari-owned keys unassigned on the web instead of guessing a substitute", () => {
+      // Checked by hand (Chrome 157, Safari 27.2): Safari opens the address bar
+      // on Cmd+L and its home page on Cmd+Shift+H. The usual substitutes are
+      // taken as well (Option+Cmd+L opens Downloads in both browsers,
+      // Option+Cmd+H is macOS Hide Others), so the web keeps F8 / Shift+F8,
+      // Cmd+Shift+L and Esc, and the user can bind the rest in Settings.
+      configureShortcutRuntime("web");
+      expect(getShortcutDefault("focusList")).toBeNull();
+      expect(getShortcutDefault("focusComposer")).toBeNull();
+      expect(getShortcutDefault("focusBody")).toEqual(chord("L", { primary: true, shift: true }));
+      expect(getShortcutDefault("focusNextRegion")).toEqual(chord("F8"));
+      expect(getShortcutDefault("focusPreviousRegion")).toEqual(chord("F8", { shift: true }));
+    });
+
+    it("keeps every region default assignable on its own runtime and inside editors", () => {
+      for (const runtime of ["web", "desktop"] as const) {
+        configureShortcutRuntime(runtime);
+        for (const id of REGION_ACTIONS) {
+          expect(SHORTCUT_ACTION_BY_ID[id].allowInEditable, id).toBe(true);
+          const shortcut = getShortcutDefault(id);
+          if (!shortcut) continue;
+          for (const platform of ["macos", "windows", "linux"] as const) {
+            expect(
+              isShortcutAllowedForAction(id, shortcut, platform, runtime),
+              `${id} default must stay assignable on ${platform}/${runtime}`,
+            ).toBe(true);
+          }
+        }
+      }
+    });
+
+    it("frees Cmd+Shift+L everywhere and leaves Cmd+Shift+H recordable for Chrome users", () => {
+      // Mod+L is browser-owned on the web but free in the Electron renderer.
+      expect(isReservedShortcut(chord("L", { primary: true }), "macos", "web")).toBe(true);
+      expect(isReservedShortcut(chord("L", { primary: true }), "macos", "desktop")).toBe(false);
+      // Chrome and Safari both hand Mod+Shift+L to the page.
+      expect(isReservedShortcut(chord("L", { primary: true, shift: true }), "macos", "web")).toBe(false);
+      expect(isReservedShortcut(chord("L", { primary: true, shift: true }), "windows", "desktop")).toBe(false);
+      // Chrome passes Mod+Shift+H through, Safari does not; only the web
+      // default avoids it.
+      expect(isReservedShortcut(chord("H", { primary: true, shift: true }), "macos", "web")).toBe(false);
+      // Other browser-owned keys keep their modifier variants reserved.
+      expect(isReservedShortcut(chord("T", { primary: true, shift: true }), "macos", "desktop")).toBe(true);
+      expect(isReservedShortcut(chord("L", { primary: true, alt: true }), "macos", "web")).toBe(true);
+    });
+
+    it("allows bare and Shift function keys for editor-safe actions, never letters", () => {
+      expect(isShortcutAllowedForAction("focusNextRegion", chord("F8"), "macos", "web")).toBe(true);
+      expect(isShortcutAllowedForAction("focusNextRegion", chord("F6", { shift: true }), "windows", "web")).toBe(true);
+      expect(isShortcutAllowedForAction("focusNextRegion", chord("L"), "macos", "web")).toBe(false);
+      expect(isShortcutAllowedForAction("focusNextRegion", chord("L", { shift: true }), "macos", "web")).toBe(false);
+      // F5 stays the reload guard, F4 with Alt closes windows elsewhere.
+      expect(isShortcutAllowedForAction("focusNextRegion", chord("F5"), "macos", "desktop")).toBe(false);
+    });
+
+    it("matches F8 and Shift+F8 exactly", () => {
+      const next = chord("F8");
+      const previous = chord("F8", { shift: true });
+      expect(shortcutMatchesEvent(next, keyEvent("F8", { code: "F8" }), "macos")).toBe(true);
+      expect(shortcutMatchesEvent(next, keyEvent("F8", { code: "F8", shiftKey: true }), "macos")).toBe(false);
+      expect(shortcutMatchesEvent(previous, keyEvent("F8", { code: "F8", shiftKey: true }), "macos")).toBe(true);
+    });
+
+    it("ships no two region defaults on the same chord in either runtime", () => {
+      for (const runtime of ["web", "desktop"] as const) {
+        configureShortcutRuntime(runtime);
+        const seen: { id: string; shortcut: ReturnType<typeof createShortcutChord> }[] = [];
+        for (const action of SHORTCUT_ACTIONS) {
+          const shortcut = getShortcutDefault(action.id);
+          if (!shortcut) continue;
+          const clash = seen.find((other) => shortcutChordEquals(other.shortcut, shortcut));
+          expect(clash?.id, `${runtime}: ${action.id} duplicates ${clash?.id}`).toBeUndefined();
+          seen.push({ id: action.id, shortcut });
+        }
+      }
+    });
   });
 
   it("parses v1 persisted string bindings", () => {

@@ -1,5 +1,6 @@
 "use client";
 
+// Modified by honki12345, 2026: mark the list column as a keyboard focus region (CALA-332).
 import { useRef } from "react";
 import { useSidebarSafe } from "@multica/ui/components/ui/sidebar";
 import { cn } from "@multica/ui/lib/utils";
@@ -47,6 +48,7 @@ export function ListColumn({
       <aside
         ref={ref}
         data-slot="list-column"
+        data-focus-region="list"
         data-state={collapsed ? "collapsed" : "expanded"}
         inert={collapsed && !peeking}
         className={cn(

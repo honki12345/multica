@@ -1,3 +1,4 @@
+// Modified by honki12345, 2026: cover runtime-specific defaults for the focus region keys (CALA-332).
 import { afterEach, describe, expect, it } from "vitest";
 import { createShortcutChord } from "./definitions";
 import { configureShortcutPlatform, configureShortcutRuntime } from "./platform";
@@ -16,6 +17,26 @@ afterEach(() => {
 });
 
 describe("shortcut store", () => {
+  it("resolves runtime-specific defaults and resets an override back to them", () => {
+    configureShortcutRuntime("web");
+    expect(getShortcut("focusComposer")).toBeNull();
+    configureShortcutRuntime("desktop");
+    expect(getShortcut("focusComposer")).toEqual(
+      createShortcutChord("L", { primary: true }),
+    );
+
+    // Choosing the runtime's own default again stores nothing.
+    useShortcutStore.getState().setShortcut(
+      "focusComposer",
+      createShortcutChord("K", { primary: true, alt: true }),
+    );
+    useShortcutStore.getState().setShortcut(
+      "focusComposer",
+      createShortcutChord("L", { primary: true }),
+    );
+    expect(useShortcutStore.getState().overrides.focusComposer).toBeUndefined();
+  });
+
   it("uses defaults, persists overrides, and can disable an action", () => {
     expect(getShortcut("openSearch")).toEqual(
       createShortcutChord("K", { primary: true }),
