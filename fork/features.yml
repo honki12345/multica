@@ -659,6 +659,8 @@ features:
     watch:
       - path: packages/core/chat/queries.ts
         why: sortChatSessions, the only ordering today
+      - path: packages/views/common/use-list-step-shortcut.ts
+        why: shortcut-list-step (CALA-328) also edits chat-thread-list.tsx and walks the order the list shows; a filter or sort must hand that shown order to it
     upstream_equivalent:
       keywords: [chat list filter, chat sort]
     drop_when: upstream adds filtering and sorting to the chat list.
@@ -800,6 +802,135 @@ features:
         expect:
           - General lists "Previous sent message or wakeup" (⌥⌘[) and "Next sent message or wakeup" (⌥⌘]), recordable and resettable like the others.
     drop_when: upstream ships keys that step a chat between the reader's own messages and wakeup turns.
+
+  - id: shortcut-list-step
+    summary: Mod+Shift+[ / ] open the chat or notification above / below the open one, from anywhere on the page (composer and comment boxes included), in the Chat page's chat list, the Inbox page's list and an issue opened from the Work panel's Inbox section.
+    status: active
+    kind: web-ui
+    cards: [CALA-328]
+    origin:
+      type: ours
+      commits: ["425b903cf"]
+    files:
+      - packages/core/shortcuts/definitions.ts
+      - packages/core/shortcuts/definitions.test.ts
+      - packages/views/common/list-step.ts
+      - packages/views/common/list-step.test.ts
+      - packages/views/common/use-list-step-shortcut.ts
+      - packages/views/chat/chat-page.tsx
+      - packages/views/chat/components/chat-thread-list.tsx
+      - packages/views/chat/components/chat-thread-list.test.tsx
+      - packages/views/chat/components/session-history-list.tsx
+      - packages/views/inbox/components/inbox-list.tsx
+      - packages/views/inbox/components/inbox-list.test.tsx
+      - packages/views/inbox/components/inbox-page.tsx
+      - packages/views/issues/actions/issue-inbox-actions.tsx
+      - packages/views/issues/actions/__tests__/issue-inbox-actions.test.tsx
+      - packages/views/locales/en/settings.json
+      - packages/views/locales/es/settings.json
+      - packages/views/locales/fr/settings.json
+      - packages/views/locales/ja/settings.json
+      - packages/views/locales/ko/settings.json
+      - packages/views/locales/ru/settings.json
+      - packages/views/locales/zh-Hans/settings.json
+      - packages/views/locales/zh-Hant/settings.json
+      - apps/docs/content/docs/shortcuts.mdx
+      - apps/docs/content/docs/shortcuts.ko.mdx
+      - apps/docs/content/docs/shortcuts.ja.mdx
+      - apps/docs/content/docs/shortcuts.zh.mdx
+      - apps/docs/content/docs/shortcuts.zh-Hant.mdx
+      - apps/docs/content/docs/shortcuts.fr.mdx
+    watch:
+      - path: packages/core/chat/queries.ts
+        why: sortChatSessions decides the chat order the keys walk (pinned first, then activity)
+      - path: packages/views/chat/components/chat-window.tsx
+        why: data-mc="chat-window" marks the floating window, which keeps the keys to itself
+      - path: packages/views/layout/panels/list-space-peeks.tsx
+        why: the chat list preview over another page mounts ChatThreadList without the keys
+      - path: packages/views/layout/panels/inbox-section.tsx
+        why: useInboxSectionRows and the row click (requestLanding, rememberSidebarIssue) the issue header repeats when it steps
+      - path: packages/views/layout/panels/work-panel.tsx
+        why: rememberClickedIssue records an Inbox row click; a step records the same through the selection store
+      - path: packages/views/inbox/components/use-filtered-inbox-rows.ts
+        why: the filtered rows, in order, that the issue header steps through
+      - path: packages/views/inbox/components/use-sidebar-inbox-issue.ts
+        why: fromInbox decides whether the open issue takes the keys
+      - path: packages/views/inbox/components/inbox-display.ts
+        why: inboxRowHref is where a step lands, as a row click does
+      - path: packages/core/inbox/open-row.ts
+        why: inboxRowKey, the key both inbox lists step by
+      - path: packages/views/layout/global-shortcuts.tsx
+        why: a new global default on Mod+Shift+[ or ] would fire alongside this one
+      - path: apps/desktop/src/main/keyboard-shortcuts.ts
+        why: a desktop main-process accelerator on Mod+Shift+[ or ] would take the chord before the page
+      - path: packages/views/chat/components/chat-thread-list.tsx
+        why: also changed by the planned chat-list-filter-sort (CALA-138); a filter or sort must keep handing the shown order to the keys
+    upstream_equivalent:
+      symbols: [listPreviousItem, listNextItem, useListStepShortcut, stepListIndex]
+      keywords: [next chat, previous chat, next notification, previous notification, cycle chats]
+    tests:
+      - vitest: packages/core/shortcuts/definitions.test.ts
+        name: steps the chat and inbox lists with Mod+Shift+[ and ] everywhere, composer included
+      - vitest: packages/views/common/list-step.test.ts
+        name: stops at either end instead of wrapping around
+      - vitest: packages/views/common/list-step.test.ts
+        name: enters the list at the top going down and at the bottom going up when the open row is not listed
+      - vitest: packages/views/chat/components/chat-thread-list.test.tsx
+        name: opens the chat below and above in the order the list shows, across the pinned boundary
+      - vitest: packages/views/chat/components/chat-thread-list.test.tsx
+        name: stops at either end and still claims the keys there
+      - vitest: packages/views/chat/components/chat-thread-list.test.tsx
+        name: steps within the archive while the archived view is open
+      - vitest: packages/views/chat/components/chat-thread-list.test.tsx
+        name: enters the list at the top or the bottom when the open chat is not in it
+      - vitest: packages/views/chat/components/chat-thread-list.test.tsx
+        name: works while the caret is in a text field, which keeps focus
+      - vitest: packages/views/chat/components/chat-thread-list.test.tsx
+        name: leaves the keys to the floating chat window and to a list that does not take them
+      - vitest: packages/views/inbox/components/inbox-list.test.tsx
+        name: moves the selection while focus is in the detail, and scrolls the row into view
+      - vitest: packages/views/inbox/components/inbox-list.test.tsx
+        name: counts every press of a burst, even before the selection has caught up
+      - vitest: packages/views/issues/actions/__tests__/issue-inbox-actions.test.tsx
+        name: opens the notification below and above, as a row click would, while focus stays in a comment box
+      - vitest: packages/views/issues/actions/__tests__/issue-inbox-actions.test.tsx
+        name: counts every press of a burst while the next issue is still loading
+      - vitest: packages/views/issues/actions/__tests__/issue-inbox-actions.test.tsx
+        name: stops at the last notification and still claims the key
+    scenarios:
+      - name: step through chats from the composer
+        path: /<workspace-slug>/chat
+        widths: [1440]
+        setup: at least five chats, two of them pinned, opened from the chat list on the desktop app (macOS Chrome and Safari keep the chord for tab switching)
+        steps:
+          - Open the top pinned chat and click into the composer.
+          - Press Cmd+Shift+] three times, then Cmd+Shift+[ once.
+          - Press Cmd+Shift+] until the list stops changing.
+        selectors:
+          - '[aria-current="true"]'
+        expect:
+          - Each press opens the chat one row below or above, across the pinned boundary, and the caret stays in the composer.
+          - At the last chat further presses do nothing.
+      - name: step through the inbox from the issue
+        path: /<workspace-slug>/issues/<issue-id>
+        widths: [1440]
+        setup: an issue opened from the Work panel's Inbox section with at least three notifications listed
+        steps:
+          - Click into the comment box of the open issue.
+          - Press Cmd+Shift+] twice, then Cmd+Shift+[ once.
+        selectors:
+          - '[data-inbox-row] [data-active="true"]'
+        expect:
+          - Each press opens the issue of the notification one row below or above, the Inbox row lights follow, and no notification is archived.
+      - name: listed in Settings
+        path: /<workspace-slug>/settings
+        widths: [1440]
+        steps:
+          - Open Settings, then Shortcuts.
+        selectors: []
+        expect:
+          - General lists "Previous chat or notification" (⇧⌘[) and "Next chat or notification" (⇧⌘]), recordable and resettable like the others.
+    drop_when: upstream ships keys that open the chat or notification above / below the open one from anywhere on the page.
 
   - id: desktop-fork-build
     summary: Desktop app built from the fork (X.Y.Z-hoon.N, fork CLI bundled) that never auto-updates to the official release or runs its daemon from an official CLI.
