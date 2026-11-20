@@ -1,3 +1,4 @@
+// Modified by honki12345, 2026: hand Cmd/Ctrl+R back to the focused window as rename-title (CALA-327).
 import {
   app,
   autoUpdater as nativeAutoUpdater,
@@ -83,6 +84,7 @@ import {
   MAIN_RENDERER_CHANNEL_STATE_CHANNEL,
   MainRendererMessageQueue,
   NEW_WINDOW_SHORTCUT_CHANNEL,
+  RENAME_TITLE_SHORTCUT_CHANNEL,
   parseMainRendererChannelState,
   TAB_SELECTION_SHORTCUT_CHANNEL,
   WORKSPACE_OPEN_PATH_CHANNEL,
@@ -405,6 +407,11 @@ function installWindowShortcutHandler(window: BrowserWindow): void {
     if (result === "close-tab") {
       event.preventDefault();
       window.webContents.send("tab:close-active");
+    } else if (result === "rename-title") {
+      event.preventDefault();
+      // The chord renames whatever this window shows, so it goes straight
+      // back to this window rather than through the main-window queue.
+      window.webContents.send(RENAME_TITLE_SHORTCUT_CHANNEL);
     } else if (result === "open-settings") {
       event.preventDefault();
       // Settings is a tab, so it can only live in a tabbed main window.
