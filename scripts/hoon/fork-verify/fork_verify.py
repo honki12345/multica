@@ -371,9 +371,11 @@ class Stack:
                 self.tunnel.kill()
         # Stop a remote `up` still building (local ssh may have died first), then
         # remove by name; stack-remote.sh may already be gone with its directory.
-        p = self.ssh("for pid in $(pgrep -f '^bash [^ ]*stack-remote.sh up [^ ]*/{d} {n} '); do "
-                     "pkill -TERM -P $pid; kill $pid; done; "
-                     "for i in $(seq 60); do pgrep -f 'docker build .*fv-{n}-' >/dev/null || break; sleep 2; done; "
+        # Patterns are anchored (^bash, ^docker) so they never match this ssh
+        # shell's own command line, and carry the name so another run survives.
+        p = self.ssh("for pid in $(pgrep -f '^bash [^ ]*stack-remote.sh up [^ ]*/{d} {n} '); do kill $pid; done; "
+                     "pkill -f '^docker build .* -t fv-{n}-'; "
+                     "for i in $(seq 60); do pgrep -f '^docker build .* -t fv-{n}-' >/dev/null || break; sleep 2; done; "
                      "docker rm -f -v fv-{n}-web fv-{n}-backend fv-{n}-pg; docker volume rm -f fv-{n}-pgdata fv-{n}-uploads; "
                      "docker network rm fv-{n}-net; docker image rm -f fv-{n}-backend:candidate fv-{n}-web:candidate; "
                      "rm -rf ~/{d}; true".format(n=self.name, d=self.rdir), timeout=300)
