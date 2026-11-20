@@ -385,7 +385,19 @@ if variant == "license-nonzero":
 table = [f"| `{c}` | {rc} | done | 1s |" for c, rc in rows.items()]
 mark = f"<!-- fork-pr-check pr={pr} head={head} verdict={verdict} -->"
 head_line = "- head: `%s`" % (("b" * 40) if variant == "head-line-differs" else head)
-body = ["## 로컬 검사 (fork-pr-check)", "", f"- PR: #{pr}", head_line, "", "| 명령 | 종료 코드 | 결과 | 시간 |", "|---|---|---|---|", *table, "", "판정: 통과" if verdict == "pass" else "판정: 실패 1건", "", mark]
+body = ["## 로컬 검사 (fork-pr-check)", "", f"- PR: #{pr} (https://github.com/o/r/pull/{pr}), 브랜치 `b`", head_line,
+        "- base: `main` @ `" + "d" * 40 + "`", "- 기기: m, arm64, macOS 27", "- 시각(UTC): 2026-01-01T00:00:00Z", "",
+        "| 명령 | 종료 코드 | 결과 | 시간 |", "|---|---|---|---|", *table, "",
+        "판정: 통과 (실패 0)" if verdict == "pass" else "판정: 실패 1건. `bash scripts/hoon/other.test.sh`", "",
+        "전체 시험은 출시 CI에서 돈다(포크 규칙: 전체 vitest run 금지)", "", mark]
+if variant == "html-pre":
+    i = body.index("| 명령 | 종료 코드 | 결과 | 시간 |")
+    body = body[:i] + ["<pre>"] + body[i:i + 2 + len(table)] + ["</pre>"] + body[i + 2 + len(table):]
+if variant == "html-comment":
+    i = body.index("| 명령 | 종료 코드 | 결과 | 시간 |")
+    body = body[:i] + ["<!-- example"] + body[i:i + 2 + len(table)] + ["-->"] + body[i + 2 + len(table):]
+if variant == "verdict-line-edited":
+    body[body.index("판정: 통과 (실패 0)")] = "판정: 통과"
 if variant == "no-header":
     body[0] = "LGTM"
 if variant == "no-head-line":
@@ -423,7 +435,7 @@ if variant == "indent-marker":
 if variant == "tab-head":
     body[3] = "\t" + body[3]
 if variant == "fenced-noise":
-    body = body[:-3] + ["```", "- head: `" + "c" * 40 + "`", "| `bash x.sh` | 9 | boom | 1s |", "```", ""] + body[-3:]
+    body = body[:-1] + ["```", "- head: `" + "c" * 40 + "`", "| `bash x.sh` | 9 | boom | 1s |", "```", ""] + body[-1:]
 if variant == "crlf":
     body = [l + "\r" for l in body]
 print(json.dumps({"id": int(cid), "created_at": at, "author_association": assoc, "body": "\n".join(body)}))
@@ -460,19 +472,18 @@ printf '[%s]' "$(comment 1 2026-01-01T00:00:00Z OWNER 30 "$HEAD" fail)" > "$T/gh
 printf '[%s]' "$(comment 2 2026-01-02T00:00:00Z OWNER 30 "$HEAD" pass)" >> "$T/gh/comments-30.json"; gate
 want "gate: --paginate output (concatenated arrays) is read" 0 "gate=ok head=$HEAD"
 printf '[%s]' "$(comment 1 2026-01-01T00:00:00Z OWNER 30 "$HEAD" pass marker-and-quote)" > "$T/gh/comments-30.json"; gate
-want "gate: a quoted fail marker above the real last-line marker does not count" 0 "gate=ok head=$HEAD"
+want "gate: an extra quoted line breaks the generated layout and is rejected" 1 "gate=blocked reason=no-comment"
 
 # Regression: a marker that only looks like the generated one must not open the gate.
 for v in fenced unclosed-fence quoted trailing-text marker-mid no-header no-head-line head-line-differs \
   fence4-then-fence3 tilde-then-backtick backtick-then-tilde fence-indent3 fence-close-with-text \
-  indented-block indent-head indent-rows indent-marker tab-head; do
+  indented-block indent-head indent-rows indent-marker tab-head \
+         html-pre html-comment fenced-noise verdict-line-edited; do
   printf '[%s]' "$(comment 1 2026-01-01T00:00:00Z OWNER 30 "$HEAD" pass "$v")" > "$T/gh/comments-30.json"; gate
   want "gate: forged pass ($v) cannot open the gate" 1 "gate=blocked reason=no-comment"
 done
 printf '[%s]' "$(comment 1 2026-01-01T00:00:00Z OWNER 30 "$HEAD" pass crlf)" > "$T/gh/comments-30.json"; gate
 want "gate: a generated comment with CRLF line endings is accepted" 0 "gate=ok head=$HEAD"
-printf '[%s]' "$(comment 1 2026-01-01T00:00:00Z OWNER 30 "$HEAD" pass fenced-noise)" > "$T/gh/comments-30.json"; gate
-want "gate: a fenced fake head line and failing row are ignored, the real ones still count" 0 "gate=ok head=$HEAD"
 for v in row-nonzero no-license-row license-nonzero; do
   printf '[%s]' "$(comment 1 2026-01-01T00:00:00Z OWNER 30 "$HEAD" pass "$v")" > "$T/gh/comments-30.json"; gate
   want "gate: hand-edited verdict=pass ($v) cannot pass" 1 "gate=blocked reason=no-comment"

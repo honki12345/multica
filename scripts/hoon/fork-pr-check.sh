@@ -133,60 +133,53 @@ HEADER = "## 로컬 검사 (fork-pr-check)"
 MARK = re.compile(r"^<!-- fork-pr-check pr=(\d+) head=([0-9a-f]{40}) verdict=(pass|fail) -->$")
 HEAD = re.compile(r"^- head: `([0-9a-f]{40})`$")
 ROW = re.compile(r"^\| `(.+?)` \| (\d+) \| ")
-FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+TABLE_HEAD = "| 명령 | 종료 코드 | 결과 | 시간 |"
+TABLE_SEP = "|---|---|---|---|"
+ROW_FULL = re.compile(r"^\| `(.+?)` \| (\d+) \| .* \| \d+s \|$")
+TRAILER = {"전체 시험은 출시 CI에서 돈다(포크 규칙: 전체 vitest run 금지)",
+           "Go 시험은 DATABASE_URL 없이 돌려서 DB가 필요한 시험은 skip된다(이 Mac에 DB를 띄우지 않음)."}
 REQUIRED = ("bash scripts/hoon/license-check.sh", "bash scripts/hoon/features-check.sh")
 
 
-def fence_after(line, fence):
-    """Fence state after `line`: None (outside) or (char, length) of the open fence.
-
-    CommonMark: open on 3+ backticks or tildes with up to 3 spaces of indent
-    (a backtick fence's info string cannot hold a backtick); close only on the
-    same char, at least as long, with nothing else on the line.
-    """
-    if fence is None:
-        m = FENCE_OPEN.match(line)
-        if m and not (m.group(1)[0] == "`" and "`" in m.group(2)):
-            return (m.group(1)[0], len(m.group(1)))
-        return None
-    ch, n = fence
-    m = re.match(r"^ {0,3}(%s{%d,})[ \t]*$" % (re.escape(ch), n), line)
-    return None if m else fence
-
-
 def parse(body):
-    """(head, verdict) of a comment that fork-pr-check generated, else None.
+    """(head, verdict) of a comment laid out exactly as the generator writes it, else None.
 
-    The generator writes the header, head line, table rows and marker at column
-    0, so a line counts only when it starts there and sits outside every code
-    fence. Quoted, fenced or indented copies cannot stand in for the real ones.
+    The layout is fixed line by line (header, PR/head/base/machine/time lines,
+    the table, the verdict line, the fixed trailer, the marker last). Any other
+    line (HTML, quote, code block, prose) breaks the layout, so evidence cannot
+    be hidden inside Markdown that renders differently.
     """
     lines = [l.rstrip("\r") for l in body.split("\n")]
-    if not lines or lines[0] != HEADER:
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if len(lines) < 14 or lines[0] != HEADER or lines[1] != "" or lines[7] != "":
         return None
-    last = max((k for k, l in enumerate(lines) if l.strip()), default=-1)
-    m = MARK.match(lines[last]) if last >= 0 else None
-    if not m or m.group(1) != n:
+    if not lines[2].startswith("- PR: #%s (" % n):
         return None
-    heads, rows, fence = [], [], None
-    for l in lines:
-        if fence is not None:
-            fence = fence_after(l, fence)
-            continue
-        fence = fence_after(l, None)
-        if fence is not None:
-            continue
-        h = HEAD.match(l)
-        if h:
-            heads.append(h.group(1))
-        r = ROW.match(l)
-        if r:
-            rows.append((r.group(1).replace("\\|", "|"), int(r.group(2))))
-    if fence is not None or m.group(2) not in heads:
+    h = HEAD.match(lines[3])
+    if not h or not lines[4].startswith("- base: `") or not lines[5].startswith("- 기기: ") \
+            or not lines[6].startswith("- 시각(UTC): "):
+        return None
+    if lines[8] != TABLE_HEAD or lines[9] != TABLE_SEP:
+        return None
+    k, rows = 10, []
+    while k < len(lines) and lines[k] != "":
+        r = ROW_FULL.match(lines[k])
+        if not r:
+            return None
+        rows.append((r.group(1).replace("\\|", "|"), int(r.group(2))))
+        k += 1
+    if not rows or k + 1 >= len(lines) or not lines[k + 1].startswith("판정: "):
+        return None
+    m = MARK.match(lines[-1])
+    if not m or m.group(1) != n or m.group(2) != h.group(1):
+        return None
+    if any(l and l not in TRAILER for l in lines[k + 2:-1]):
         return None
     if m.group(3) == "pass":
         ok = {c for c, rc in rows if rc == 0}
-        if any(rc != 0 for _, rc in rows) or not all(r in ok for r in REQUIRED):
+        if lines[k + 1] != "판정: 통과 (실패 0)" or any(rc != 0 for _, rc in rows) \
+                or not all(r in ok for r in REQUIRED):
             return None
     return m.group(2), m.group(3)
 

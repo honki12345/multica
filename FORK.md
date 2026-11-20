@@ -109,12 +109,13 @@ The comment carries the full 40-character head SHA, the base, the machine,
 each command with its exit code, result line and time, the verdict, and a
 marker line `<!-- fork-pr-check pr=<n> head=<sha> verdict=pass|fail -->`.
 `gate` reads the newest valid comment from an owner/member/collaborator. Valid
-means it is the comment `run` generates: it starts with the
-`## 로컬 검사 (fork-pr-check)` header, has a ``- head: `<sha>` `` line with the
-marker's sha, ends with the marker as its last non-empty line outside any code
-fence, and, for `verdict=pass`, has exit-code-0 rows for `license-check.sh` and
-`features-check.sh` and no row with a non-zero exit code. A marker pasted into
-a code block or a quote, or a hand-edited verdict, does not open the gate; an
+means laid out line by line exactly as `run` writes it: the header, the PR,
+head, base, machine and time lines, the table, the verdict line, the fixed
+trailer, and the marker last, with the marker's sha equal to the head line.
+For `verdict=pass` the verdict line must read `판정: 통과 (실패 0)`, every row
+must have exit code 0, and the `license-check.sh` and `features-check.sh` rows
+must be there. Any other line (a code block, quote, HTML block or prose) voids
+the comment, so a pasted or hand-edited copy does not open the gate; an
 invalid newer comment is ignored.
 
 Merge only when `gate` says `ok`: zero failures for the current head. A failure
