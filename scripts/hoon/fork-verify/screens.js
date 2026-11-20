@@ -39,10 +39,16 @@ async page => {
         for (const [k, v] of Object.entries(extra)) localStorage.setItem(k, v);
       } catch (e) {}
     }, [side.token, side.localStorage || {}]);
-    await ctx.routeWebSocket(/\/(ws|api\/daemon\/ws)(\?|$)/, () => {});
+    await ctx.routeWebSocket(side.name === 'prod' ? /.*/ : /\/(ws|api\/daemon\/ws)(\?|$)/, () => {});
     await ctx.route('**/*', async (route) => {
       const req = route.request();
       const u = new URL(req.url());
+      // Production is read only: any request that could change state, to any
+      // origin or path (server actions, /v1, a separate API host), is aborted.
+      if (side.name === 'prod' && !['GET', 'HEAD', 'OPTIONS'].includes(req.method())) {
+        side.stats.blocked.push(`${req.method()} ${u.pathname}`);
+        return route.abort();
+      }
       if (u.origin !== side.origin) return route.continue();
       if (!(u.pathname.startsWith('/api/') || u.pathname.startsWith('/auth/'))) return route.continue();
       if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method())) {
@@ -142,6 +148,7 @@ async page => {
         await p.goto(side.origin + shot.path, { waitUntil: 'load', timeout: 60000 });
         await settle(p);
         res.url = new URL(p.url()).pathname;
+        res.page = (await p.$$('[data-mc="page"]')).length > 0;
         res.selectors = await selectorCounts(p, shot.selectors || []);
         res.region = await rectOf(p, C.regionSelector);
         await p.screenshot({ path: `${C.outDir}/${shot.id}.${side.name}.png` });

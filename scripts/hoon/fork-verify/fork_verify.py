@@ -44,6 +44,9 @@ from PIL import Image, ImageChops, ImageDraw
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
 
+# DB-backed Go tests skip or fail against this instead of reaching a local default Postgres.
+NO_DB_URL = "postgres://fork-verify-no-db.invalid:1/none?sslmode=disable&connect_timeout=2"
+
 PASS, FAIL, UNVERIFIED, NA = "pass", "fail", "unverified", "n/a"
 VERDICT_KO = {PASS: "통과", FAIL: "실패", UNVERIFIED: "확인 불가", NA: "해당 없음"}
 
@@ -150,6 +153,9 @@ def parse_vitest_json(data, tree, rel_file, case):
     if not files:
         return FAIL, "결과 없음(파일이 실행되지 않음)"
     results = [a for f in files for a in f.get("assertionResults", [])]
+    broken = [f for f in files if f.get("status") not in (None, "passed") and not f.get("assertionResults")]
+    if broken:
+        return FAIL, "파일 로드 실패: %s" % (broken[0].get("message") or "")[:200]
     if case:
         hits = [a for a in results if a.get("title") == case or a.get("fullName") == case or a.get("fullName", "").endswith(" " + case)]
         if not hits:
@@ -159,7 +165,10 @@ def parse_vitest_json(data, tree, rel_file, case):
     bad = [a for a in results if a.get("status") not in ("passed", "skipped", "pending", "todo")]
     if bad:
         return FAIL, "%d/%d 실패: %s" % (len(bad), len(results), bad[0].get("fullName", ""))
-    return PASS, "%d개 통과" % len(results)
+    passed = sum(1 for a in results if a.get("status") == "passed")
+    if not passed:
+        return FAIL, "통과한 사례 없음(%d개 모두 건너뜀)" % len(results)
+    return PASS, "%d개 통과" % passed
 
 
 def run_go_tests(tree, features, env, logdir, real_agent, hermes_env):
@@ -254,6 +263,7 @@ class Stack:
         self.pat = None
         self.user_id = self.ws_id = None
         self.up_ok = False
+        self.remote_started = False
 
     @property
     def api(self):
@@ -289,6 +299,7 @@ class Stack:
         t0 = time.time()
         tgz = Path(tempfile.mkdtemp(prefix="fork-verify-src-")) / "src.tgz"
         git("archive", "--format=tar.gz", "-o", str(tgz), self.sha)
+        self.remote_started = True
         self.ssh("mkdir -p %s && chmod 700 %s" % (self.rdir, self.rdir), check=True)
         for local, remote in ((HERE / "stack-remote.sh", "stack-remote.sh"), (tgz, "src.tgz"), (Path(backup), "backup.dump")):
             run(["scp", "-q", "-o", "BatchMode=yes", str(local), "%s:%s/%s" % (self.host, self.rdir, remote)], check=True)
@@ -398,11 +409,9 @@ RESIDENT_ISSUE = """fork-verify resident scenario. Run each command below from y
 
 1. `multica issue get {issue} --output json | grep -E '"(identifier|status)"'`
 2. `multica daemon status --output json | grep -E '"(status|cli_version)"'`
-3. `multica daemon status --output json | grep -E '"(status|cli_version)"'`
-4. `multica daemon status --output json | grep -E '"(status|cli_version)"'`
-5. `multica repo checkout {repo}`
-6. `multica environment list`
-7. `ls -a ..`
+3. `multica repo checkout {repo}`
+4. `multica environment list`
+5. `ls -a ..`
 
 Then write ./reply.md with one line per command saying whether it succeeded, post it with `multica issue comment add {issue} --content-file ./reply.md`, and stop. Do not change the issue status and do not run anything else.
 """
@@ -589,7 +598,7 @@ def judge_resident(outputs, version, ident, root_after, comments, agent_id):
                     {None: "확인 못 함", True: "있음", False: "없음"}[overlay_after])))
     checkout = "Checked out " in joined and "agent/" in joined
     port_err = "MULTICA_DAEMON_PORT" in joined and ("not set" in joined or "requires" in joined)
-    env_ok = any(("No environments" in o or "NAME" in o) for o in outputs) and not port_err
+    env_ok = any(("No environments" in o or re.search(r"^\s*NAME\s", o, re.M)) for o in outputs) and not port_err
     out.append(("resident-daemon-local-commands", "repo checkout from a resident tool shell", PASS if (checkout and env_ok) else FAIL,
                 "repo checkout=%s, environment list=%s%s" % ("성공" if checkout else "실패", "성공" if env_ok else "실패",
                                                              ", MULTICA_DAEMON_PORT 오류 있음" if port_err else "")))
@@ -601,7 +610,7 @@ def judge_resident(outputs, version, ident, root_after, comments, agent_id):
             statuses.append((st[-1] if st else "?", ver[-1]))
     pairs = statuses
     running = [p for p in pairs if p[0] == "running" and p[1] == version]
-    ok = len(pairs) >= 3 and len(running) == len(pairs)
+    ok = bool(pairs) and len(running) == len(pairs)
     out.append(("resident-daemon-status", "daemon status from a resident tool shell", PASS if ok else FAIL,
                 "%d번 중 running+%s %d번 (%s)" % (len(pairs), version, len(running), ", ".join("%s/%s" % p for p in pairs) or "출력 없음")))
     return out
@@ -669,7 +678,9 @@ def run_scenarios(res, stack, features, version, logdir):
         (logdir / ("run-%s-messages.json" % key)).write_text(json.dumps(msgs, indent=1, ensure_ascii=False))
         comments = res.comments(issue["id"])
         if key == "resident":
-            root = res.home / "workspaces" / Path(rs[-1].get("relative_work_dir", "x/workdir")).parent
+            rel = rs[-1].get("relative_work_dir")
+            root = res.home / "workspaces" / Path(rel).parent if rel else None
+            root = root if root and root.is_dir() else None
             for fid, name, v, d in judge_resident(tool_outputs(msgs), version, issue["identifier"], root, comments, res.agent_id):
                 if fid in need_resident:
                     checks.append(Check(fid, "scenario", name, v, d, [str(logdir / ("run-%s-messages.json" % key))]))
@@ -869,6 +880,8 @@ def judge_chat_bar(shot, res, fixture_chips):
     cp, pp = c.get("probe") or {}, p.get("probe") or {}
     if c.get("error"):
         return FAIL, "후보 화면 오류: %s" % c["error"]
+    if c.get("url") != shot["path"] or not c.get("page"):
+        return FAIL, "후보가 시나리오 화면을 그리지 못함: 주소 %s, 본문 %s" % (c.get("url"), "있음" if c.get("page") else "없음")
     if shot["scenarioIndex"] == 1 or (shot["scenarioIndex"] == -1 and shot["width"] < 768):
         ok = cp.get("bar", 0) == 0
         return (PASS if ok else FAIL), "768px 미만 채팅 바 %s (운영 %s)" % ("없음" if ok else "있음", "없음" if not pp.get("bar") else "있음")
@@ -1081,8 +1094,14 @@ def resolve_version(ref, explicit, short):
     return desc if re.match(r"^v?\d+\.\d+\.\d+-", desc) else "0.0.0-0-g%s" % short
 
 
+def _interrupt(signum, _frame):
+    raise KeyboardInterrupt("signal %d" % signum)
+
+
 def main(argv):
     args = parse_args(argv)
+    signal.signal(signal.SIGTERM, _interrupt)
+    signal.signal(signal.SIGHUP, _interrupt)
     skip = set(filter(None, args.skip.split(",")))
     started = datetime.datetime.now().astimezone()
     try:
@@ -1145,15 +1164,17 @@ def main(argv):
         if "test" not in skip:
             t = time.time()
             env = clean_env()
-            if stack.up_ok:
-                env["DATABASE_URL"] = stack.gotest_db_url()
+            # Never let DB-backed tests fall back to localhost:5432 (another Postgres may live there).
+            env["DATABASE_URL"] = (stack.up_ok and stack.gotest_db_url()) or NO_DB_URL
             agent_env = {}
             res_for_env = Resident(args, stack, version, logdir, cli_bin)
-            if args.real_agent:
-                res_for_env.prepare_hermes_home()
-                agent_env = res_for_env.base_env()
-            checks += run_go_tests(tree, present, env, logdir, args.real_agent, agent_env)
-            res_for_env.cleanup()
+            try:
+                if args.real_agent:
+                    res_for_env.prepare_hermes_home()
+                    agent_env = res_for_env.base_env()
+                checks += run_go_tests(tree, present, env, logdir, args.real_agent, agent_env)
+            finally:
+                res_for_env.cleanup()
             checks += run_vitest(tree, present, clean_env(), logdir)
             timings["tests"] = time.time() - t
 
@@ -1182,18 +1203,23 @@ def main(argv):
             safety_lines.append("가림: %s 영역 흐림 처리." % args.mask.replace(";", ", "))
             safety_lines.append("후보 화면은 운영에서 받은 GET 응답 %d건을 재생. 운영에 없던 요청은 후보 서버 시험 작업 공간으로 보냄: %s"
                                 % (summary.get("replayed", 0), ", ".join("`%s`" % x for x in summary.get("cand_passthrough", [])[:8]) or "없음"))
-    except Exception as e:  # report what ran so far, then clean up
-        checks.append(Check("(run)", "scenario", "실행", FAIL, "중단: %s" % describe_error(e)))
+    except (Exception, KeyboardInterrupt) as e:  # report what ran so far, then clean up
+        checks.append(Check("(run)", "scenario", "실행", FAIL, "중단: %s" % (describe_error(e) or type(e).__name__)))
         log("aborted: %s" % describe_error(e))
     finally:
         if res:
             res.stop()
         if not args.keep:
-            if res:
-                res.cleanup()
-            if stack.up_ok or stack.tunnel or need_stack_started(stack):
-                stack.down()
-            shutil.rmtree(tree, ignore_errors=True)
+            for step in ((res.cleanup if res else None), (stack.down if stack.remote_started else None),
+                         lambda: shutil.rmtree(tree, ignore_errors=True)):
+                if step:
+                    try:
+                        step()
+                    except Exception as e:  # keep cleaning up; report it
+                        checks.append(Check("(run)", "scenario", "정리", FAIL, "정리 실패: %s" % describe_error(e)))
+            left = stack.info.get("left_after_down", "0 0")
+            if stack.remote_started and left != "0 0":
+                checks.append(Check("(run)", "scenario", "정리", FAIL, "후보 스택 정리 뒤 컨테이너/볼륨이 남음: %s" % left))
 
     if stack.info:
         i = stack.info
@@ -1222,10 +1248,6 @@ def main(argv):
     print("fork-verify: %s exit=%d pass=%d fail=%d unverified=%d n/a=%d report=%s" % (
         args.ref, ctx["exit"], *[sum(1 for c in checks if c.verdict == v) for v in (PASS, FAIL, UNVERIFIED, NA)], out_dir / "report.md"))
     return ctx["exit"]
-
-
-def need_stack_started(stack):
-    return bool(stack.info)
 
 
 def clean_env():

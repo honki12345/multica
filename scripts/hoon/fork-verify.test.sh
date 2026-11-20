@@ -65,6 +65,8 @@ check("vitest: named case passes", fv.parse_vitest_json(data, None, "packages/vi
 check("vitest: named failing case fails", fv.parse_vitest_json(data, None, "packages/views/chat/components/chat-bar.test.tsx", "scrolls")[0] == fv.FAIL)
 check("vitest: missing case fails", fv.parse_vitest_json(data, None, "packages/views/chat/components/chat-bar.test.tsx", "nope")[0] == fv.FAIL)
 check("vitest: whole file with a failure fails", fv.parse_vitest_json(data, None, "packages/views/chat/components/chat-bar.test.tsx", None)[0] == fv.FAIL)
+check("vitest: file that failed to load fails", fv.parse_vitest_json({"testResults": [{"name": "/x/a.test.ts", "status": "failed", "message": "SyntaxError", "assertionResults": []}]}, None, "a.test.ts", None)[0] == fv.FAIL)
+check("vitest: all skipped fails", fv.parse_vitest_json({"testResults": [{"name": "/x/a.test.ts", "status": "passed", "assertionResults": [{"title": "t", "status": "skipped"}]}]}, None, "a.test.ts", None)[0] == fv.FAIL)
 check("vitest: file not run fails", fv.parse_vitest_json(data, None, "packages/views/layout/bottom-bar.test.tsx", None)[0] == fv.FAIL)
 
 # --- resident run judging
@@ -82,10 +84,16 @@ stopped = list(outputs)
 stopped[2] = status.replace("running", "stopped")
 got = {fid: v for fid, _, v, _ in fv.judge_resident(stopped, "0.11.0-hoon.1", "FV-1", root, comments, "agent-1")}
 check("resident: one stopped daemon status fails", got["resident-daemon-status"] == fv.FAIL)
-missing = list(outputs)
-del missing[3]
+missing = [o for o in outputs if "cli_version" not in o]
 got = {fid: v for fid, _, v, _ in fv.judge_resident(missing, "0.11.0-hoon.1", "FV-1", root, comments, "agent-1")}
-check("resident: fewer than three daemon status outputs fails", got["resident-daemon-status"] == fv.FAIL)
+check("resident: no daemon status output fails", got["resident-daemon-status"] == fv.FAIL)
+got = {fid: v for fid, _, v, _ in fv.judge_resident(outputs[:2] + outputs[4:], "0.11.0-hoon.1", "FV-1", root, comments, "agent-1")}
+check("resident: one running daemon status passes", got["resident-daemon-status"] == fv.PASS)
+usage = [o if "No environments" not in o else "Usage: multica environment [command]\nNAMESPACE flags" for o in outputs]
+got = {fid: v for fid, _, v, _ in fv.judge_resident(usage, "0.11.0-hoon.1", "FV-1", root, comments, "agent-1")}
+check("resident: environment usage text is not a successful list", got["resident-daemon-local-commands"] == fv.FAIL)
+got = {fid: v for fid, _, v, _ in fv.judge_resident(outputs, "0.11.0-hoon.1", "FV-1", None, comments, "agent-1")}
+check("resident: unknown task root (no work dir) fails, not 'removed'", got["resident-hermes-gateway"] == fv.FAIL and got["resident-no-hermes-home-overlay"] == fv.FAIL)
 got = {fid: v for fid, _, v, _ in fv.judge_resident(outputs, "0.11.0-hoon.2", "FV-1", root, comments, "agent-1")}
 check("resident: daemon of another version fails", got["resident-daemon-status"] == fv.FAIL)
 overlay = list(outputs)
@@ -119,8 +127,8 @@ extra = [s for s in fv.plan_shots(features, "acme", si) if s["scenarioIndex"] ==
 check("screen input: B routes for web-ui features only, deduped", [s["path"] for s in extra] == ["/acme/chat"])
 
 # --- chat bar judging
-def res(cand, prod=None):
-    return {"cand": {"probe": cand, "error": None}, "prod": {"probe": prod or cand, "error": None}}
+def res(cand, prod=None, url="/acme/issues", page=True):
+    return {"cand": {"probe": cand, "error": None, "url": url, "page": page}, "prod": {"probe": prod or cand, "error": None}}
 full = {"bar": 1, "chips": 12, "overflowButtons": 0, "strip": True, "stripScrollable": True, "wheelScrolled": True,
         "teamStatusKeptWidth": True, "windowOpen": True, "clickedChipInView": True}
 s1 = shots[0]
@@ -131,6 +139,8 @@ check("chat bar: +N menu fails even when every chip shows", v == fv.FAIL and d.s
 check("chat bar: missing chips fail", fv.judge_chat_bar(s1, res(dict(full, chips=4)), 12)[0] == fv.FAIL)
 check("chat bar: wheel not scrolling fails", fv.judge_chat_bar(s1, res(dict(full, wheelScrolled=False)), 12)[0] == fv.FAIL)
 check("chat bar: narrow window must hide the bar", fv.judge_chat_bar(shots[2], res({"bar": 1}), 12)[0] == fv.FAIL)
+check("chat bar: candidate redirected to /login fails", fv.judge_chat_bar(shots[2], res({"bar": 0}, url="/login", page=False), 12)[0] == fv.FAIL)
+check("chat bar: candidate without a page body fails", fv.judge_chat_bar(s1, res(full, page=False), 12)[0] == fv.FAIL)
 check("chat bar: narrow window without bar passes", fv.judge_chat_bar(shots[2], res({"bar": 0}), 12)[0] == fv.PASS)
 
 # --- pixel diff and triptych
