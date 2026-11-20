@@ -371,6 +371,16 @@ def http_status(url):
         return 0
 
 
+def describe_error(e):
+    if isinstance(e, urllib.error.HTTPError):
+        try:
+            body = e.read().decode(errors="replace")[:300]
+        except OSError:
+            body = ""
+        return "HTTP %d %s %s" % (e.code, e.url, body)
+    return str(e)
+
+
 def api_json(base, path, token, ws_id, method="GET", body=None):
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(base + path, data=data, method=method, headers={
@@ -1063,7 +1073,12 @@ def resolve_version(ref, explicit, short):
         return m.group(1)
     tag = git("describe", "--tags", "--exact-match", ref, check=False).stdout.strip()
     m = re.match(r"^v?(\d+\.\d+\.\d+-hoon\.\d+)$", tag)
-    return m.group(1) if m else "0.0.0-fv.%s" % short
+    if m:
+        return m.group(1)
+    # Untagged: the `git describe` form a `make build` daemon reports, which the
+    # server's CLI version gates accept as a source build (agent.devDescribeRe).
+    desc = git("describe", "--tags", "--always", ref, check=False).stdout.strip()
+    return desc if re.match(r"^v?\d+\.\d+\.\d+-", desc) else "0.0.0-0-g%s" % short
 
 
 def main(argv):
@@ -1146,7 +1161,12 @@ def main(argv):
             t = time.time()
             res = Resident(args, stack, version, logdir, cli_bin)
             scen = [f for f in present if f.get("kind") in ("server", "cli", "daemon")]
-            checks += run_scenarios(res, stack, scen, version, logdir)
+            try:
+                checks += run_scenarios(res, stack, scen, version, logdir)
+            except Exception as e:  # one broken layer must not hide the screens
+                checks.append(Check("(run)", "scenario", "시나리오 단계", FAIL, "중단: %s" % describe_error(e)))
+                log("scenarios aborted: %s" % describe_error(e))
+            res.stop()
             timings["scenarios"] = time.time() - t
             stack.info["stats_after_scenarios"] = stack.remote_stats()
 
@@ -1163,8 +1183,8 @@ def main(argv):
             safety_lines.append("후보 화면은 운영에서 받은 GET 응답 %d건을 재생. 운영에 없던 요청은 후보 서버 시험 작업 공간으로 보냄: %s"
                                 % (summary.get("replayed", 0), ", ".join("`%s`" % x for x in summary.get("cand_passthrough", [])[:8]) or "없음"))
     except Exception as e:  # report what ran so far, then clean up
-        checks.append(Check("(run)", "scenario", "실행", FAIL, "중단: %s" % e))
-        log("aborted: %s" % e)
+        checks.append(Check("(run)", "scenario", "실행", FAIL, "중단: %s" % describe_error(e)))
+        log("aborted: %s" % describe_error(e))
     finally:
         if res:
             res.stop()

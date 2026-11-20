@@ -163,7 +163,10 @@ check("in candidate: older candidate lacks it", not fv.feature_in_candidate({"or
 check("in candidate: no commits listed counts as present", fv.feature_in_candidate({"origin": {}}, old))
 
 check("version: hoon tag", fv.resolve_version("v0.11.0-hoon.1", "", "abc") == "0.11.0-hoon.1")
-check("version: branch falls back to a non-release string", fv.resolve_version("hoon/x", "", "abc123456") == "0.0.0-fv.abc123456")
+check("version: untagged branch uses the describe form the CLI gates accept", fv.resolve_version(feat, "", feat[:9]) == "0.0.0-0-g%s" % feat[:9])
+subprocess.run(["git", "-C", str(repo), "tag", "v0.11.0", old], check=True)
+v = fv.resolve_version(feat, "", feat[:9])
+check("version: commit past a tag reports git describe (%s)" % v, v.startswith("v0.11.0-1-g"))
 sys.exit(1 if failed else 0)
 PY
 [ "$fail" = 0 ] && echo "fork-verify.test: all passed" || { echo "fork-verify.test: FAILED"; exit 1; }
