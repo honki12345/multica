@@ -27,7 +27,7 @@
 #           when a verdict is empty or not allowed, or an input is unusable.
 #
 # Verdicts: candidate C 버림|줄임|유지; candidate E 흡수|보류|무관;
-#           upstream_priority 상류로 대체|상류 위에 남은 것만|우리 것 유지.
+#           upstream_priority 상류로 대체|상류 위에 남은 것만|우리 것 유지|상류에 없음.
 # No LLM, no network, same inputs give the same bytes. Exit 0 ok, 2 bad input.
 set -uo pipefail
 
@@ -62,7 +62,7 @@ import yaml
 
 C_VERDICTS = ("버림", "줄임", "유지")
 E_VERDICTS = ("흡수", "보류", "무관")
-P_VERDICTS = ("상류로 대체", "상류 위에 남은 것만", "우리 것 유지")
+P_VERDICTS = ("상류로 대체", "상류 위에 남은 것만", "우리 것 유지", "상류에 없음")
 KEEP = "우리 것 유지"
 CLOSED_CARD = ("done", "cancelled")
 MAX_ATTACH = 8
@@ -200,7 +200,8 @@ def cmd_template(a):
     w.append("# `absorb-gate.sh comment` refuses an empty or unknown value.")
     w.append("# candidates C: 버림 (drop ours, use upstream) | 줄임 (keep only what upstream lacks) | 유지 (keep ours); reason required.")
     w.append("# candidates E: 흡수 | 보류 | 무관.")
-    w.append("# upstream_priority: 상류로 대체 | 상류 위에 남은 것만 | 우리 것 유지; evidence required (PR, file, test result).")
+    w.append("# upstream_priority: 상류로 대체 | 상류 위에 남은 것만 | 우리 것 유지 | 상류에 없음; evidence required (PR, file, test result).")
+    w.append("# 상류에 없음 = upstream ships nothing equivalent in this range; 우리 것 유지 = upstream overlaps but ours stays, and asks the user.")
     w.append("# `confirmed: true` on a 우리 것 유지 row records that the user already approved it; the comment then asks nothing.")
     w.append("target: %s" % j(tri["to"]))
     w.append("from: %s" % j(tri["from"]))
@@ -251,7 +252,7 @@ def cmd_template(a):
                 w.append("      - %s" % j(u))
         else:
             w.append("    upstream: []")
-        w.append('    verdict: ""  # 상류로 대체|상류 위에 남은 것만|우리 것 유지')
+        w.append('    verdict: ""  # 상류로 대체|상류 위에 남은 것만|우리 것 유지|상류에 없음')
         w.append('    evidence: ""')
         w.append('    action: ""')
     for c in open_cards:
@@ -259,7 +260,7 @@ def cmd_template(a):
         w.append("    id: %s" % j(c["id"]))
         w.append("    status: %s" % j(c["status"]))
         w.append("    title: %s" % j(c["title"]))
-        w.append('    verdict: ""  # 상류로 대체|상류 위에 남은 것만|우리 것 유지')
+        w.append('    verdict: ""  # 상류로 대체|상류 위에 남은 것만|우리 것 유지|상류에 없음')
         w.append('    evidence: ""')
         w.append('    action: ""')
     print("\n".join(w))

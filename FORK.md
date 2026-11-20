@@ -338,6 +338,7 @@ card with the triage report and these steps in its description.
       its `files`). A card that is planned and not deployed stops now, with
       the reason and the upstream PR on the card. Removing a deployed feature
       waits for the approval in step 5. Keep needs the user's answer.
+      상류에 없음 records that upstream ships nothing equivalent in the range.
       `scripts/hoon/absorb-gate.sh template --triage triage.json --cards
       <issue list json> --exclude-card <absorb card>` writes the decisions
       file with one row per item; every row needs a verdict.

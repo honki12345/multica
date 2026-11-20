@@ -309,6 +309,20 @@ DEC="$T/keep-confirmed.yml" cmt > "$T/c-keepok.md" 2>/dev/null
 first="$(head -n1 "$T/c-keepok.md")"
 [ "$first" = "배포 준비 완료. 승인하면 배포합니다." ] && pass "confirmed 유지 rows do not hold the deploy" || bad "confirmed 유지 rows do not hold the deploy ($first)"
 
+# 상류에 없음: allowed, never holds the deploy and asks nothing.
+"${PY[@]}" - "$GOOD" "$T/none.yml" <<'PY'
+import sys
+import yaml
+d = yaml.safe_load(open(sys.argv[1]))
+for r in d["upstream_priority"]:
+    r["verdict"] = "상류에 없음"
+yaml.safe_dump(d, open(sys.argv[2], "w"), allow_unicode=True, sort_keys=False)
+PY
+DEC="$T/none.yml" cmt > "$T/c-none.md" 2>/dev/null; rc=$?
+first="$(head -n1 "$T/c-none.md")"
+[ "$rc" -eq 0 ] && [ "$first" = "배포 준비 완료. 승인하면 배포합니다." ] && pass "상류에 없음 rows are accepted and do not hold" || bad "상류에 없음 rows are accepted and do not hold (rc=$rc, $first)"
+[ "$(grep -c '^Decide:' "$T/c-none.md")" -eq 1 ] && pass "상류에 없음 rows ask nothing" || bad "상류에 없음 rows ask nothing"
+
 # ---------- comment: validation (exit 2, nothing on stdout) ----------
 
 expect2() { # expect2 <name> <stderr needle>; stdout/stderr files from the last call in $T/o, $T/e
