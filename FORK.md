@@ -114,7 +114,8 @@ head, base, machine and time lines, the table, the verdict line, the fixed
 trailer, and the marker last, with the marker's sha equal to the head line.
 For `verdict=pass` the verdict line must read `판정: 통과 (실패 0)`, every row
 must have exit code 0, and the `license-check.sh` and `features-check.sh` rows
-must be there. Any other line (a code block, quote, HTML block or prose) voids
+must be there. CRLF line endings are accepted; any other carriage return,
+and any other line (a code block, quote, HTML block or prose), voids
 the comment, so a pasted or hand-edited copy does not open the gate; an
 invalid newer comment is ignored.
 

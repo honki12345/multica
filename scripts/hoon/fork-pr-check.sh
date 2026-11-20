@@ -149,7 +149,10 @@ def parse(body):
     line (HTML, quote, code block, prose) breaks the layout, so evidence cannot
     be hidden inside Markdown that renders differently.
     """
-    lines = [l.rstrip("\r") for l in body.split("\n")]
+    body = body.replace("\r\n", "\n").rstrip("\r\n")
+    if "\r" in body:  # CommonMark reads a bare CR as a line break the layout check would not see
+        return None
+    lines = body.split("\n")
     while lines and not lines[-1].strip():
         lines.pop()
     if len(lines) < 14 or lines[0] != HEADER or lines[1] != "" or lines[7] != "":

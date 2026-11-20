@@ -436,6 +436,11 @@ if variant == "tab-head":
     body[3] = "\t" + body[3]
 if variant == "fenced-noise":
     body = body[:-1] + ["```", "- head: `" + "c" * 40 + "`", "| `bash x.sh` | 9 | boom | 1s |", "```", ""] + body[-1:]
+if variant == "bare-cr-comment":
+    body[6] = body[6] + "\r<!-- example"
+
+if variant == "bare-cr-pre":
+    body[6] = body[6] + "\r<pre>"
 if variant == "crlf":
     body = [l + "\r" for l in body]
 print(json.dumps({"id": int(cid), "created_at": at, "author_association": assoc, "body": "\n".join(body)}))
@@ -478,7 +483,7 @@ want "gate: an extra quoted line breaks the generated layout and is rejected" 1 
 for v in fenced unclosed-fence quoted trailing-text marker-mid no-header no-head-line head-line-differs \
   fence4-then-fence3 tilde-then-backtick backtick-then-tilde fence-indent3 fence-close-with-text \
   indented-block indent-head indent-rows indent-marker tab-head \
-         html-pre html-comment fenced-noise verdict-line-edited; do
+         html-pre html-comment fenced-noise verdict-line-edited bare-cr-comment bare-cr-pre; do
   printf '[%s]' "$(comment 1 2026-01-01T00:00:00Z OWNER 30 "$HEAD" pass "$v")" > "$T/gh/comments-30.json"; gate
   want "gate: forged pass ($v) cannot open the gate" 1 "gate=blocked reason=no-comment"
 done
