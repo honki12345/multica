@@ -1,6 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+// Modified by honki12345, 2026: cover renaming the chat title with Mod+R (CALA-327).
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { I18nProvider } from "@multica/core/i18n/react";
+import { configureShortcutPlatform } from "@multica/core/shortcuts";
 import type { Agent, ChatSession } from "@multica/core/types";
 import enChat from "../../locales/en/chat.json";
 import enCommon from "../../locales/en/common.json";
@@ -247,5 +249,73 @@ describe("ChatSessionHeader rename keyboard behavior", () => {
     expect(updateMutate).not.toHaveBeenCalled();
     expect(screen.queryByRole("textbox", { name: RENAME_LABEL })).not.toBeInTheDocument();
     expect(screen.getByText("Original title")).toBeInTheDocument();
+  });
+});
+
+describe("ChatSessionHeader rename shortcut", () => {
+  beforeEach(() => {
+    updateMutate.mockReset();
+    configureShortcutPlatform("macos");
+    vi.spyOn(HTMLElement.prototype, "getClientRects").mockReturnValue(
+      [new DOMRect(0, 0, 100, 20)] as unknown as DOMRectList,
+    );
+  });
+
+  afterEach(() => {
+    configureShortcutPlatform(null);
+    vi.restoreAllMocks();
+  });
+
+  function renderWithComposer() {
+    render(
+      <I18nProvider locale="en" resources={TEST_RESOURCES}>
+        <ChatSessionHeader session={session} agent={null} />
+        <textarea aria-label="composer" />
+      </I18nProvider>,
+    );
+    return screen.getByRole("textbox", { name: "composer" });
+  }
+
+  function pressRename(target: Element) {
+    return fireEvent.keyDown(target, { key: "r", code: "KeyR", metaKey: true });
+  }
+
+  it("opens the title field with the title selected on Mod+R from the composer", () => {
+    const composer = renderWithComposer();
+    composer.focus();
+
+    const notCancelled = pressRename(composer);
+
+    const input = screen.getByRole<HTMLInputElement>("textbox", { name: RENAME_LABEL });
+    expect(notCancelled).toBe(false);
+    expect(input).toHaveFocus();
+    expect(input).toHaveValue("Original title");
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, "Original title".length]);
+  });
+
+  it("keeps what was typed when pressed again while renaming", () => {
+    const composer = renderWithComposer();
+    pressRename(composer);
+    const input = screen.getByRole("textbox", { name: RENAME_LABEL });
+    fireEvent.change(input, { target: { value: "Half typed" } });
+
+    pressRename(input);
+
+    expect(screen.getByRole("textbox", { name: RENAME_LABEL })).toHaveValue("Half typed");
+    expect(updateMutate).not.toHaveBeenCalled();
+  });
+
+  it("saves with Enter and cancels with Esc as before", () => {
+    const composer = renderWithComposer();
+    pressRename(composer);
+    const input = screen.getByRole("textbox", { name: RENAME_LABEL });
+    fireEvent.change(input, { target: { value: "Renamed by keyboard" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(updateMutate).toHaveBeenCalledWith({ sessionId: "session-1", title: "Renamed by keyboard" });
+
+    pressRename(composer);
+    fireEvent.keyDown(screen.getByRole("textbox", { name: RENAME_LABEL }), { key: "Escape" });
+    expect(screen.queryByRole("textbox", { name: RENAME_LABEL })).not.toBeInTheDocument();
+    expect(updateMutate).toHaveBeenCalledTimes(1);
   });
 });

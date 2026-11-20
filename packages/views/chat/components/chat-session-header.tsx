@@ -1,5 +1,7 @@
 "use client";
 
+// Modified by honki12345, 2026: rename the chat title with the renameTitle shortcut (CALA-327).
+
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Archive, ArchiveRestore, MoreHorizontal, Pencil, Settings2, Trash2 } from "@multica/ui/icons";
 import { IconButton } from "@multica/ui/components/common/icon-button";
@@ -31,6 +33,7 @@ import type { Agent, ChatSession } from "@multica/core/types";
 import { isImeComposing } from "@multica/core/utils";
 import { ActorAvatar } from "../../common/actor-avatar";
 import { BreadcrumbHeader } from "../../layout/breadcrumb-header";
+import { useRenameTitleShortcut } from "../../layout/rename-title-shortcut";
 import { useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
 import { TooltipHint } from "@multica/ui/components/common/tooltip-hint";
@@ -75,6 +78,7 @@ export function ChatSessionHeader({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [draft, setDraft] = useState(session.title ?? "");
   const inputRef = useRef<HTMLInputElement>(null);
+  const titleRef = useRef<HTMLButtonElement>(null);
   const isComposingRef = useRef(false);
   // A browser can blur the input before it emits compositionend. Remember
   // that intent so the final composed value is committed, not the draft.
@@ -112,6 +116,13 @@ export function ChatSessionHeader({
     setDraft(session.title ?? "");
     setEditing(true);
   };
+
+  useRenameTitleShortcut(
+    () => inputRef.current ?? titleRef.current,
+    () => {
+      if (!editing) startRename();
+    },
+  );
 
   const commitRename = (raw = draft) => {
     clearPendingBlurCommit();
@@ -194,6 +205,7 @@ export function ChatSessionHeader({
   ) : (
     <TooltipHint label={t(($) => $.header.rename)}>
       <button
+        ref={titleRef}
         type="button"
         onClick={startRename}
         className="min-w-0 truncate text-left text-body font-medium text-foreground outline-none hover:text-foreground/80 focus-visible:text-foreground/80"

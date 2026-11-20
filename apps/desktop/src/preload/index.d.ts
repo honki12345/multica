@@ -1,3 +1,4 @@
+// Modified by honki12345, 2026: rename-title shortcut listener (CALA-327).
 import { ElectronAPI } from "@electron-toolkit/preload";
 import type { RuntimeConfigResult } from "../shared/runtime-config";
 import type { NavigationGesture } from "../shared/navigation-gestures";
@@ -174,6 +175,9 @@ interface DesktopAPI {
   /** Listen for Cmd/Ctrl+W tab-close requests from the main process.
    *  Returns an unsubscribe function. */
   onCloseActiveTab: (callback: () => void) => () => void;
+  /** Listen for Cmd/Ctrl+R, held back from reloading and delivered to the
+   *  window it was pressed in. Returns an unsubscribe function. */
+  onRenameTitleShortcut?: (callback: () => void) => () => void;
   /** Listen for Cmd/Ctrl+, requests to open Settings, delivered to the main
    *  window whichever window had focus. Returns an unsubscribe function. */
   onOpenSettings: (callback: () => void) => () => void;
