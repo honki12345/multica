@@ -518,7 +518,7 @@ features:
 
   - id: chat-wakeup
     summary: Wake a chat conversation (time, condition or recurring) so the agent runs again in that chat and replies there.
-    status: planned
+    status: dropped
     kind: cli
     cards: [CALA-135]
     origin:
@@ -528,8 +528,9 @@ features:
       - path: server/cmd/multica/cmd_issue_wakeup.go
         why: issue wakeups, the model a chat wakeup extends
     upstream_equivalent:
+      prs: [10770]
       keywords: [chat wakeup, wake a chat, chat reminder]
-    drop_when: "upstream ships chat-scoped wakeups whose run and result stay in the chat (v0.11.0 #10770 does; set dropped when CALA-135 closes)."
+    drop_when: "upstream ships chat-scoped wakeups whose run and result stay in the chat. Met by v0.11.0 (#10770, `multica chat wakeup`); a condition wakeup fired back into its chat on 2026-11-19, so CALA-135 closed without fork code."
 
   - id: chat-list-filter-sort
     summary: Filter and sort menus on the chat page's left chat list (mock-up first).
