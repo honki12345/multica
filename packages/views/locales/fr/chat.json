@@ -258,6 +258,7 @@
     "pin": "Épingler",
     "unpin": "Détacher",
     "pinned": "Épinglé",
+    "reorder_failed": "Impossible d'enregistrer l'ordre des conversations épinglées",
     "archive": "Archiver",
     "unarchive": "Désarchiver",
     "archived_title": "Archivées",

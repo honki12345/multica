@@ -258,6 +258,7 @@
     "pin": "Fijar",
     "unpin": "Dejar de fijar",
     "pinned": "Fijado",
+    "reorder_failed": "No se pudo guardar el orden de los chats fijados",
     "archive": "Archivar",
     "unarchive": "Desarchivar",
     "archived_title": "Archivado",

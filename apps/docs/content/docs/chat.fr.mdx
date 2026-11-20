@@ -3,6 +3,8 @@ title: "Discuter avec des agents"
 description: "Conversation en tête-à-tête avec un agent, visible de vous seul. L'agent démarre sans contexte de tâche et ne crée pas de tâches de lui-même ; quand vous le lui demandez explicitement, il agit avec vos accès à l'espace de travail."
 ---
 
+{/* Modified by honki12345, 2026: drag pinned chats into order (CALA-316). */}
+
 import { Callout } from "fumadocs-ui/components/callout";
 import { Step, Steps } from "fumadocs-ui/components/steps";
 import { ChatDemo } from "@/components/demos/chat-demo";
@@ -120,7 +122,7 @@ Pour un calendrier durable, comme un rapport quotidien, utilisez une [automatisa
 
 Les conversations peuvent être renommées, épinglées, archivées et supprimées :
 
-- **Épingler** maintient les conversations fréquemment utilisées en haut de la liste ;
+- **Épingler** maintient les conversations fréquemment utilisées en haut de la liste. Faites glisser une conversation épinglée vers le haut ou le bas pour changer leur ordre (ou sélectionnez-la, appuyez sur Espace, déplacez-la avec les flèches puis appuyez de nouveau sur Espace) ; l'ordre est enregistré dans votre compte et reste le même sur tous vos appareils ;
 - **Archiver** déplace une conversation dans Archivées et la passe en lecture seule ;
 - **Désarchiver** vous permet d'envoyer à nouveau des messages ;
 - **Supprimer** retire définitivement la conversation et ses messages.

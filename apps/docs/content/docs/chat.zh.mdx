@@ -3,6 +3,8 @@ title: 与智能体对话
 description: 和智能体一对一聊天，整段对话只有你能看到。智能体默认没有任务上下文，也不会自己建任务；你明确要求时，它会以你的工作区权限代你操作。
 ---
 
+{/* Modified by honki12345, 2026: drag pinned chats into order (CALA-316). */}
+
 import { Callout } from "fumadocs-ui/components/callout";
 import { Step, Steps } from "fumadocs-ui/components/steps";
 import { ChatDemo } from "@/components/demos/chat-demo";
@@ -120,7 +122,7 @@ import { ChatDemo } from "@/components/demos/chat-demo";
 
 对话支持重命名、置顶、归档和删除：
 
-- **置顶**把常用对话固定在列表前面；
+- **置顶**把常用对话固定在列表前面。上下拖动置顶对话即可调整顺序（也可以选中后按空格键，用方向键移动，再按空格键放下）；顺序保存在你的账号中，所有设备上都一样；
 - **归档**把对话移到"已归档"并设为只读；
 - **取消归档**后可以继续发送消息；
 - **删除**会永久移除对话及其中的消息。

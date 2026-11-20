@@ -284,6 +284,122 @@ features:
           - status is "running" and cli_version is the deployed X.Y.Z-hoon.N.
     drop_when: upstream's resident mode exposes the daemon port to resident tool shells.
 
+  - id: chat-pinned-reorder
+    summary: Pinned chats in the chat list can be dragged (or moved with Space and the arrow keys) into any order, which is saved on the server by restamping pinned_at, so it is the same on web, desktop and other devices.
+    status: active
+    kind: web-ui
+    cards: [CALA-316]
+    origin:
+      type: ours
+      commits: ["5e100bd8f"]
+    files:
+      - server/pkg/db/queries/chat_pin_order.sql
+      - server/pkg/db/generated/chat_pin_order.sql.go
+      - server/internal/handler/chat_pin_order.go
+      - server/internal/handler/chat_pin_order_test.go
+      - server/internal/handler/chat.go
+      - server/cmd/server/router.go
+      - server/pkg/protocol/messages.go
+      - packages/core/types/chat.ts
+      - packages/core/api/schemas.ts
+      - packages/core/api/client.ts
+      - packages/core/chat/queries.ts
+      - packages/core/chat/queries.test.ts
+      - packages/core/chat/pin-order.ts
+      - packages/core/chat/pin-order.test.ts
+      - packages/core/chat/mutations.ts
+      - packages/core/chat/mutations.test.tsx
+      - packages/core/realtime/use-realtime-sync.ts
+      - packages/core/realtime/use-realtime-sync.test.ts
+      - packages/views/chat/components/chat-thread-list.tsx
+      - packages/views/chat/components/chat-thread-list.test.tsx
+      - packages/views/chat/components/pinned-chat-order.ts
+      - packages/views/chat/components/pinned-chat-order.test.ts
+      - packages/views/locales/en/chat.json
+      - packages/views/locales/es/chat.json
+      - packages/views/locales/fr/chat.json
+      - packages/views/locales/ja/chat.json
+      - packages/views/locales/ko/chat.json
+      - packages/views/locales/ru/chat.json
+      - packages/views/locales/zh-Hans/chat.json
+      - packages/views/locales/zh-Hant/chat.json
+      - apps/docs/content/docs/chat.mdx
+      - apps/docs/content/docs/chat.fr.mdx
+      - apps/docs/content/docs/chat.ja.mdx
+      - apps/docs/content/docs/chat.ko.mdx
+      - apps/docs/content/docs/chat.zh.mdx
+      - apps/docs/content/docs/chat.zh-Hant.mdx
+    watch:
+      - path: server/pkg/db/queries/chat.sql
+        why: ListChatSessionsByCreator orders pinned chats by pinned_at DESC and is the pinned set the reorder handler checks against; SetChatSessionPinned keeps an existing pinned_at on re-pin
+      - path: server/migrations/*chat_session*
+        why: pinned_at column (migration 155)
+      - path: server/internal/handler/agent_access.go
+        why: accessibleAgentIDs filters the pinned set exactly as ListChatSessions does
+      - path: server/cmd/server/listeners.go
+        why: chat:session_updated goes only to the session owner's connections
+      - path: packages/views/chat/components/session-history-list.tsx
+        why: react-virtuoso list the sortable rows render in
+      - path: packages/views/layout/use-drag-click-guard.ts
+        why: cancels the click that ends a drag
+      - path: packages/views/layout/panels/list-space-peeks.tsx
+        why: sidebar chat peek renders ChatThreadList
+      - path: packages/views/chat/chat-page.tsx
+        why: chat page renders ChatThreadList
+      - path: packages/views/common/row-actions-menu.tsx
+        why: row Enter/Space activation and the action buttons that must not start a drag
+      - path: apps/mobile/data/realtime/use-chat-sessions-realtime.ts
+        why: mobile ignores pinned_at and keeps the server order on refetch
+    upstream_equivalent:
+      symbols: [ReorderPinnedChatSessions, reorderPinnedChatSessions, pin-order]
+      keywords: [reorder pinned chats, pinned chat order, drag pinned chat]
+    tests:
+      - go: server/internal/handler
+        name: TestReorderPinnedChatSessions_SavesOrderWithoutTouchingActivity
+      - go: server/internal/handler
+        name: TestReorderPinnedChatSessions_RejectsAStaleOrForeignList
+      - vitest: packages/core/chat/queries.test.ts
+        name: orders pinned sessions by pin time, newest first, not by activity
+      - vitest: packages/core/chat/pin-order.test.ts
+      - vitest: packages/core/chat/mutations.test.tsx
+        name: puts the old order back when the server refuses
+      - vitest: packages/core/realtime/use-realtime-sync.test.ts
+        name: re-sorts pinned chats when another tab saves a new pinned order
+      - vitest: packages/views/chat/components/chat-thread-list.test.tsx
+        name: drags a pinned chat to a new slot and saves the whole pinned order, without opening it
+      - vitest: packages/views/chat/components/chat-thread-list.test.tsx
+        name: treats a press that moves less than 5px as a click
+      - vitest: packages/views/chat/components/chat-thread-list.test.tsx
+        name: moves a pinned chat with Space and the arrow keys, and Enter still opens a chat
+      - vitest: packages/views/chat/components/pinned-chat-order.test.ts
+    scenarios:
+      - name: drag pinned chats into order, order survives reload
+        path: /<workspace-slug>/chat
+        widths: [1440]
+        setup: at least 8 pinned chats and a few unpinned ones, on a throwaway database
+        steps:
+          - Open the chat page and wait for the list.
+          - Press the top pinned row, move 8px, then drag it down three rows and let go.
+          - Click another pinned row without moving.
+          - Reload the page.
+          - Try to drag an unpinned row up into the pinned group.
+        selectors:
+          - '[data-slot="list-column"]'
+        expect:
+          - Rows slide aside during the drag and the dropped row stays where it was let go.
+          - The plain click opens that chat; the drag does not open the dragged one.
+          - After reload the pinned order is the dragged one.
+          - The unpinned row does not move.
+      - name: sidebar peek
+        path: /<workspace-slug>/issues
+        widths: [1440]
+        steps:
+          - Open the chat peek from the list space and drag a pinned row.
+        selectors: []
+        expect:
+          - Same drag behaviour as the chat page; the chat page shows the new order.
+    drop_when: upstream lets users reorder pinned chats.
+
   - id: chat-bar-all-chips
     summary: The bottom chat bar shows every chat chip in a sideways-scrolling strip instead of folding extras into a +N menu.
     status: active

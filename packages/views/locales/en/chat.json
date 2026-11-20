@@ -258,6 +258,7 @@
     "pin": "Pin",
     "unpin": "Unpin",
     "pinned": "Pinned",
+    "reorder_failed": "Couldn't save the order of pinned chats",
     "archive": "Archive",
     "unarchive": "Unarchive",
     "archived_title": "Archived",

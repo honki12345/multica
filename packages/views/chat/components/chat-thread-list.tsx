@@ -1,6 +1,28 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+// Modified by honki12345, 2026: drag pinned chats into order, saved on the server (CALA-316).
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  DndContext,
+  KeyboardCode,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  rectIntersection,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlarmClock,
@@ -32,6 +54,7 @@ import {
 } from "@multica/core/chat/queries";
 import {
   useDeleteChatSession,
+  useReorderPinnedChatSessions,
   useSetChatSessionArchived,
   useSetChatSessionPinned,
   useUpdateChatSession,
@@ -53,8 +76,72 @@ import { removeChatMessageFromCaches } from "@multica/core/realtime";
 import { useLocale, useT } from "../../i18n";
 import { SessionHistoryList } from "./session-history-list";
 import { SessionRenameInput } from "./session-rename-input";
+import { useDragClickGuard } from "../../layout/use-drag-click-guard";
+import { pinnedOrderAfterDrop, pointerOverPinnedRows } from "./pinned-chat-order";
 
 const apiLogger = createLogger("chat.api");
+
+const DRAG_MODIFIERS = [restrictToVerticalAxis, restrictToFirstScrollableAncestor];
+
+// Where a dragged pinned row lands. With a pointer, the pointer itself must be
+// over the pinned rows the list shows (see pointerOverPinnedRows): the
+// modifiers keep the row's own box inside the list, so its box alone cannot
+// tell a release outside the list. The visible area comes from whichever
+// pinned row is mounted, not the dragged one, which may have scrolled out.
+// With the keyboard there is no pointer, so the nearest pinned row the moved
+// box overlaps wins.
+const pinnedRowCollision: CollisionDetection = (args) => {
+  const { pointerCoordinates: pointer, droppableRects, droppableContainers } = args;
+  if (pointer) {
+    const rows = droppableContainers.flatMap((c) => droppableRects.get(c.id) ?? []);
+    const scroller = droppableContainers
+      .map((c) => c.node.current?.closest("[data-virtuoso-scroller]"))
+      .find((el) => el != null);
+    const viewport = scroller ? scroller.getBoundingClientRect() : null;
+    return pointerOverPinnedRows(pointer, rows, viewport) ? closestCenter(args) : [];
+  }
+  return rectIntersection(args).length > 0 ? closestCenter(args) : [];
+};
+
+type RowDrag = {
+  setNodeRef: (node: HTMLElement | null) => void;
+  style: React.CSSProperties | undefined;
+  onPointerDown: ((event: React.PointerEvent) => void) | undefined;
+  onKeyDown: ((event: React.KeyboardEvent) => void) | undefined;
+  describedBy: string | undefined;
+  isDragging: boolean;
+};
+
+/**
+ * Hands a row the dnd-kit wiring for dragging it within the pinned group.
+ * Unpinned rows (and rows mid-rename or mid-confirm) get none of it, so they
+ * neither drag nor take a drop.
+ */
+function SortableChatRow({
+  id,
+  sortable,
+  children,
+}: {
+  id: string;
+  sortable: boolean;
+  children: (drag: RowDrag) => React.ReactNode;
+}) {
+  const { setNodeRef, transform, transition, listeners, attributes, isDragging } = useSortable({
+    id,
+    disabled: !sortable,
+  });
+  return children({
+    setNodeRef,
+    style: sortable
+      ? { transform: CSS.Translate.toString(transform), transition, zIndex: isDragging ? 10 : undefined }
+      : undefined,
+    // dnd-kit types its listeners as bare `Function`s.
+    onPointerDown: sortable ? (listeners?.onPointerDown as RowDrag["onPointerDown"]) : undefined,
+    onKeyDown: sortable ? (listeners?.onKeyDown as RowDrag["onKeyDown"]) : undefined,
+    describedBy: sortable ? attributes["aria-describedby"] : undefined,
+    isDragging,
+  });
+}
 
 // IM-style timestamp: today → clock, this year → M/D, else full date.
 function formatChatTime(dateStr: string, locale: string): string {
@@ -131,9 +218,21 @@ export function ChatThreadList({
   // archived chats fill the "Archived" view. Both sorted pinned-first (then by
   // activity) so the list stays ordered even after an optimistic pin/archive or
   // a WS patch mutates the flat cache in place.
-  const historySessions = useMemo(
-    () => sortChatSessions(sessions.filter((s) => s.status !== "archived")),
-    [sessions],
+  // The order a drop just put the pinned rows in, shown until the sessions
+  // cache (the optimistic reorder, or its rollback) catches up, so the rows
+  // do not jump back for a frame after the drop animation.
+  const [droppedPinnedOrder, setDroppedPinnedOrder] = useState<string[] | null>(null);
+  useEffect(() => setDroppedPinnedOrder(null), [sessions]);
+  const historySessions = useMemo(() => {
+    const sorted = sortChatSessions(sessions.filter((s) => s.status !== "archived"));
+    if (!droppedPinnedOrder) return sorted;
+    const byId = new Map(sorted.map((s) => [s.id, s]));
+    const pinned = droppedPinnedOrder.flatMap((id) => byId.get(id) ?? []);
+    return [...pinned, ...sorted.filter((s) => !droppedPinnedOrder.includes(s.id))];
+  }, [sessions, droppedPinnedOrder]);
+  const pinnedIds = useMemo(
+    () => historySessions.filter((s) => s.pinned).map((s) => s.id),
+    [historySessions],
   );
   const archivedSessions = useMemo(
     () => sortChatSessions(sessions.filter((s) => s.status === "archived")),
@@ -161,6 +260,7 @@ export function ChatThreadList({
   });
   const deleteSession = useDeleteChatSession();
   const setPinned = useSetChatSessionPinned();
+  const reorderPinned = useReorderPinnedChatSessions();
   const setArchived = useSetChatSessionArchived();
   const setActiveSession = useChatStore((s) => s.setActiveSession);
   const queryClient = useQueryClient();
@@ -186,6 +286,51 @@ export function ChatThreadList({
     if (!confirmingStopId || pendingTaskBySessionId.has(confirmingStopId)) return;
     setConfirmingStopId(null);
   }, [confirmingStopId, pendingTaskBySessionId]);
+
+  // Dragging pinned rows. The pointer starts a drag only after 5px, so a
+  // click still opens the chat; the click that ends a drag is cancelled by the
+  // guard. Space picks a row up and puts it down, arrows move it, Esc cancels;
+  // Enter still opens the chat when no drag is under way.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+      keyboardCodes: {
+        start: [KeyboardCode.Space],
+        cancel: [KeyboardCode.Esc],
+        end: [KeyboardCode.Space, KeyboardCode.Enter, KeyboardCode.Tab],
+      },
+    }),
+  );
+  const { arm: armClickGuard, release: releaseClickGuard } = useDragClickGuard();
+  // A row's own key handler runs before dnd-kit's, so the key that drops a
+  // row must not also open it.
+  const draggingRef = useRef(false);
+  const handleDragStart = useCallback(() => {
+    draggingRef.current = true;
+    armClickGuard();
+  }, [armClickGuard]);
+  const handleDragCancel = useCallback(() => {
+    draggingRef.current = false;
+    releaseClickGuard();
+  }, [releaseClickGuard]);
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      draggingRef.current = false;
+      releaseClickGuard();
+      const next = pinnedOrderAfterDrop(
+        pinnedIds,
+        String(event.active.id),
+        event.over ? String(event.over.id) : null,
+      );
+      if (!next) return;
+      setDroppedPinnedOrder(next);
+      reorderPinned.mutateAsync(next).catch(() => {
+        toast.error(t(($) => $.list.reorder_failed));
+      });
+    },
+    [pinnedIds, releaseClickGuard, reorderPinned, t],
+  );
 
   const handleConfirmDelete = (session: ChatSession) => {
     const sessionId = session.id;
@@ -392,12 +537,23 @@ export function ChatThreadList({
 
     const rowActions = rowActionsFor(session);
     const menuActions = menuActionsFor(session);
+    const sortable =
+      view === "history" &&
+      !!session.pinned &&
+      pinnedIds.length > 1 &&
+      !isConfirmingAction &&
+      !isRenaming;
 
     return (
+      <SortableChatRow key={session.id} id={session.id} sortable={sortable}>
+        {(drag) => (
       <div
-        key={session.id}
+        ref={drag.setNodeRef}
+        style={drag.style}
         aria-current={isCurrent ? "true" : undefined}
+        aria-describedby={drag.describedBy}
         tabIndex={0}
+        onPointerDown={drag.onPointerDown}
         onClick={(e) => {
           if (isConfirmingAction || isRenaming || e.defaultPrevented) return;
           // Plain click keeps the master-detail selection. On web, a modifier
@@ -430,7 +586,13 @@ export function ChatThreadList({
           window.open(getShareableUrl(href), "_blank", "noopener,noreferrer");
         }}
         onKeyDown={(e) => {
-          if (isConfirmingAction || isRenaming) return;
+          // A drag under way owns the keys: the one that drops the row must
+          // not also open it.
+          if (draggingRef.current || isConfirmingAction || isRenaming) return;
+          if (drag.onKeyDown && e.target === e.currentTarget && e.code === "Space") {
+            drag.onKeyDown(e);
+            return;
+          }
           handleRowActivationKey(e, () => onSelectSession(session));
         }}
         onContextMenu={(e) => {
@@ -444,6 +606,7 @@ export function ChatThreadList({
           "group/row relative flex h-14 min-w-0 cursor-default items-center gap-3 rounded-md px-2 outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring",
           isCurrent ? "bg-accent" : "hover:bg-accent/50",
           isConfirmingAction && "bg-destructive/5 hover:bg-destructive/5",
+          drag.isDragging && "cursor-grabbing bg-accent shadow-md",
         )}
       >
         {/* Thin ring keeps photo + fallback avatars reading as the same circle
@@ -571,6 +734,8 @@ export function ChatThreadList({
           </div>
         )}
       </div>
+        )}
+      </SortableChatRow>
     );
   };
 
@@ -591,6 +756,22 @@ export function ChatThreadList({
     />
   );
 
+  // Pinned rows are sortable only in the history view.
+  const withDrag = (children: React.ReactNode) => (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={pinnedRowCollision}
+      modifiers={DRAG_MODIFIERS}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
+      <SortableContext items={view === "history" ? pinnedIds : []} strategy={verticalListSortingStrategy}>
+        {children}
+      </SortableContext>
+    </DndContext>
+  );
+
   // Archived view: a back header, then the archived rows. Delete lives only
   // here (via each row's hover actions).
   if (view === "archived") {
@@ -608,7 +789,7 @@ export function ChatThreadList({
           </span>
         </button>
         <div className="min-h-0 flex-1">
-          <SessionHistoryList sessions={archivedSessions} renderRow={renderRow} />
+          {withDrag(<SessionHistoryList sessions={archivedSessions} renderRow={renderRow} />)}
         </div>
         {rowContextMenu}
       </div>
@@ -644,11 +825,13 @@ export function ChatThreadList({
 
   return (
     <>
-      <SessionHistoryList
-        sessions={historySessions}
-        renderRow={renderRow}
-        footer={archivedEntry}
-      />
+      {withDrag(
+        <SessionHistoryList
+          sessions={historySessions}
+          renderRow={renderRow}
+          footer={archivedEntry}
+        />,
+      )}
       {rowContextMenu}
     </>
   );

@@ -1,4 +1,4 @@
-// Modified by honki12345, 2026: cherry-pick upstream multica-ai/multica#10861 (inbox management from the CLI) ahead of an upstream release (CALA-273) and #10921 (owner-gate route test).
+// Modified by honki12345, 2026: cherry-pick upstream multica-ai/multica#10861 (inbox management from the CLI) ahead of an upstream release (CALA-273) and #10921 (owner-gate route test); PUT /api/chat/sessions/pin-order (CALA-316).
 
 package main
 
@@ -2631,6 +2631,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 			r.Route("/api/chat/sessions", func(r chi.Router) {
 				r.Post("/", h.CreateChatSession)
 				r.Get("/", h.ListChatSessions)
+				r.Put("/pin-order", h.ReorderPinnedChatSessions)
 				r.Route("/{sessionId}", func(r chi.Router) {
 					r.Get("/", h.GetChatSession)
 					r.Patch("/", h.UpdateChatSession)
