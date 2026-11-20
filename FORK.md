@@ -9,8 +9,8 @@ Multica; the upstream project lives at https://github.com/multica-ai/multica.
 > must update [`fork/features.yml`](fork/features.yml) in the same PR. The fork
 > check (`scripts/hoon/features-check.sh`) fails when a changed file belongs to
 > no feature. See "Fork feature registry" below. Checks run locally and are
-> reported as a PR comment; this fork does not use GitHub Actions (see
-> "Verification").
+> reported as a PR comment; this fork does not use GitHub Actions, the same
+> checks run locally (`scripts/hoon/fork-pr-check.sh`, see "Verification").
 
 ## Upstream base
 
@@ -25,7 +25,9 @@ Multica; the upstream project lives at https://github.com/multica-ai/multica.
 ## Tracking policy (merge, not rebase)
 
 - Absorb upstream by **merging upstream release tags** into our `main`
-  (`git merge v0.X.Y` on a `merge/v0.X.Y` branch, then PR into `main`).
+  (`git merge v0.X.Y` on a `merge/v0.X.Y` branch, then PR into `main`),
+  following "Upstream absorb gate" below: nothing is tagged, built or deployed
+  before the user approves the absorb card.
 - Do **not** rebase our commits onto each new upstream release; this fork is
   its own line and its history is kept.
 - Individual upstream `main` commits that we need before a release are
@@ -72,29 +74,46 @@ assets and displayed copyright/attribution stay as upstream ships them.
 
 ## Verification (local, no GitHub Actions)
 
-This fork does not use GitHub Actions. Do not enable it or treat a missing
-`gh pr checks` result as a blocker. The workflow files stay in the tree as the
-description of what to run; every check is run locally (calabii-macstudio or
-calabii-02) on the PR head, and the result is posted as one PR comment.
+This fork does not use GitHub Actions; the same checks run locally. Do not
+enable Actions or treat a missing `gh pr checks` result as a blocker or a
+human task. The workflow files stay in the tree as the description of what to
+run (`.github/workflows/fork-license.yml`); every check is run locally
+(calabii-macstudio or calabii-02) on the PR head, and the result is posted as
+one PR comment.
 
-1. Check out the PR head in a clean tree and record the full 40-character SHA.
-2. Run, as applicable to the change:
-   - `bash scripts/hoon/license-check.sh` and `bash scripts/hoon/features-check.sh`
-     (after `git fetch --no-tags upstream '+refs/tags/v*:refs/upstream-tags/v*'`)
-   - Go tests for the touched packages (`cd server && go test -p 2 <pkgs>`);
-     DB-backed packages against a throwaway `pgvector/pgvector:pg17` on calabii-02
-   - web: `pnpm typecheck` and `pnpm vitest related <changed files> --run`
-     (no full `vitest run`)
-   - the fork's own script tests (`scripts/hoon/*.test.sh`) when scripts change
-3. Post one PR comment: head SHA, machine, each command with exit code and
-   pass/fail counts, and for any failure judged pre-existing, the same test
-   failing on the clean upstream base tag.
-4. Merge only when that comment shows zero failures other than ones proven
-   pre-existing upstream (the same test also fails on the clean upstream base
-   tag). Any new failure blocks the merge; `--match-head-commit` pins the SHA
-   but does not check results. Merge with
-   `gh pr merge --match-head-commit <that SHA>`. A new head needs a new run and
-   a new comment.
+`scripts/hoon/fork-pr-check.sh` does all of this in one command:
+
+```bash
+scripts/hoon/fork-pr-check.sh plan 21          # which checks the changed files call for
+scripts/hoon/fork-pr-check.sh run 21 --post    # run them on a clean worktree of the head, post the comment
+scripts/hoon/fork-pr-check.sh gate 21          # gate=ok head=<sha> only if the newest check comment is green for today's head
+gh pr merge 21 --merge --match-head-commit <sha from gate=ok>
+bash scripts/hoon/fork-pr-check.test.sh        # throwaway repos, stub gh, no network
+```
+
+`run` fetches the PR head, checks that it is the head GitHub reports, and runs
+the checks in a temporary detached worktree that is always removed. The
+checks are chosen from the files the PR changes:
+
+| Changed | Check |
+|---|---|
+| anything | `license-check.sh`, `features-check.sh` (after fetching upstream tags into `refs/upstream-tags/`), `git diff --check` |
+| `scripts/hoon/X*` | `scripts/hoon/X.test.sh` when it exists, `shellcheck -S warning` on changed `.sh` |
+| `fork/features.yml` | `features-check.test.sh` |
+| `.github/**`, `scripts/*.mjs` | `node --test scripts/ci-scope.test.mjs` |
+| `server/**/*.go` | `go test -p 2 <changed packages>`; DB-backed tests skip (no `DATABASE_URL`). Run them against a throwaway `pgvector/pgvector:pg17` on calabii-02 when the PR touches SQL |
+| TS/TSX in `apps/` or `packages/` (not mobile) | `pnpm typecheck` and `vitest related <changed files> --run --maxWorkers=2` per package (no full `vitest run`) |
+
+The comment carries the full 40-character head SHA, the base, the machine,
+each command with its exit code, result line and time, the verdict, and a
+marker line `<!-- fork-pr-check pr=<n> head=<sha> verdict=pass|fail -->`.
+`gate` reads the newest marker from an owner/member/collaborator comment.
+
+Merge only when `gate` says `ok`: zero failures for the current head. A failure
+judged pre-existing upstream (the same test also fails on the clean upstream
+base tag) is not waived by the script; rerun without it or record the
+evidence in a follow-up comment and get review agreement. A new head needs a
+new run and a new comment.
 
 ## License check
 
@@ -297,6 +316,54 @@ an older tag can be verified with today's registry (`--registry-ref`). A
 scenario fork-verify has no runner for is reported unverified with that
 reason; add a runner in `fork-verify/fork_verify.py` when adding a feature
 whose scenario is not covered.
+
+## Upstream absorb gate
+
+Every upstream tag is absorbed by one Multica card that runs these steps in
+order and leaves one card comment per step. The daily fork check creates the
+card with the triage report and these steps in its description.
+
+1. **Merge.** On `merge/vX.Y.Z` from `main`: `git merge vX.Y.Z`, resolve
+   conflicts (regenerate sqlc output instead of hand-merging it), `go build
+   ./...`, update "Upstream base" above.
+2. **Triage.** `scripts/hoon/upstream-triage.sh v<old> vX.Y.Z --fork-ref main
+   --json triage.json > triage.md`. Read the PR body of every C and E
+   candidate (`gh pr view <n> -R multica-ai/multica`) and settle it: C
+   버림 / 줄임 / 유지, E 흡수 / 보류 / 무관, each with its reason.
+   1. **Upstream first.** For every `active` and `planned` feature and every
+      open card of the Multica project that is not in the registry, decide
+      상류로 대체 / 상류 위에 남은 것만 / 우리 것 유지 with evidence (PR,
+      file, test result). Replace or shrink means: remove or cut our code on
+      the same merge branch and set the registry entry to `dropped` (or shrink
+      its `files`). A card that is planned and not deployed stops now, with
+      the reason and the upstream PR on the card. Removing a deployed feature
+      waits for the approval in step 5. Keep needs the user's answer.
+      `scripts/hoon/absorb-gate.sh template --triage triage.json --cards
+      <issue list json> --exclude-card <absorb card>` writes the decisions
+      file with one row per item; every row needs a verdict.
+3. **Verify.** `scripts/hoon/features-check.sh --head merge/vX.Y.Z` and
+   `scripts/hoon/fork-verify.sh merge/vX.Y.Z --screen-input triage.json
+   --real-agent` (B paths add the surrounding screens).
+4. **PR, review, merge.** Fork PR, independent review (plus a migration
+   review when the tag ships migrations), `fork-pr-check.sh run <n> --post`,
+   then `fork-pr-check.sh gate <n>` and merge with `--match-head-commit` on
+   the gate's SHA. A tag-only rehearsal stops before this step.
+5. **Stop for approval.** `scripts/hoon/absorb-gate.sh comment --triage
+   triage.json --decisions decisions.yml --verify out/fork-verify/<ref>
+   --triage-md triage.md --pr <url> --merge-commit <sha> --pr-check <url>
+   --tag vX.Y.Z-hoon.1` renders the single approval comment: the triage
+   summary, the upstream-first table, the C/E table, the test table and the
+   screen captures listed after `--- attachments` (attach them with
+   `multica issue comment add --attachment`). The card goes to `in_review`.
+   No tag, build or deploy before the user approves on the card.
+6. **After approval.** Tag `vX.Y.Z-hoon.1` on the merge commit, back up the
+   database (`pg_dump -Fc`), `scripts/hoon/release.sh release vX.Y.Z-hoon.1`,
+   then rerun the screen layer against production
+   (`scripts/hoon/fork-verify.sh vX.Y.Z-hoon.1 --skip test,scenario`).
+
+```bash
+bash scripts/hoon/absorb-gate.test.sh   # fixtures only, no network
+```
 
 ## Deploy and rollback (self-host on calabii-macstudio)
 
