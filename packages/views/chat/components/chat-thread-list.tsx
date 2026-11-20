@@ -1,6 +1,6 @@
 "use client";
 
-// Modified by honki12345, 2026: drag pinned chats into order, saved on the server (CALA-316); step to the chat above / below with the list-step keys (CALA-328).
+// Modified by honki12345, 2026: drag pinned chats into order, saved on the server (CALA-316); scroll the chat opened from elsewhere on the page into view (CALA-328).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -78,7 +78,6 @@ import { useLocale, useT } from "../../i18n";
 import { SessionHistoryList } from "./session-history-list";
 import { SessionRenameInput } from "./session-rename-input";
 import { useDragClickGuard } from "../../layout/use-drag-click-guard";
-import { useListStepShortcut } from "../../common/use-list-step-shortcut";
 import { pinnedOrderAfterDrop, pointerOverPinnedRows } from "./pinned-chat-order";
 
 const apiLogger = createLogger("chat.api");
@@ -189,7 +188,6 @@ export function ChatThreadList({
   activeSessionId,
   onSelectSession,
   onArchive,
-  stepShortcut = false,
 }: {
   sessions: ChatSession[];
   agents: Agent[];
@@ -199,12 +197,6 @@ export function ChatThreadList({
   // aware (desktop advances to the next chat; mobile drops back to the list)
   // and routes through the shared controller — see ChatPage.handleArchive.
   onArchive: (session: ChatSession) => void;
-  /**
-   * Whether the list-step keys (`listPreviousItem` / `listNextItem`) open the
-   * chat above / below the open one. Only the Chat page's own list takes
-   * them; a preview of the list over another page does not.
-   */
-  stepShortcut?: boolean;
 }) {
   const { t } = useT("chat");
   const { t: tLayout } = useT("layout");
@@ -256,24 +248,18 @@ export function ChatThreadList({
     if (view === "archived" && archivedSessions.length === 0) setView("history");
   }, [view, archivedSessions.length]);
 
-  // The list-step keys walk the rows this view shows, in the order it shows
-  // them: pinned first, then by activity; the archive only within itself.
+  // A chat opened from elsewhere on the page (the list-step keys) brings its
+  // row into view. Virtuoso's call is a no-op while the row is visible, so a
+  // click leaves the list where it is; mounting keeps its scroll position.
   const listRef = useRef<VirtuosoHandle>(null);
   const shownSessions = view === "archived" ? archivedSessions : historySessions;
-  const shownSessionIds = useMemo(() => shownSessions.map((s) => s.id), [shownSessions]);
-  useListStepShortcut({
-    scope: "chat",
-    enabled: stepShortcut,
-    keys: shownSessionIds,
-    openKey: activeSessionId,
-    onStep: (index) => {
-      const session = shownSessions[index];
-      if (!session) return;
-      // A no-op while the row is already in view.
-      listRef.current?.scrollIntoView({ index });
-      onSelectSession(session);
-    },
-  });
+  const activeIndex = shownSessions.findIndex((s) => s.id === activeSessionId);
+  const shownActiveRef = useRef(activeSessionId);
+  useEffect(() => {
+    if (shownActiveRef.current === activeSessionId) return;
+    shownActiveRef.current = activeSessionId;
+    if (activeIndex >= 0) listRef.current?.scrollIntoView({ index: activeIndex });
+  }, [activeSessionId, activeIndex]);
 
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [confirmingStopId, setConfirmingStopId] = useState<string | null>(null);

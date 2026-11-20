@@ -1,5 +1,7 @@
 "use client";
 
+// Modified by honki12345, 2026: take back the caret a list-step press carried from the previous issue's comment box (CALA-328).
+
 import { useRef, useState, useEffect, useMemo } from "react";
 import { cn } from "@multica/ui/lib/utils";
 import { ContentEditor, type ContentEditorRef, useFileDropZone, FileDropOverlay, useLazyEditor, useUploadGate, useComposerSubmit } from "../../editor";
@@ -8,6 +10,7 @@ import { Button } from "@multica/ui/components/ui/button";
 import { contentReferencesAttachment, type AgentTask } from "@multica/core/types";
 import { useShortcut } from "@multica/core/shortcuts";
 import { ShortcutKeycaps } from "../../common/shortcut-keycaps";
+import { takeListStepFocus, type ListStepFocusComposer } from "../../common/use-list-step-shortcut";
 import { useCommentDraftStore } from "@multica/core/issues/stores";
 import { composeAnnotatedReply, hasReplyIntent } from "@multica/core/drafts/reply-annotation";
 import { annotationsWithPending, type AnnotationComposerSlot } from "./annotation-composer";
@@ -51,6 +54,9 @@ interface CommentInputProps {
 function steerTopLevelByDefault(task: AgentTask): boolean {
   return !task.trigger_comment_id;
 }
+
+/** The composer's `data-mc` name, which a list-step press carries over. */
+const COMMENT_COMPOSER: ListStepFocusComposer = "comment-composer";
 
 function CommentInput({ issueId, onSubmit, onAccepted, onEditAnnotation, annotationComposer }: CommentInputProps) {
   const { t } = useT("issues");
@@ -109,6 +115,12 @@ function CommentInput({ issueId, onSubmit, onAccepted, onEditAnnotation, annotat
       useCommentDraftStore.getState().getUploads(draftKey).length > 0,
     editorRef,
   });
+  // A list-step press made from the previous issue's comment box keeps the
+  // caret in this one once it mounts for the next issue.
+  useEffect(() => {
+    if (takeListStepFocus(COMMENT_COMPOSER)) lazy.activate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
+  }, []);
   // Inactive shells must not mount query observers or duplicate cold reads.
   const quickActionMenu = useQuickActionMenu(issueId, { enabled: lazy.active, triggerPreview, previewContent });
   const { isDragOver, dropZoneProps } = useFileDropZone({
@@ -253,7 +265,7 @@ function CommentInput({ issueId, onSubmit, onAccepted, onEditAnnotation, annotat
         hasAllMembersMention={triggerPreview.hasAllMembersMention} draftContent={composedContent} onActionChange={setAction} />,
     })}
     <div
-      data-mc="comment-composer"
+      data-mc={COMMENT_COMPOSER}
       {...dropZoneProps}
       {...focusProps}
       className={cn(

@@ -30,10 +30,41 @@ const FLOATING_CHAT_WINDOW = '[data-mc="chat-window"]';
 const dropCursors = () => cursors.clear();
 
 /**
+ * How long, in ms, the next row's composer may take to mount and still take
+ * the caret a press carried over from the last row's composer. Opening an
+ * issue loads it first, so this covers a slow load.
+ */
+const FOCUS_CARRY_MS = 5000;
+
+/**
+ * Composers, by their `data-mc` name, that remount for the next row and take
+ * back a caret a press carried over from the row before.
+ */
+export const LIST_STEP_FOCUS_COMPOSERS = ["comment-composer"] as const;
+export type ListStepFocusComposer = (typeof LIST_STEP_FOCUS_COMPOSERS)[number];
+
+const FOCUS_COMPOSER_SELECTOR = LIST_STEP_FOCUS_COMPOSERS.map((name) => `[data-mc="${name}"]`).join(", ");
+
+/** The composer the last press left the caret in. */
+let carriedFocus: { composer: ListStepFocusComposer; at: number } | null = null;
+
+/**
+ * Whether `composer`, mounting for the next row, takes the caret: the press
+ * that opened the row came from the same composer of the row before. The
+ * first composer to ask consumes it.
+ */
+export function takeListStepFocus(composer: ListStepFocusComposer): boolean {
+  const carried = carriedFocus;
+  carriedFocus = null;
+  return !!carried && carried.composer === composer && performance.now() - carried.at < FOCUS_CARRY_MS;
+}
+
+/**
  * `listPreviousItem` / `listNextItem` (CALA-328): open the row above or below
  * the open one in a list, from anywhere on the page, composer and comment
- * boxes included. Focus stays where it is. Stepping stops at either end. The
- * floating chat window keeps the keys to itself.
+ * boxes included. The caret stays where it was; a comment box the next row
+ * mounts anew takes it back through `takeListStepFocus`. Stepping stops at
+ * either end. The floating chat window keeps the keys to itself.
  *
  * `keys` are the rows in the order the list shows them, `openKey` the open
  * row's key, and `onStep` opens the row at an index of `keys`. `scope` names
@@ -80,6 +111,11 @@ export function useListStepShortcut({
       const index = stepListIndex(rows, fresh ? cursor.key : open, direction);
       if (index === null) return;
       cursors.set(scope, { key: rows[index]!, at: now });
+      const composer =
+        event.target instanceof Element
+          ? (event.target.closest(FOCUS_COMPOSER_SELECTOR)?.getAttribute("data-mc") as ListStepFocusComposer | undefined)
+          : undefined;
+      carriedFocus = composer ? { composer, at: now } : null;
       step(index);
     };
     document.addEventListener("keydown", onKeyDown);

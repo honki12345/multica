@@ -1,6 +1,6 @@
 "use client";
 
-// Modified by honki12345, 2026: the notification list takes the list-step keys on this page (CALA-328).
+// Modified by honki12345, 2026: the list-step keys open the notification above / below, list shown or not (CALA-328).
 
 import {
   useState,
@@ -107,6 +107,7 @@ import { ListColumn } from "../../layout/list-column";
 import { InboxDeleteDialog } from "./inbox-delete-dialog";
 import { useTimeAgo } from "./inbox-list-item";
 import { InboxList } from "./inbox-list";
+import { useListStepShortcut } from "../../common/use-list-step-shortcut";
 import { InboxFilterMenu } from "./inbox-filter-menu";
 import { InboxFilterChipsBar } from "./inbox-filter-options";
 import { InboxContextMenuProvider } from "./inbox-context-menu";
@@ -588,6 +589,21 @@ export function InboxPage() {
   // The rows in the order the user sees them: on desktop the Work panel
   // section's, which applies the same filters.
   const listedItems = opensAnyLiveRow ? sectionList.rows : selectionItems;
+  // The list-step keys walk the rows the reader sees: on desktop the Work
+  // panel section's, which the page has no column for; otherwise the page's
+  // own list, whether it is on screen or the detail covers it.
+  const stepRows = opensAnyLiveRow ? sectionList.rows : visibleItems;
+  const stepKeys = useMemo(() => stepRows.map(inboxRowKey), [stepRows]);
+  useListStepShortcut({
+    scope: "inbox",
+    enabled: pathname === wsPaths.inbox(),
+    keys: stepKeys,
+    openKey: selectedKey || null,
+    onStep: (index) => {
+      const item = stepRows[index];
+      if (item) handleSelect(item);
+    },
+  });
   const leaveRow = useInboxSelectionStore((s) => s.leaveRow);
   // Moving the selection off a row (an Inbox action on it) lets it go rather
   // than keep it in place.
@@ -862,7 +878,6 @@ export function InboxPage() {
         loadMoreError={archiveQuery.isFetchNextPageError}
         onSelect={handleSelect}
         onAction={isArchivedView ? handleUnarchive : handleArchive}
-        stepShortcut={pathname === wsPaths.inbox()}
         emptyLabel={
           hasActiveFilters && visibleItems.length === 0
             ? t(($) => $.filters.empty)

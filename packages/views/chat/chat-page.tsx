@@ -1,6 +1,6 @@
 "use client";
 
-// Modified by honki12345, 2026: the chat list takes the list-step keys on this page (CALA-328).
+// Modified by honki12345, 2026: the list-step keys open the chat above / below, list shown or not (CALA-328).
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Bot, MessageSquare, Plus } from "@multica/ui/icons";
@@ -11,7 +11,7 @@ import { useIsCompact } from "@multica/ui/hooks/use-mobile";
 import { useRequiredWorkspaceSlug, useWorkspacePaths } from "@multica/core/paths";
 import { getCurrentSlug } from "@multica/core/platform";
 import { useChatStore } from "@multica/core/chat";
-import { chatQuickActionsPendingOptions } from "@multica/core/chat/queries";
+import { chatQuickActionsPendingOptions, sortChatSessions } from "@multica/core/chat/queries";
 import { useRegenerateChatQuickActions } from "@multica/core/chat/mutations";
 import { useQuickActionsPendingTimeout } from "@multica/core/chat/use-quick-actions-pending-timeout";
 import { useQuickActionsFailureToast } from "./components/use-quick-actions-failure-toast";
@@ -41,6 +41,7 @@ import { AgentAccessRevokedBanner } from "./components/agent-access-revoked-bann
 import { RuntimeRequiredBanner } from "./components/runtime-required-banner";
 import { ChatAppRequests } from "../common/app-requests";
 import { useRegisterCommandBarContext } from "../search/register-context";
+import { useListStepShortcut } from "../common/use-list-step-shortcut";
 
 /**
  * Chat tab — the first-class two-pane surface (thread list on the left,
@@ -177,6 +178,25 @@ export function ChatPage() {
     c.archiveSession(session.id);
   };
 
+  // The list-step keys walk the chat list in the order it shows: pinned
+  // first, then by activity; from an archived chat, the archive. Owned here,
+  // not by the list, which a compact layout unmounts while a chat is open.
+  const stepSessions = useMemo(() => {
+    const openArchived = c.sessions.some((s) => s.id === c.activeSessionId && s.status === "archived");
+    return sortChatSessions(c.sessions.filter((s) => (s.status === "archived") === openArchived));
+  }, [c.sessions, c.activeSessionId]);
+  const stepSessionIds = useMemo(() => stepSessions.map((s) => s.id), [stepSessions]);
+  useListStepShortcut({
+    scope: "chat",
+    enabled: isCurrentChatRoute,
+    keys: stepSessionIds,
+    openKey: c.activeSessionId ?? null,
+    onStep: (index) => {
+      const session = stepSessions[index];
+      if (session) handleSelect(session);
+    },
+  });
+
   const startNewChat = (agent: Agent | null) => {
     // A manual ⊕ pick outranks a pending deep link; when called FROM the
     // intent effect the ref is already set to this param, so this is a no-op.
@@ -274,7 +294,6 @@ export function ChatPage() {
         activeSessionId={c.activeSessionId}
         onSelectSession={handleSelect}
         onArchive={handleArchive}
-        stepShortcut={isCurrentChatRoute}
       />
     </div>
   );

@@ -804,7 +804,7 @@ features:
     drop_when: upstream ships keys that step a chat between the reader's own messages and wakeup turns.
 
   - id: shortcut-list-step
-    summary: Mod+Shift+[ / ] open the chat or notification above / below the open one, from anywhere on the page (composer and comment boxes included), in the Chat page's chat list, the Inbox page's list and an issue opened from the Work panel's Inbox section.
+    summary: Mod+Shift+[ / ] open the chat or notification above / below the open one, from anywhere on the page (composer and comment boxes included, which keep the caret), on the Chat page, the Inbox page and an issue opened from the Work panel's Inbox section, list on screen or not.
     status: active
     kind: web-ui
     cards: [CALA-328]
@@ -819,11 +819,15 @@ features:
       - packages/views/common/use-list-step-shortcut.ts
       - packages/views/chat/chat-page.tsx
       - packages/views/chat/components/chat-thread-list.tsx
-      - packages/views/chat/components/chat-thread-list.test.tsx
+      - packages/views/chat/chat-page.test.tsx
+      - packages/views/chat/components/chat-thread-list.scroll.test.tsx
       - packages/views/chat/components/session-history-list.tsx
       - packages/views/inbox/components/inbox-list.tsx
       - packages/views/inbox/components/inbox-list.test.tsx
       - packages/views/inbox/components/inbox-page.tsx
+      - packages/views/inbox/components/inbox-page.test.tsx
+      - packages/views/issues/components/comment-input.tsx
+      - packages/views/issues/components/comment-composers.test.tsx
       - packages/views/issues/actions/issue-inbox-actions.tsx
       - packages/views/issues/actions/__tests__/issue-inbox-actions.test.tsx
       - packages/views/locales/en/settings.json
@@ -846,7 +850,11 @@ features:
       - path: packages/views/chat/components/chat-window.tsx
         why: data-mc="chat-window" marks the floating window, which keeps the keys to itself
       - path: packages/views/layout/panels/list-space-peeks.tsx
-        why: the chat list preview over another page mounts ChatThreadList without the keys
+        why: the chat list preview over another page mounts ChatThreadList; the keys belong to ChatPage, so it takes none
+      - path: packages/views/issues/components/issue-detail.tsx
+        why: keys CommentInput by issue, so the next issue's comment box mounts anew and takes the carried caret
+      - path: packages/views/editor/use-lazy-editor.ts
+        why: activate() is how the next issue's comment box takes the caret
       - path: packages/views/layout/panels/inbox-section.tsx
         why: useInboxSectionRows and the row click (requestLanding, rememberSidebarIssue) the issue header repeats when it steps
       - path: packages/views/layout/panels/work-panel.tsx
@@ -863,8 +871,8 @@ features:
         why: a new global default on Mod+Shift+[ or ] would fire alongside this one
       - path: apps/desktop/src/main/keyboard-shortcuts.ts
         why: a desktop main-process accelerator on Mod+Shift+[ or ] would take the chord before the page
-      - path: packages/views/chat/components/chat-thread-list.tsx
-        why: also changed by the planned chat-list-filter-sort (CALA-138); a filter or sort must keep handing the shown order to the keys
+      - path: packages/views/chat/components/use-chat-controller.ts
+        why: handleSelectSession opens the chat a step names, as a row click does
     upstream_equivalent:
       symbols: [listPreviousItem, listNextItem, useListStepShortcut, stepListIndex]
       keywords: [next chat, previous chat, next notification, previous notification, cycle chats]
@@ -875,28 +883,38 @@ features:
         name: stops at either end instead of wrapping around
       - vitest: packages/views/common/list-step.test.ts
         name: enters the list at the top going down and at the bottom going up when the open row is not listed
-      - vitest: packages/views/chat/components/chat-thread-list.test.tsx
+      - vitest: packages/views/chat/chat-page.test.tsx
         name: opens the chat below and above in the order the list shows, across the pinned boundary
-      - vitest: packages/views/chat/components/chat-thread-list.test.tsx
+      - vitest: packages/views/chat/chat-page.test.tsx
         name: stops at either end and still claims the keys there
-      - vitest: packages/views/chat/components/chat-thread-list.test.tsx
-        name: steps within the archive while the archived view is open
-      - vitest: packages/views/chat/components/chat-thread-list.test.tsx
-        name: enters the list at the top or the bottom when the open chat is not in it
-      - vitest: packages/views/chat/components/chat-thread-list.test.tsx
-        name: works while the caret is in a text field, which keeps focus
-      - vitest: packages/views/chat/components/chat-thread-list.test.tsx
-        name: leaves the keys to the floating chat window and to a list that does not take them
+      - vitest: packages/views/chat/chat-page.test.tsx
+        name: steps within the archive from an archived chat
+      - vitest: packages/views/chat/chat-page.test.tsx
+        name: works from the composer while a compact layout shows only the conversation
+      - vitest: packages/views/chat/chat-page.test.tsx
+        name: counts every press of a burst, even before the open chat has caught up
+      - vitest: packages/views/chat/chat-page.test.tsx
+        name: leaves the keys to the floating chat window, and to Go back / Go forward
+      - vitest: packages/views/chat/components/chat-thread-list.scroll.test.tsx
+        name: brings a chat opened from elsewhere on the page into view, and leaves the list alone on mount
+      - vitest: packages/views/inbox/components/inbox-page.test.tsx
+        name: opens the notification below and above on desktop, where the page shows only the detail
+      - vitest: packages/views/inbox/components/inbox-page.test.tsx
+        name: steps through its own list on a phone while the detail covers it
+      - vitest: packages/views/inbox/components/inbox-page.test.tsx
+        name: steps within the archive in the archived view
       - vitest: packages/views/inbox/components/inbox-list.test.tsx
-        name: moves the selection while focus is in the detail, and scrolls the row into view
-      - vitest: packages/views/inbox/components/inbox-list.test.tsx
-        name: counts every press of a burst, even before the selection has caught up
+        name: scrolls a row selected from outside the list into view, and leaves the list alone on mount
       - vitest: packages/views/issues/actions/__tests__/issue-inbox-actions.test.tsx
         name: opens the notification below and above, as a row click would, while focus stays in a comment box
       - vitest: packages/views/issues/actions/__tests__/issue-inbox-actions.test.tsx
         name: counts every press of a burst while the next issue is still loading
       - vitest: packages/views/issues/actions/__tests__/issue-inbox-actions.test.tsx
         name: stops at the last notification and still claims the key
+      - vitest: packages/views/issues/components/comment-composers.test.tsx
+        name: takes the caret back in the next issue when the press came from the comment box
+      - vitest: packages/views/issues/components/comment-composers.test.tsx
+        name: leaves the next issue's comment box closed when the press came from elsewhere
     scenarios:
       - name: step through chats from the composer
         path: /<workspace-slug>/chat
@@ -920,8 +938,10 @@ features:
           - Press Cmd+Shift+] twice, then Cmd+Shift+[ once.
         selectors:
           - '[data-inbox-row] [data-active="true"]'
+          - '[data-mc="comment-composer"]'
         expect:
           - Each press opens the issue of the notification one row below or above, the Inbox row lights follow, and no notification is archived.
+          - The caret is in the comment box of each issue opened.
       - name: listed in Settings
         path: /<workspace-slug>/settings
         widths: [1440]
