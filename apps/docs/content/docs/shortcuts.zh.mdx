@@ -4,6 +4,7 @@ description: 用 ⌘K 搜索和执行命令，查看和修改键盘快捷键，�
 ---
 
 {/* Modified by honki12345, 2026: document the previous/next sent-message chat shortcuts (CALA-281), wakeup stops (CALA-318), the chat/inbox list step keys (CALA-328). */}
+{/* Modified by honki12345, 2026: document the previous/next sent-message chat shortcuts (CALA-281), wakeup stops (CALA-318), rename title shortcut (CALA-327). */}
 
 import { Callout } from "fumadocs-ui/components/callout";
 import { Step, Steps } from "fumadocs-ui/components/steps";
@@ -41,6 +42,7 @@ import { Step, Steps } from "fumadocs-ui/components/steps";
 | 下一条已发消息或唤醒 | `⌥⌘]` | `Ctrl+Alt+]` | 滚动到你发送的下一条消息或唤醒分隔线，已是最后一条时滚到最新回复。光标在悬浮聊天窗里时作用于该窗口，否则作用于页面上的聊天。 |
 | 上一个聊天或通知 | `⇧⌘[` | `Ctrl+Shift+[` | 打开聊天页列表中当前聊天上方的聊天，或收件箱中上方的通知。输入时也可用，光标留在原处。macOS 上的 Chrome 和 Safari 会把这个键留给浏览器切换标签页，请使用桌面应用或更换按键。 |
 | 下一个聊天或通知 | `⇧⌘]` | `Ctrl+Shift+]` | 打开下方的聊天或通知。到列表末尾时停止。 |
+| 重命名聊天或任务 | `⌘R` | `Ctrl+R` | 在聊天或任务页面，把光标移到标题并选中全部文字。聊天按 `↵` 保存、`Esc` 取消；任务标题和点击编辑时一样，离开输入框（包括按 `Esc`）就会保存。输入时也能用。光标在悬浮聊天窗里时作用于该窗口的聊天。其他页面保持原样：浏览器会刷新，桌面端什么也不做。 |
 | 在任务中查找 | `⌘F` | `Ctrl+F` | 见下文。 |
 | 归档通知 | `E` | `E` | 在从收件箱打开的任务上，归档它的通知并打开下一条；查看已归档时则取消归档当前打开的通知。见[收件箱](/inbox#处理通知)。 |
 | 延后通知 | `H` | `H` | 在从收件箱打开的任务上，延后它并打开下一条；已延后的任务则让它现在回来。 |
@@ -91,7 +93,7 @@ import { Step, Steps } from "fumadocs-ui/components/steps";
 录入时会拒绝几类组合，并在按键下方说明原因：
 
 - 已经分给其他操作的组合。
-- 浏览器、桌面窗口或系统占用的组合，例如 `⌘W`、`⌘R`、`⌘Q`、`⌘,`、复制粘贴这类编辑键、`⌘0`–`⌘9` 和缩放键。网页版里 `⌘P`、`⌘L`、`⌘T`、`⌘N`、`⌘D`、`⌘U` 也不能用，桌面端可以。Windows 和 Linux 上带 Win / Super 键的组合都不能用。
+- 浏览器、桌面窗口或系统占用的组合，例如 `⌘W`、`⌘R`（重命名聊天或任务除外）、`⌘Q`、`⌘,`、复制粘贴这类编辑键、`⌘0`–`⌘9` 和缩放键。网页版里 `⌘P`、`⌘L`、`⌘T`、`⌘N`、`⌘D`、`⌘U` 也不能用，桌面端可以。Windows 和 Linux 上带 Win / Super 键的组合都不能用。
 - 打开搜索、聊天窗、在任务中查找这类在输入框里也生效的操作，必须带 `⌘`、`Ctrl` 或 `Control`，否则打字时会误触。 语音输入还允许 `Option` / `Alt` 加 `Space` 等不输入文字的按键，但不能使用已被占用的组合。
 - **发送**只能是 `↵` 或 `⌘↵`。
 

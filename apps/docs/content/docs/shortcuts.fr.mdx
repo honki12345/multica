@@ -4,6 +4,7 @@ description: Rechercher et exécuter des commandes avec ⌘K, consulter et modif
 ---
 
 {/* Modified by honki12345, 2026: document the previous/next sent-message chat shortcuts (CALA-281), wakeup stops (CALA-318), the chat/inbox list step keys (CALA-328). */}
+{/* Modified by honki12345, 2026: document the previous/next sent-message chat shortcuts (CALA-281), wakeup stops (CALA-318), rename title shortcut (CALA-327). */}
 
 import { Callout } from "fumadocs-ui/components/callout";
 import { Step, Steps } from "fumadocs-ui/components/steps";
@@ -41,6 +42,7 @@ Choisir un résultat l'ouvre. Maintenez `⌘` (`Ctrl` sous Windows et Linux) en 
 | Message envoyé ou réveil suivant | `⌥⌘]` | `Ctrl+Alt+]` | Fait défiler jusqu'au message suivant que vous avez envoyé ou au réveil suivant, puis jusqu'à la dernière réponse. Agit sur la fenêtre flottante si votre curseur y est, sinon sur la discussion de la page. |
 | Discussion ou notification précédente | `⇧⌘[` | `Ctrl+Shift+[` | Ouvre la discussion au-dessus de celle ouverte dans la liste de la page Discussions, ou la notification au-dessus dans la boîte de réception. Fonctionne pendant la saisie, et le curseur reste en place. Dans Chrome et Safari sur macOS, le navigateur garde cette touche pour changer d'onglet ; utilisez l'application de bureau ou changez la touche. |
 | Discussion ou notification suivante | `⇧⌘]` | `Ctrl+Shift+]` | Ouvre la discussion ou la notification en dessous. S'arrête au bout de la liste. |
+| Renommer la discussion ou la tâche | `⌘R` | `Ctrl+R` | Sur une discussion ou une tâche, place le curseur dans son titre, texte sélectionné. Sur une discussion, `↵` enregistre et `Esc` annule ; le titre d'une tâche s'enregistre quand vous quittez le champ, `Esc` compris, comme après un clic. Fonctionne pendant la saisie. Agit sur la fenêtre flottante si votre curseur y est. Ailleurs, `⌘R` garde son sens habituel : le navigateur recharge la page, l'application de bureau ne fait rien. |
 | Rechercher dans la tâche | `⌘F` | `Ctrl+F` | Voir plus bas. |
 | Archiver la notification | `E` | `E` | Sur une tâche ouverte depuis la boîte de réception, archive sa notification et ouvre la suivante. Dans les notifications archivées, restaure celle qui est ouverte. Voir [Boîte de réception](/inbox#traiter-les-notifications). |
 | Reporter la notification | `H` | `H` | Sur une tâche ouverte depuis la boîte de réception, la reporte et ouvre la suivante. Sur une tâche reportée, la fait revenir maintenant. |
@@ -91,7 +93,7 @@ Les raccourcis ne sont enregistrés que sur l'appareil utilisé. Sur un autre or
 L'enregistrement refuse certaines combinaisons et en indique la raison sous les touches :
 
 - une combinaison déjà attribuée à une autre action ;
-- les combinaisons réservées au navigateur, à la fenêtre de bureau ou au système, comme `⌘W`, `⌘R`, `⌘Q`, `⌘,`, les touches d'édition (copier, coller…), `⌘0`–`⌘9` et les touches de zoom. Dans un navigateur, `⌘P`, `⌘L`, `⌘T`, `⌘N`, `⌘D` et `⌘U` sont aussi exclus ; l'application de bureau les accepte. Sous Windows et Linux, toute combinaison avec la touche Windows / Super est refusée ;
+- les combinaisons réservées au navigateur, à la fenêtre de bureau ou au système, comme `⌘W`, `⌘R` (sauf pour Renommer la discussion ou la tâche), `⌘Q`, `⌘,`, les touches d'édition (copier, coller…), `⌘0`–`⌘9` et les touches de zoom. Dans un navigateur, `⌘P`, `⌘L`, `⌘T`, `⌘N`, `⌘D` et `⌘U` sont aussi exclus ; l'application de bureau les accepte. Sous Windows et Linux, toute combinaison avec la touche Windows / Super est refusée ;
 - les actions qui fonctionnent aussi dans un champ de saisie, comme Ouvrir la recherche, la fenêtre de discussion ou Rechercher dans la tâche, exigent `⌘`, `Ctrl` ou `Control`, pour ne jamais se déclencher pendant la frappe ; La saisie vocale accepte aussi `Option` / `Alt` avec une touche non imprimable, comme `Space`, sauf si la combinaison est réservée.
 - **Envoyer** ne peut être que `↵` ou `⌘↵`.
 

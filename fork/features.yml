@@ -1001,6 +1001,278 @@ features:
           - General lists "Previous chat or notification" (⇧⌘[) and "Next chat or notification" (⇧⌘]), recordable and resettable like the others.
     drop_when: upstream ships keys that open the chat or notification above / below the open one from anywhere on the page.
 
+  - id: shortcut-rename-title
+    summary: Mod+R puts the caret in the open chat's or issue's title with the text selected, in the chat page, the issue page and the floating chat window; the desktop app relays the chord instead of swallowing it as reload.
+    status: active
+    kind: web-ui
+    cards: [CALA-327]
+    origin:
+      type: ours
+      commits: ["446785443", "2d13300d5", "069a16791", "70c21f590", "5250809ed"]
+    files:
+      - packages/core/shortcuts/definitions.ts
+      - packages/core/shortcuts/definitions.test.ts
+      - packages/core/shortcuts/index.ts
+      - packages/views/layout/rename-title-shortcut.ts
+      - packages/views/layout/rename-title-shortcut.test.tsx
+      - packages/views/layout/index.ts
+      - packages/views/chat/components/chat-session-header.tsx
+      - packages/views/chat/components/chat-session-header.test.tsx
+      - packages/views/chat/components/chat-window.tsx
+      - packages/views/chat/components/chat-window.test.tsx
+      - packages/views/chat/components/session-history-list.tsx
+      - packages/views/editor/title-editor.tsx
+      - packages/views/editor/title-editor.test.tsx
+      - packages/views/editor/use-lazy-editor.ts
+      - packages/views/editor/use-lazy-editor.test.ts
+      - packages/views/issues/components/issue-detail.tsx
+      - packages/views/issues/components/issue-detail.test.tsx
+      - packages/views/settings/components/keyboard-shortcuts-tab.tsx
+      - packages/views/settings/components/keyboard-shortcuts-tab.test.tsx
+      - apps/desktop/src/main/keyboard-shortcuts.ts
+      - apps/desktop/src/main/keyboard-shortcuts.test.ts
+      - apps/desktop/src/main/index.ts
+      - apps/desktop/src/shared/main-renderer-messages.ts
+      - apps/desktop/src/preload/index.ts
+      - apps/desktop/src/preload/index.d.ts
+      - apps/desktop/src/renderer/src/App.tsx
+      - apps/desktop/src/renderer/src/hooks/use-rename-title-shortcut.ts
+      - apps/desktop/src/renderer/src/hooks/use-rename-title-shortcut.test.tsx
+      - packages/views/locales/en/settings.json
+      - packages/views/locales/es/settings.json
+      - packages/views/locales/fr/settings.json
+      - packages/views/locales/ja/settings.json
+      - packages/views/locales/ko/settings.json
+      - packages/views/locales/ru/settings.json
+      - packages/views/locales/zh-Hans/settings.json
+      - packages/views/locales/zh-Hant/settings.json
+      - apps/docs/content/docs/shortcuts.mdx
+      - apps/docs/content/docs/shortcuts.ko.mdx
+      - apps/docs/content/docs/shortcuts.ja.mdx
+      - apps/docs/content/docs/shortcuts.zh.mdx
+      - apps/docs/content/docs/shortcuts.zh-Hant.mdx
+      - apps/docs/content/docs/shortcuts.fr.mdx
+      - apps/docs/content/docs/themes.mdx
+      - apps/docs/content/docs/themes.ko.mdx
+      - apps/docs/content/docs/themes.ja.mdx
+      - apps/docs/content/docs/themes.zh.mdx
+      - apps/docs/content/docs/themes.zh-Hant.mdx
+      - apps/docs/content/docs/themes.fr.mdx
+    watch:
+      - path: packages/core/shortcuts/store.ts
+        why: sanitizes persisted overrides through isShortcutAllowedForAction, which must keep accepting Mod+R for renameTitle
+      - path: packages/views/chat/chat-page.tsx
+        why: mounts ChatSessionHeader for the open chat
+      - path: packages/views/chat/components/session-rename-input.tsx
+        why: the floating window's row rename field, which focuses and selects on mount
+      - path: packages/views/chat/floating-chat.tsx
+        why: mounts ChatWindow only where the floating window is shown
+      - path: packages/ui/components/ui/popover.tsx
+        why: PopoverContent passes initialFocus to Base UI, which must not take focus from the rename field
+      - path: packages/views/issues/components/issue-peek.tsx
+        why: mounts a second IssueDetail over the page; the title next to the focus must win
+      - path: apps/desktop/src/renderer/src/components/issue-window.tsx
+        why: a dedicated issue window, which also receives the relayed chord
+      - path: packages/core/utils.ts
+        why: isImeComposing guards Korean/Japanese composition
+    upstream_equivalent:
+      symbols: [renameTitle, RENAME_TITLE_SHORTCUT_CHANNEL, useRenameTitleShortcut]
+      keywords: [rename shortcut, rename chat shortcut, edit title shortcut, Cmd+R rename]
+    tests:
+      - vitest: packages/core/shortcuts/definitions.test.ts
+        name: renames the open chat or issue title with Mod+R everywhere, composer included
+      - vitest: packages/core/shortcuts/definitions.test.ts
+        name: frees bare Mod+R from the reload reservation only for renaming
+      - vitest: packages/views/layout/rename-title-shortcut.test.tsx
+        name: renames the page title on Mod+R, even from a text field, and keeps the browser from reloading
+      - vitest: packages/views/layout/rename-title-shortcut.test.tsx
+        name: leaves Mod+R to the browser where nothing can be renamed
+      - vitest: packages/views/layout/rename-title-shortcut.test.tsx
+        name: renames the floating chat while focus is in it, and the page title otherwise
+      - vitest: packages/views/layout/rename-title-shortcut.test.tsx
+        name: renames the title next to the focus when two are on screen, the newest otherwise
+      - vitest: packages/views/layout/rename-title-shortcut.test.tsx
+        name: prefers the newest title over a deeper-nested page title when focus is outside both
+      - vitest: packages/views/settings/components/keyboard-shortcuts-tab.test.tsx
+        name: lets Rename take Mod+R back while it stays reserved for other actions
+      - vitest: packages/views/chat/components/chat-session-header.test.tsx
+        name: opens the title field with the title selected on Mod+R from the composer
+      - vitest: packages/views/chat/components/chat-window.test.tsx
+        name: opens the chat list with the open chat's title ready to rename on Mod+R from inside the window
+      - vitest: packages/views/issues/components/issue-detail.test.tsx
+        name: puts the caret in the title with it all selected on Mod+R, even from the comment box
+      - vitest: apps/desktop/src/main/keyboard-shortcuts.test.ts
+        name: hands Cmd+R to the renderer as rename instead of reloading on macOS
+      - vitest: apps/desktop/src/main/keyboard-shortcuts.test.ts
+        name: keeps swallowing the force-reload and other modified variants
+      - vitest: apps/desktop/src/renderer/src/hooks/use-rename-title-shortcut.test.tsx
+        name: renames from where focus is when main relays Cmd/Ctrl+R
+    scenarios:
+      - name: rename a chat from the composer
+        path: /<workspace-slug>/chat
+        widths: [1440]
+        setup: a test-database workspace with a chat open in the chat page
+        steps:
+          - Click into the composer and press Cmd+R.
+          - Type a new title and press Enter.
+        selectors:
+          - 'input[aria-label="Rename"]'
+        expect:
+          - The title becomes a text field with the whole title selected and the caret in it; the page does not reload.
+          - Enter saves the new title; the breadcrumb shows it.
+      - name: rename an issue
+        path: /<workspace-slug>/issues/<issue-id>
+        widths: [1440]
+        setup: a test-database issue
+        steps:
+          - Click into the comment box and press Cmd+R.
+          - Type a new title and press Enter.
+        selectors:
+          - '[data-mc="issue-title"]'
+        expect:
+          - The caret moves into the issue title with the whole title selected; the page does not reload.
+          - Enter saves the title.
+      - name: floating window
+        path: /<workspace-slug>/issues
+        widths: [1440]
+        setup: the floating chat window open on a chat
+        steps:
+          - Click into the floating window's composer and press Cmd+R.
+        selectors:
+          - '[data-mc="chat-window"]'
+        expect:
+          - The chat list opens with the open chat's title in a text field, selected.
+      - name: other pages keep reload
+        path: /<workspace-slug>/projects
+        widths: [1440]
+        steps:
+          - Press Cmd+R in a browser.
+        selectors: []
+        expect:
+          - The browser reloads the page.
+    drop_when: upstream ships a rebindable rename-title shortcut that also works in the desktop app.
+
+  - id: reading-pane-scroll-focus
+    summary: After picking a chat (thread row, floating-window history) or opening the issue page from a side-panel link, and after clicking plain text in the conversation or issue body, ↑/↓/PageUp/PageDown scroll what is being read instead of the list that opened it.
+    status: active
+    kind: web-ui
+    cards: [CALA-330]
+    origin:
+      type: ours
+      commits: ["a5120e89d", "45610a4a9", "01f950fa1"]
+    files:
+      - packages/views/common/take-keyboard-focus.ts
+      - packages/views/common/take-keyboard-focus.test.tsx
+      - packages/views/chat/chat-page.tsx
+      - packages/views/chat/chat-page.test.tsx
+      - packages/views/chat/components/chat-message-list.tsx
+      - packages/views/chat/components/chat-message-list.focus.test.tsx
+      - packages/views/chat/components/chat-window.tsx
+      - packages/views/chat/components/chat-window.test.tsx
+      - packages/views/chat/components/chat-window-messages.tsx
+      - packages/views/issues/components/issue-detail.tsx
+      - packages/views/issues/components/issue-detail.test.tsx
+      - packages/views/issues/components/issue-detail-route.tsx
+      - packages/views/issues/components/issue-detail-route.focus.test.tsx
+    watch:
+      - path: packages/views/chat/components/chat-thread-list.tsx
+        why: the row that keeps focus after a click; a roving-focus or arrow-key change there decides who owns ↑/↓
+      - path: packages/views/chat/components/stick-to-bottom.ts
+        why: hasReachedLiveEnd gates the focus move; the list is invisible and cannot hold focus before it
+      - path: packages/views/chat/components/use-chat-controller.ts
+        why: handleSelectSession is what both chat surfaces wrap to request focus
+      - path: packages/views/inbox/components/inbox-list.tsx
+        why: same pattern (tabIndex=-1 list, focus with preventScroll); the inbox detail pane must keep focus off the issue so ↑/↓ still move the selection
+      - path: packages/views/inbox/components/inbox-page.tsx
+        why: renders IssueDetail without focusOnOpen on purpose
+      - path: packages/core/shortcuts/definitions.ts
+        why: isEditableShortcutTarget and isPortalLayerShortcutTarget decide when focus is left alone
+    upstream_equivalent:
+      symbols: [focusRequested, focusOnOpen]
+      keywords: [arrow keys scroll chat, focus conversation, scroll keys reading pane, keyboard scroll issue detail]
+    tests:
+      - vitest: packages/views/common/take-keyboard-focus.test.tsx
+        name: waits while a menu holds focus, then takes it once the menu lets go
+      - vitest: packages/views/common/take-keyboard-focus.test.tsx
+        name: gives up after a while instead of taking focus much later
+      - vitest: packages/views/chat/components/chat-message-list.focus.test.tsx
+        name: takes the keys once the popover has let go, even when the list lands first
+      - vitest: packages/views/chat/chat-page.test.tsx
+        name: drops the request when another chat opens before the picked one does
+      - vitest: packages/views/chat/components/chat-message-list.focus.test.tsx
+        name: takes the keys when the reader clicks a message's text
+      - vitest: packages/views/chat/components/chat-message-list.focus.test.tsx
+        name: moves focus from the row that opened the chat once the list has landed, without scrolling
+      - vitest: packages/views/chat/components/chat-message-list.focus.test.tsx
+        name: leaves the caret in the composer
+      - vitest: packages/views/chat/components/chat-message-list.focus.test.tsx
+        name: does not pull focus back after the reader tabs out to the list
+      - vitest: packages/views/chat/components/chat-message-list.focus.test.tsx
+        name: stays out of the Tab order
+      - vitest: packages/views/chat/chat-page.test.tsx
+        name: asks the conversation to take focus when a thread is picked
+      - vitest: packages/views/chat/components/chat-window.test.tsx
+        name: asks the conversation to take focus when a chat is picked from the history
+      - vitest: packages/views/issues/components/issue-detail.test.tsx
+        name: moves focus from the link that opened the issue to its body, without scrolling
+      - vitest: packages/views/issues/components/issue-detail.test.tsx
+        name: lets a click on plain text in the body take the keys
+      - vitest: packages/views/issues/components/issue-detail-route.focus.test.tsx
+        name: asks the issue page to take the scroll keys when it opens
+    scenarios:
+      - name: picked chat takes the scroll keys
+        path: /<workspace-slug>/chat
+        widths: [1440]
+        setup: at least three chats, one with replies long enough to scroll
+        steps:
+          - Click the long chat's row in the chat list.
+          - Scroll the conversation up with the mouse wheel, then press ↓ three times and PageDown once.
+          - Click the composer and press ↑.
+          - Press Shift+Tab until a chat row has focus, then press ↓.
+        selectors:
+          - '[data-tab-scroll-root][data-chat-prompt-nav]'
+          - 'aside[data-slot="list-column"]'
+        expect:
+          - The conversation scrolls down; the chat list does not move.
+          - In the composer ↑ moves the caret, not the list.
+          - With a chat row focused, ↓ scrolls the chat list again.
+      - name: clicked conversation text takes the scroll keys
+        path: /<workspace-slug>/chat
+        widths: [1440]
+        setup: the chat page with a long chat open
+        steps:
+          - Press Tab until a chat row has focus.
+          - Click plain text in a message, then press ↓ three times.
+        selectors:
+          - '[data-tab-scroll-root][data-chat-prompt-nav]'
+        expect:
+          - The conversation scrolls; no focus ring appears around it.
+      - name: floating window history pick takes the scroll keys
+        path: /<workspace-slug>/issues
+        widths: [1440]
+        setup: the floating chat window open
+        steps:
+          - Open the window's chat history and pick a long chat.
+          - Scroll it up with the wheel and press ↓ three times.
+        selectors:
+          - '[data-mc="chat-window"] [data-tab-scroll-root]'
+        expect:
+          - The floating window's conversation scrolls.
+      - name: issue opened from the side panel takes the scroll keys
+        path: /<workspace-slug>/inbox
+        widths: [1440]
+        setup: the Work side panel lists at least two issues with long timelines
+        steps:
+          - Click an issue link in the side panel.
+          - Press ↓ four times.
+          - Click plain text in the issue body and press ↓ again.
+        selectors:
+          - '[data-tab-scroll-root^="main:"]'
+          - '[data-slot="space-panel"]'
+        expect:
+          - The issue scrolls both times; the side panel does not move.
+    drop_when: upstream gives the chat conversation and the issue page focusable scroll containers and moves focus to them when a chat or issue is opened from a list.
+
   - id: desktop-fork-build
     summary: Desktop app built from the fork (X.Y.Z-hoon.N, fork CLI bundled) that never auto-updates to the official release or runs its daemon from an official CLI.
     status: active

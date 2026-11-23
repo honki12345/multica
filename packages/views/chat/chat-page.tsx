@@ -1,6 +1,7 @@
 "use client";
 
 // Modified by honki12345, 2026: the list-step keys open the chat above / below, list shown or not (CALA-328).
+// Modified by honki12345, 2026: picking a thread hands keyboard focus to the conversation (CALA-330).
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Bot, MessageSquare, Plus } from "@multica/ui/icons";
@@ -154,10 +155,17 @@ export function ChatPage() {
     if (urlAgent) consumedAgentIntent.current = urlAgent;
   };
 
+  // Picking a thread means reading it: the conversation takes the keys from
+  // the row that was clicked, once it has landed (CALA-330). The request names
+  // the picked chat, so it never reaches a chat opened another way (a deep
+  // link, back/forward) when the picked one had nothing to show.
+  const [focusRequestFor, setFocusRequestFor] = useState<string | null>(null);
+
   const handleSelect = (session: ChatSession) => {
     supersedeAgentIntent();
     c.handleSelectSession(session);
     setComposingNew(false);
+    setFocusRequestFor(session.id);
   };
 
   // Single archive path for both entry points (thread-list row + conversation
@@ -386,6 +394,8 @@ export function ChatPage() {
           quickActionsPendingMessageId={quickActionsPending?.message_id ?? null}
           annotations={annotations}
           wakeups={wakeups}
+          focusRequested={!!c.activeSessionId && focusRequestFor === c.activeSessionId}
+          onFocusRequestApplied={() => setFocusRequestFor(null)}
         />
       ) : (
         <EmptyState

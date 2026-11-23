@@ -440,6 +440,10 @@
         "label": "Chat o notificación siguiente",
         "description": "Abre el chat que está debajo del abierto en la lista de chats, o la notificación de debajo en la bandeja. Funciona mientras escribes."
       },
+      "renameTitle": {
+        "label": "Renombrar chat o tarea",
+        "description": "Edita el título del chat o la tarea en pantalla, con el texto seleccionado."
+      },
       "findInIssue": {
         "label": "Buscar en la tarea",
         "description": "Busca dentro del detalle de la tarea abierta."

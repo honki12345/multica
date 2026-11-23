@@ -434,6 +434,10 @@
         "label": "下一個聊天或通知",
         "description": "開啟聊天列表中目前聊天下方的聊天，或收件箱中下方的通知。輸入時也可使用。"
       },
+      "renameTitle": {
+        "label": "重新命名聊天或任務",
+        "description": "編輯目前聊天或任務的標題，並選取全部文字。"
+      },
       "findInIssue": {
         "label": "在任務中查詢",
         "description": "搜尋當前開啟的任務詳情。"

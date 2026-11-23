@@ -440,6 +440,10 @@
         "label": "Next chat or notification",
         "description": "Open the chat below the open one in the chat list, or the notification below in the inbox. Works while typing."
       },
+      "renameTitle": {
+        "label": "Rename chat or issue",
+        "description": "Edit the title of the chat or issue on screen, with the text selected."
+      },
       "findInIssue": {
         "label": "Find in issue",
         "description": "Search within the open issue detail."

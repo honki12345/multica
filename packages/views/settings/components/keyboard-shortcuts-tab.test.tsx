@@ -1,3 +1,4 @@
+// Modified by honki12345, 2026: cover recording Mod+R back for the rename title shortcut (CALA-327).
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import {
@@ -218,6 +219,24 @@ describe("KeyboardShortcutsTab", () => {
     expect(getShortcut("send")).toEqual(
       createShortcutChord("Enter", { primary: true }),
     );
+  });
+
+  it("lets Rename take Mod+R back while it stays reserved for other actions", () => {
+    renderWithI18n(<KeyboardShortcutsTab />);
+    const rename = screen.getByRole("button", { name: "Change shortcut for Rename chat or issue" });
+    fireEvent.click(rename);
+    fireEvent.keyDown(rename, { key: "E", ctrlKey: true, shiftKey: true });
+    expect(getShortcut("renameTitle")).toEqual(createShortcutChord("E", { primary: true, shift: true }));
+
+    fireEvent.click(rename);
+    fireEvent.keyDown(rename, { key: "r", ctrlKey: true });
+    expect(getShortcut("renameTitle")).toEqual(createShortcutChord("R", { primary: true }));
+
+    const search = screen.getByRole("button", { name: "Change shortcut for Open search" });
+    fireEvent.click(search);
+    fireEvent.keyDown(search, { key: "r", ctrlKey: true });
+    expect(getShortcut("openSearch")).toEqual(createShortcutChord("K", { primary: true }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Reserved by the browser or desktop window.");
   });
 
   it("rejects shortcuts already assigned to another action", () => {

@@ -1,6 +1,7 @@
 "use client";
 
 // Modified by honki12345, 2026: expose the Virtuoso handle so the list can scroll a row into view (CALA-328).
+// Modified by honki12345, 2026: open scrolled to a given chat (CALA-327).
 
 import type { ReactNode, Ref } from "react";
 import { Virtuoso, type Components, type VirtuosoHandle } from "react-virtuoso";
@@ -21,6 +22,7 @@ export function SessionHistoryList({
   maxHeight,
   estimatedRowHeight = 56,
   listRef,
+  initialSessionId,
 }: {
   sessions: ChatSession[];
   renderRow: (session: ChatSession) => ReactNode;
@@ -28,10 +30,16 @@ export function SessionHistoryList({
   maxHeight?: number;
   estimatedRowHeight?: number;
   listRef?: Ref<VirtuosoHandle>;
+  /** Read at mount: open scrolled so this chat's row is rendered. */
+  initialSessionId?: string | null;
 }) {
+  const initialIndex = initialSessionId
+    ? sessions.findIndex((session) => session.id === initialSessionId)
+    : -1;
   return (
     <Virtuoso
       ref={listRef}
+      {...(initialIndex > 0 ? { initialTopMostItemIndex: initialIndex } : {})}
       style={{
         height: maxHeight == null
           ? "100%"

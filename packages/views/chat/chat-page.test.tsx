@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // Modified by honki12345, 2026: cover the list-step keys on the Chat page (CALA-328).
+// Modified by honki12345, 2026: picking a thread hands keyboard focus to the conversation (CALA-330).
 
 import { StrictMode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -22,8 +23,14 @@ const TEST_RESOURCES = { en: { common: enCommon, chat: enChat } };
 // a ref-driven fake the tests can steer. The thread-list stub stays
 // interactive: selecting a thread is the user action that must supersede a
 // pending `?agent=` intent.
+const messageListProps = vi.hoisted(() => ({
+  last: null as { focusRequested?: boolean; onFocusRequestApplied?: () => void } | null,
+}));
 vi.mock("./components/chat-message-list", () => ({
-  ChatMessageList: () => <div>chat-message-list</div>,
+  ChatMessageList: (props: { focusRequested?: boolean; onFocusRequestApplied?: () => void }) => {
+    messageListProps.last = props;
+    return <div>chat-message-list</div>;
+  },
   ChatMessageSkeleton: () => <div>chat-message-skeleton</div>,
 }));
 vi.mock("./components/chat-input", () => ({
@@ -118,6 +125,7 @@ const availableAgentsRef = vi.hoisted(() => ({ current: [] as Agent[] }));
 const agentsSettledRef = vi.hoisted(() => ({ current: true }));
 const sessionsRef = vi.hoisted(() => ({ current: [] as ChatSession[] }));
 const mockHandleSelectSession = vi.hoisted(() => vi.fn());
+const hasMessagesRef = vi.hoisted(() => ({ current: false }));
 const mockStartNewChat = vi.hoisted(() => vi.fn());
 const mockToastError = vi.hoisted(() => vi.fn());
 const mockSetActiveSession = vi.hoisted(() =>
@@ -169,7 +177,7 @@ vi.mock("./components/use-chat-controller", async () => {
       pendingTask: null,
       pendingTaskId: null,
       showSkeleton: false,
-      hasMessages: false,
+      hasMessages: hasMessagesRef.current,
       firstItemIndex: 0,
       hasOlderMessages: false,
       isFetchingOlderMessages: false,
@@ -272,6 +280,8 @@ beforeEach(() => {
   availableAgentsRef.current = [agent];
   agentsSettledRef.current = true;
   sessionsRef.current = [];
+  hasMessagesRef.current = false;
+  messageListProps.last = null;
   platformWorkspace.slug = "acme";
   layout.width = DESKTOP;
 });
@@ -649,5 +659,40 @@ describe("ChatPage list-step keys (CALA-328)", () => {
     view.rerender({ pathname: "/acme/issues" });
     expect(step(document.body, "]")).toBe(true);
     expect(opened()).toEqual([]);
+  });
+});
+
+describe("ChatPage keyboard focus after picking a thread", () => {
+  it("asks the conversation to take focus when a thread is picked", () => {
+    hasMessagesRef.current = true;
+    storeRef.current = { activeSessionId: "session-9" };
+    renderPage("session=session-9");
+    expect(messageListProps.last?.focusRequested).not.toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "select-thread" }));
+
+    expect(messageListProps.last?.focusRequested).toBe(true);
+    act(() => messageListProps.last?.onFocusRequestApplied?.());
+    expect(messageListProps.last?.focusRequested).toBe(false);
+  });
+
+  it("drops the request when another chat opens before the picked one does", () => {
+    hasMessagesRef.current = true;
+    storeRef.current = { activeSessionId: "session-1" };
+    renderPage("session=session-1");
+
+    // The stub row picks "session-9"; the controller fake keeps session-1 open,
+    // as when the pick has not opened yet and another chat is on screen.
+    fireEvent.click(screen.getByRole("button", { name: "select-thread" }));
+
+    expect(messageListProps.last?.focusRequested).toBe(false);
+  });
+
+  it("leaves focus alone when the chat opens from a link", () => {
+    hasMessagesRef.current = true;
+    storeRef.current = { activeSessionId: "session-1" };
+    renderPage("session=session-1");
+
+    expect(messageListProps.last?.focusRequested).not.toBe(true);
   });
 });

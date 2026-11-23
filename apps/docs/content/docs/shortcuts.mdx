@@ -4,6 +4,7 @@ description: Search and run commands with ⌘K, review and rebind keyboard short
 ---
 
 {/* Modified by honki12345, 2026: document the previous/next sent-message chat shortcuts (CALA-281), wakeup stops (CALA-318), the chat/inbox list step keys (CALA-328). */}
+{/* Modified by honki12345, 2026: document the previous/next sent-message chat shortcuts (CALA-281), wakeup stops (CALA-318), rename title shortcut (CALA-327). */}
 
 import { Callout } from "fumadocs-ui/components/callout";
 import { Step, Steps } from "fumadocs-ui/components/steps";
@@ -41,6 +42,7 @@ Selecting a result opens it. Hold `⌘` (`Ctrl` on Windows and Linux) while clic
 | Next sent message or wakeup | `⌥⌘]` | `Ctrl+Alt+]` | Scrolls to the next message you sent or the next wakeup; after the last one, to the latest reply. In the floating window when your cursor is in it, otherwise in the chat on the page. |
 | Previous chat or notification | `⇧⌘[` | `Ctrl+Shift+[` | Opens the chat above the open one in the Chat page's list, or the notification above in the inbox. Works while typing, and the cursor stays where it is. In Chrome and Safari on macOS, the browser keeps this key for switching its own tabs; use the desktop app or change the key. |
 | Next chat or notification | `⇧⌘]` | `Ctrl+Shift+]` | Opens the chat or notification below. Stops at the end of the list. |
+| Rename chat or issue | `⌘R` | `Ctrl+R` | On a chat or an issue, puts the cursor in its title with the text selected. On a chat `↵` saves and `Esc` cancels; an issue title saves when you leave it, `Esc` included, as when you click it. Works while typing. In the floating window when your cursor is in it. Elsewhere `⌘R` keeps its usual meaning: the browser reloads, the desktop app does nothing. |
 | Find in issue | `⌘F` | `Ctrl+F` | See below. |
 | Archive notification | `E` | `E` | On an issue opened from the inbox, archives its notification and opens the next one. In archived notifications, restores the open one. See [Inbox](/inbox#handle-notifications). |
 | Snooze notification | `H` | `H` | On an issue opened from the inbox, snoozes it and opens the next one. On a snoozed issue, brings it back now. See [Inbox](/inbox#snooze-an-issue). |
@@ -91,7 +93,7 @@ Shortcuts are saved on the current device only. On another computer, or when you
 Recording rejects a few kinds of combinations and says why under the keys:
 
 - A combination already assigned to another action.
-- Combinations the browser, the desktop window, or the operating system owns, such as `⌘W`, `⌘R`, `⌘Q`, `⌘,`, editing keys like copy and paste, `⌘0`–`⌘9`, and the zoom keys. In a browser, `⌘P`, `⌘L`, `⌘T`, `⌘N`, `⌘D`, and `⌘U` are off-limits too; the desktop app allows them. On Windows and Linux, any combination with the Win / Super key is rejected.
+- Combinations the browser, the desktop window, or the operating system owns, such as `⌘W`, `⌘R` (except for Rename chat or issue), `⌘Q`, `⌘,`, editing keys like copy and paste, `⌘0`–`⌘9`, and the zoom keys. In a browser, `⌘P`, `⌘L`, `⌘T`, `⌘N`, `⌘D`, and `⌘U` are off-limits too; the desktop app allows them. On Windows and Linux, any combination with the Win / Super key is rejected.
 - Actions that also work inside an input, such as Open search, Toggle chat window, and Find in issue, need `⌘`, `Ctrl`, or `Control`, so they never fire while you type. Voice input also accepts `Option` / `Alt` with a non-printing key, such as `Space`, unless the combination is reserved.
 - **Send** can only be `↵` or `⌘↵`.
 

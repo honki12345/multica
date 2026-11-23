@@ -1,3 +1,4 @@
+// Modified by honki12345, 2026: relay the rename-title shortcut to the renderer (CALA-327).
 import { contextBridge, ipcRenderer } from "electron";
 import { electronAPI } from "@electron-toolkit/preload";
 import type { RuntimeConfigResult } from "../shared/runtime-config";
@@ -73,6 +74,7 @@ import {
 import {
   MAIN_RENDERER_CHANNEL_STATE_CHANNEL,
   NEW_WINDOW_SHORTCUT_CHANNEL,
+  RENAME_TITLE_SHORTCUT_CHANNEL,
   parseTabSelectionShortcutKey,
   TAB_SELECTION_SHORTCUT_CHANNEL,
   WORKSPACE_OPEN_PATH_CHANNEL,
@@ -348,6 +350,16 @@ const desktopAPI = {
     ipcRenderer.on("tab:close-active", handler);
     return () => {
       ipcRenderer.removeListener("tab:close-active", handler);
+    };
+  },
+  /** Listen for Cmd/Ctrl+R, which main holds back from reloading and hands to
+   *  the window it was pressed in to rename what it shows. Returns an
+   *  unsubscribe fn. */
+  onRenameTitleShortcut: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on(RENAME_TITLE_SHORTCUT_CHANNEL, handler);
+    return () => {
+      ipcRenderer.removeListener(RENAME_TITLE_SHORTCUT_CHANNEL, handler);
     };
   },
   /** Listen for Cmd/Ctrl+, requests to open Settings. Only the main window
