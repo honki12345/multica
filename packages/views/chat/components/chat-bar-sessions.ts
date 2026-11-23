@@ -1,4 +1,4 @@
-// Modified by honki12345, 2026: show every chat chip instead of folding extras into +N (CALA-72).
+// Modified by honki12345, 2026: show every chat chip instead of folding extras into +N (CALA-72); follow the dragged chip order (CALA-300).
 
 import type { ChatSession } from "@multica/core/types";
 
@@ -26,10 +26,12 @@ export function chatActivity(session: ChatSession): string {
  * window, and keeps it until the chip is closed. A closed chip comes back
  * when its chat moves again, or is opened again.
  *
- * Chips are ordered by creation, newest first, so a chip keeps its place for
- * the chat's whole life: ordering by activity would swap two running chats on
- * every message. The open chat is always among the visible chips, because the
- * window opens above its chip.
+ * Chips follow `order`, the order they were dragged into. A chip missing
+ * from it (a new chat, or one closed and back) goes first, newest first.
+ * Creation time rather than activity breaks that tie, so a chip keeps its
+ * place for the chat's whole life: ordering by activity would swap two
+ * running chats on every message. The open chat is always among the visible
+ * chips, because the window opens above its chip.
  *
  * With no `maxVisible`, every chip is visible and the bar scrolls them instead
  * of folding the rest into an overflow menu.
@@ -40,6 +42,7 @@ export function selectChatBarSessions({
   openSessionId,
   kept,
   dismissed,
+  order,
   maxVisible,
 }: {
   sessions: ChatSession[];
@@ -50,8 +53,11 @@ export function selectChatBarSessions({
   kept: readonly string[];
   /** Closed chips: sessionId to the chat's activity when it was closed. */
   dismissed: Readonly<Record<string, string>>;
+  /** Chip order the user dragged into, left to right. */
+  order: readonly string[];
   maxVisible?: number;
 }): ChatBarSessions {
+  const position = new Map(order.map((id, index) => [id, index]));
   const items = sessions
     .filter((session) => session.status !== "archived")
     .map((session) => ({
@@ -66,10 +72,12 @@ export function selectChatBarSessions({
         ((item.running || item.unread || kept.includes(item.session.id)) &&
           dismissed[item.session.id] !== chatActivity(item.session)),
     )
-    .sort(
-      (a, b) =>
-        new Date(b.session.created_at).getTime() - new Date(a.session.created_at).getTime(),
-    );
+    .sort((a, b) => {
+      const pa = position.get(a.session.id) ?? -1;
+      const pb = position.get(b.session.id) ?? -1;
+      if (pa !== pb) return pa - pb;
+      return new Date(b.session.created_at).getTime() - new Date(a.session.created_at).getTime();
+    });
 
   const limit = maxVisible === undefined ? items.length : Math.max(1, maxVisible);
   const openIndex = items.findIndex((item) => item.open);
