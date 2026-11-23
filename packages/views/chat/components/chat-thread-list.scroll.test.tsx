@@ -1,6 +1,6 @@
 import { forwardRef, useImperativeHandle } from "react";
 import { render } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@multica/core/i18n/react";
 import type { Agent, ChatSession } from "@multica/core/types";
 import enChat from "../../locales/en/chat.json";
@@ -68,10 +68,14 @@ const ui = (active: string | null, sessions = shortList) => (
   </I18nProvider>
 );
 
+const elementScrollIntoView = Element.prototype.scrollIntoView;
 beforeEach(() => {
   scrollIntoView.mockClear();
   rowScrollIntoView.mockClear();
   Element.prototype.scrollIntoView = rowScrollIntoView;
+});
+afterEach(() => {
+  Element.prototype.scrollIntoView = elementScrollIntoView;
 });
 
 describe("ChatThreadList scroll to the open chat (CALA-328)", () => {

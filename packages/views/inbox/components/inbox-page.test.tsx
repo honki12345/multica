@@ -2,7 +2,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
-import type { AgentTask, InboxItem } from "@multica/core/types";
+import type { AgentTask, InboxItem, SnoozedInboxIssue } from "@multica/core/types";
 import { useInboxFilterStore } from "@multica/core/inbox/filter-store";
 import { useInboxSelectionStore } from "@multica/core/inbox/selection-store";
 import { useCommandBarContextStore } from "@multica/core/command-bar";
@@ -17,13 +17,13 @@ vi.mock("sonner", () => ({
 // The page runs two queries — the active list and the archived one. They are
 // told apart by the queryKey their options carry, so each test can stock the
 // two lists independently.
-const listData: { active: InboxItem[]; archived: InboxItem[]; lookup?: InboxItem[]; tasks: AgentTask[] } = {
+const listData: { active: InboxItem[]; archived: InboxItem[]; lookup?: InboxItem[]; tasks: AgentTask[]; snoozed: SnoozedInboxIssue[] } = {
   active: [],
   archived: [],
   tasks: [],
+  snoozed: [],
 };
 
-const NO_SNOOZED: never[] = [];
 const queryCalls: Array<{ queryKey: readonly unknown[]; enabled?: boolean }> = [];
 const lookupState = { isLoading: false, isError: false, refetch: vi.fn() };
 // The active list as a read that failed before anything loaded, and is
@@ -40,7 +40,7 @@ vi.mock("@tanstack/react-query", () => ({
       ? { items: listData.lookup ?? listData.archived, hasMore: false, nextCursor: null }
       : options.queryKey.includes("agent-task-snapshot") ? listData.tasks
       : options.queryKey.includes("working-agents") ? []
-      : options.queryKey.includes("snoozed") ? NO_SNOOZED : listData.active,
+      : options.queryKey.includes("snoozed") ? listData.snoozed : listData.active,
     isLoading: false,
     isError: false,
     refetch: vi.fn(),
@@ -289,6 +289,7 @@ function reset() {
   listData.archived = [];
   listData.lookup = undefined;
   listData.tasks = [];
+  listData.snoozed = [];
   lookupState.isLoading = false;
   lookupState.isError = false;
   lookupState.refetch.mockClear();
@@ -1404,6 +1405,51 @@ describe("InboxPage list-step keys (CALA-328)", () => {
     render(<InboxPage />);
     step(document.body, "]");
     expect(urls()).toEqual(["/acme/inbox?view=archived&issue=issue-b"]);
+  });
+
+  it("steps through the snoozed issues on the Snoozed tab, not the live Inbox", () => {
+    reset();
+    configureShortcutPlatform("macos");
+    layout.width = DESKTOP;
+    listData.active = ROWS;
+    const until = new Date(Date.now() + 86_400_000).toISOString();
+    listData.snoozed = ["snoozed-1", "snoozed-2"].map((id) => ({
+      issue_id: id,
+      issue_identifier: id.toUpperCase(),
+      item_id: `item-${id}`,
+      snoozed_until: until,
+      snoozed_at: new Date().toISOString(),
+      updates: 0,
+    }));
+    searchParams = new URLSearchParams("view=snoozed&issue=snoozed-1");
+    render(<InboxPage />);
+    step(document.body, "]");
+    expect(urls()).toEqual(["/acme/inbox?view=snoozed&issue=snoozed-2"]);
+  });
+
+  it("hands the scroll keys to an issue opened from the Work panel, not on the archive or a phone", () => {
+    const lastFocusOnOpen = () => issueDetailProps.at(-1)?.focusOnOpen;
+    reset();
+    layout.width = DESKTOP;
+    listData.active = ROWS;
+    searchParams = new URLSearchParams("issue=issue-a");
+    const view = render(<InboxPage />);
+    expect(lastFocusOnOpen()).toBe(true);
+    view.unmount();
+
+    reset();
+    layout.width = DESKTOP;
+    listData.archived = ROWS.map((row) => ({ ...row, archived: true }));
+    searchParams = new URLSearchParams("view=archived&issue=issue-a");
+    const archived = render(<InboxPage />);
+    expect(lastFocusOnOpen()).toBe(false);
+    archived.unmount();
+
+    reset();
+    listData.active = ROWS;
+    searchParams = new URLSearchParams("issue=issue-a");
+    render(<InboxPage />);
+    expect(lastFocusOnOpen()).toBe(false);
   });
 
   it("stays off once the page is no longer the current route", () => {

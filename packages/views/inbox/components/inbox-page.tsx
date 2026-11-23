@@ -1,6 +1,6 @@
 "use client";
 
-// Modified by honki12345, 2026: the list-step keys open the notification above / below, list shown or not (CALA-328).
+// Modified by honki12345, 2026: the list-step keys open the notification above / below, list shown or not (CALA-328); an issue opened from the Work panel takes the scroll keys (CALA-330).
 
 import {
   useState,
@@ -601,16 +601,25 @@ export function InboxPage() {
   // section's, which applies the same filters.
   const listedItems = opensAnyLiveRow ? sectionList.rows : selectionItems;
   // The list-step keys walk the rows the reader sees: on desktop the Work
-  // panel section's, which the page has no column for; otherwise the page's
-  // own list, whether it is on screen or the detail covers it.
+  // panel section's, which the page has no column for; on the Snoozed tab its
+  // snoozed issues; otherwise the page's own list, whether it is on screen or
+  // the detail covers it.
   const stepRows = opensAnyLiveRow ? sectionList.rows : visibleItems;
-  const stepKeys = useMemo(() => stepRows.map(inboxRowKey), [stepRows]);
+  const stepKeys = useMemo(
+    () => (isSnoozedView ? snoozed.rows.map((entry) => entry.issue_id) : stepRows.map(inboxRowKey)),
+    [isSnoozedView, snoozed.rows, stepRows],
+  );
   useListStepShortcut({
     scope: "inbox",
     enabled: pathname === wsPaths.inbox(),
     keys: stepKeys,
     openKey: selectedKey || null,
     onStep: (index) => {
+      if (isSnoozedView) {
+        const key = stepKeys[index];
+        if (key) setSelectedKey(key);
+        return;
+      }
       const item = stepRows[index];
       if (item) handleSelect(item);
     },
@@ -1091,6 +1100,10 @@ export function InboxPage() {
           // The inbox reads the row it selected itself (see the auto-read
           // effect above), and must keep a row marked unread while it is open.
           readsInbox={false}
+          // On desktop the Inbox tab has no list column of its own: its rows
+          // are the Work panel's, so opening one means reading it and ↑/↓
+          // scroll the issue, not the panel (CALA-330).
+          focusOnOpen={opensAnyLiveRow}
           leadingAction={compactBackAction}
           inbox={inboxHost(detailIssueId)}
           onDelete={() => {

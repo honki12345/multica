@@ -522,7 +522,7 @@ features:
     drop_when: "an upstream release tag that contains multica-ai/multica#10861 is merged into main (the cherry-picks become no-ops in that merge; `inbox_filter.go` stays with inbox-list-filters). Met by v0.11.1 (63cebc194 #10861 and 482ea80f5 #10921 are in the tag): every cherry-picked file is identical to v0.11.1 or differs only by our notice, which the merge removed; the fork wording in the inbox skill reference moved to inbox-list-filters (CALA-292)."
 
   - id: inbox-row-issue-id
-    summary: "An Inbox row click in the Work panel records the issue's id, not the identifier its link opens at, so the open row lights and the issue counts as opened from the Inbox (upstream #10903, cherry-picked ahead of v0.11.1). shortcut-list-step's Work Inbox keys depend on it."
+    summary: "An Inbox row click in the Work panel records the issue's id, not the identifier its link opens at, so the open row lights and the issue counts as opened from the Inbox (upstream #10903, cherry-picked ahead of v0.11.1). shortcut-list-step's Work Inbox keys depended on it until CALA-385."
     status: dropped
     kind: web-ui
     cards: [CALA-328]
@@ -869,7 +869,7 @@ features:
       - path: packages/views/layout/panels/inbox-section.tsx
         why: every row opens on the Inbox page (`inboxRowHref`), whose list-step keys walk the section's rows on desktop
       - path: packages/views/inbox/components/use-filtered-inbox-rows.ts
-        why: the filtered rows, in order, that a step walks on an issue opened from the section
+        why: the filtered rows, in order, that a step walks on the desktop Inbox page
       - path: packages/views/inbox/components/inbox-display.ts
         why: inboxRowHref is where a step lands, as a row click does
       - path: packages/core/inbox/open-row.ts
@@ -912,6 +912,8 @@ features:
         name: steps through its own list on a phone while the detail covers it
       - vitest: packages/views/inbox/components/inbox-page.test.tsx
         name: steps within the archive in the archived view
+      - vitest: packages/views/inbox/components/inbox-page.test.tsx
+        name: steps through the snoozed issues on the Snoozed tab, not the live Inbox
       - vitest: packages/views/inbox/components/inbox-list.test.tsx
         name: scrolls a row selected from outside the list into view, and leaves the list alone on mount
       - vitest: packages/views/issues/components/comment-composers.test.tsx
@@ -1111,7 +1113,7 @@ features:
     drop_when: upstream ships a rebindable rename-title shortcut that also works in the desktop app.
 
   - id: reading-pane-scroll-focus
-    summary: After picking a chat (thread row, floating-window history) or opening the issue page from a side-panel link, and after clicking plain text in the conversation or issue body, ↑/↓/PageUp/PageDown scroll what is being read instead of the list that opened it.
+    summary: After picking a chat (thread row, floating-window history), opening the issue page from a side-panel link or a Work panel Inbox row (desktop Inbox page), and after clicking plain text in the conversation or issue body, ↑/↓/PageUp/PageDown scroll what is being read instead of the list that opened it.
     status: active
     kind: web-ui
     cards: [CALA-330]
@@ -1132,6 +1134,8 @@ features:
       - packages/views/issues/components/issue-detail.test.tsx
       - packages/views/issues/components/issue-detail-route.tsx
       - packages/views/issues/components/issue-detail-route.focus.test.tsx
+      - packages/views/inbox/components/inbox-page.tsx
+      - packages/views/inbox/components/inbox-page.test.tsx
     watch:
       - path: packages/views/chat/components/chat-thread-list.tsx
         why: the row that keeps focus after a click; a roving-focus or arrow-key change there decides who owns ↑/↓
@@ -1140,9 +1144,7 @@ features:
       - path: packages/views/chat/components/use-chat-controller.ts
         why: handleSelectSession is what both chat surfaces wrap to request focus
       - path: packages/views/inbox/components/inbox-list.tsx
-        why: same pattern (tabIndex=-1 list, focus with preventScroll); the inbox detail pane must keep focus off the issue so ↑/↓ still move the selection
-      - path: packages/views/inbox/components/inbox-page.tsx
-        why: renders IssueDetail without focusOnOpen on purpose
+        why: same pattern (tabIndex=-1 list, focus with preventScroll); where the page shows its own list (archive, phone) the detail keeps focus off the issue so ↑/↓ still move the selection
       - path: packages/core/shortcuts/definitions.ts
         why: isEditableShortcutTarget and isPortalLayerShortcutTarget decide when focus is left alone
     upstream_equivalent:
@@ -1177,6 +1179,8 @@ features:
         name: lets a click on plain text in the body take the keys
       - vitest: packages/views/issues/components/issue-detail-route.focus.test.tsx
         name: asks the issue page to take the scroll keys when it opens
+      - vitest: packages/views/inbox/components/inbox-page.test.tsx
+        name: hands the scroll keys to an issue opened from the Work panel, not on the archive or a phone
     scenarios:
       - name: picked chat takes the scroll keys
         path: /<workspace-slug>/chat
@@ -1354,7 +1358,7 @@ features:
       - path: packages/views/common/take-keyboard-focus.ts
         why: reading-pane-scroll-focus (CALA-330) focuses the same body scroller (chat-message-list.tsx, issue-detail.tsx) on open; the body region reuses that tabIndex=-1 box as its target
       - path: packages/views/common/use-list-step-shortcut.ts
-        why: shortcut-list-step (CALA-328) opens the row above / below in chat-thread-list.tsx, inbox-list.tsx and space-panel.tsx, the same lists the region arrow keys step through
+        why: shortcut-list-step (CALA-328) opens the row above / below in chat-thread-list.tsx, inbox-list.tsx and inbox-page.tsx, the same lists the region arrow keys step through
       - path: packages/views/layout/rename-title-shortcut.ts
         why: shortcut-rename-title (CALA-327) adds Mod+R next to the region keys in definitions.ts and the Settings recorder
     upstream_equivalent:
