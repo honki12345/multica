@@ -432,6 +432,14 @@
         "label": "Siguiente mensaje enviado o recordatorio",
         "description": "Desplaza el chat abierto al siguiente mensaje que enviaste o al siguiente recordatorio y, después, a la última respuesta."
       },
+      "listPreviousItem": {
+        "label": "Chat o notificación anterior",
+        "description": "Abre el chat que está encima del abierto en la lista de chats, o la notificación de encima en la bandeja. Funciona mientras escribes."
+      },
+      "listNextItem": {
+        "label": "Chat o notificación siguiente",
+        "description": "Abre el chat que está debajo del abierto en la lista de chats, o la notificación de debajo en la bandeja. Funciona mientras escribes."
+      },
       "renameTitle": {
         "label": "Renombrar chat o tarea",
         "description": "Edita el título del chat o la tarea en pantalla, con el texto seleccionado."

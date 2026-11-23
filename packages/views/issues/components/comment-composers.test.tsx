@@ -1,6 +1,7 @@
+// Modified by honki12345, 2026: cover the caret a list-step press carries to the next issue's comment box (CALA-328).
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ComponentProps, type ReactNode, type Ref } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import type { UploadResult } from "@multica/core/hooks/use-file-upload";
 import type { AgentSkillSummary, Attachment } from "@multica/core/types";
@@ -10,6 +11,8 @@ import { issueKeys } from "@multica/core/issues/queries";
 import { workspaceKeys } from "@multica/core/workspace/queries";
 import { WorkspaceSlugProvider } from "@multica/core/paths";
 import { renderWithI18n } from "../../test/i18n";
+import { configureShortcutPlatform } from "@multica/core/shortcuts";
+import { useListStepShortcut } from "../../common/use-list-step-shortcut";
 import { CommentInput } from "./comment-input";
 import { ReplyInput } from "./reply-input";
 
@@ -1566,5 +1569,92 @@ describe.each(["reply", "description"])("annotations in %s drafts", (source) => 
     act(() => { useCommentDraftStore.getState().addAnnotation(draftKey, { ...annotation, id: "b", quote: "Another point" }); });
     await act(async () => accept("reply-new"));
     expect(useCommentDraftStore.getState().getAnnotations(draftKey)).toHaveLength(2);
+  });
+});
+
+describe("comment box after a list-step press (CALA-328)", () => {
+  const ISSUES = ["issue-1", "issue-2", "issue-3"];
+
+  /**
+   * An issue page: its comment box remounts per issue, as IssueDetail keys
+   * it, and is gone while the next issue loads.
+   */
+  function IssuePage({ issueId, loading, onStep }: { issueId: string; loading: boolean; onStep: (index: number) => void }) {
+    useListStepShortcut({ scope: "test-issues", enabled: true, keys: ISSUES, openKey: issueId, onStep });
+    return loading ? <p>loading</p> : <CommentInput key={issueId} issueId={issueId} onSubmit={vi.fn().mockResolvedValue(true)} />;
+  }
+
+  function setup() {
+    configureShortcutPlatform("macos");
+    const state = { issueId: "issue-1", loading: false };
+    const client = new QueryClient();
+    const page = () => (
+      <QueryClientProvider client={client}>
+        <IssuePage issueId={state.issueId} loading={state.loading} onStep={(index) => {
+          state.issueId = ISSUES[index]!;
+          state.loading = true;
+        }} />
+      </QueryClientProvider>
+    );
+    const view = renderWithI18n(page());
+    return {
+      view,
+      /** The route reaches the issue the last press named and it finishes loading. */
+      arrive: () => { state.loading = false; view.rerender(page()); },
+      /** The last press's issue starts loading; the comment box is gone. */
+      leave: () => view.rerender(page()),
+    };
+  }
+
+  function stepNext(target: Element) {
+    fireEvent.keyDown(target, { key: "}", code: "BracketRight", metaKey: true, shiftKey: true, bubbles: true });
+  }
+
+  afterEach(() => {
+    fireEvent.pointerDown(document);
+    configureShortcutPlatform(null);
+  });
+
+  it("takes the caret back in the next issue when the press came from the comment box", async () => {
+    const page = setup();
+    activateComposer("comment-composer-shell");
+    await waitFor(() => expect(focusCalls.focused).toBe(1));
+    stepNext(page.view.container.querySelector('[data-mc="comment-composer"]')!);
+    page.leave();
+    page.arrive();
+    await waitFor(() => expect(focusCalls.focused).toBe(2));
+  });
+
+  it("keeps the caret through a burst while the next issue is still loading", async () => {
+    const page = setup();
+    activateComposer("comment-composer-shell");
+    await waitFor(() => expect(focusCalls.focused).toBe(1));
+    stepNext(page.view.container.querySelector('[data-mc="comment-composer"]')!);
+    page.leave();
+    // Nothing is focused while issue-2 loads; the next press moves on to issue-3.
+    stepNext(document.body);
+    page.arrive();
+    await waitFor(() => expect(focusCalls.focused).toBe(2));
+  });
+
+  it("leaves the next issue's comment box closed when the press came from elsewhere", async () => {
+    const page = setup();
+    stepNext(document.body);
+    page.leave();
+    page.arrive();
+    expect(await screen.findByTestId("comment-composer-shell")).toBeInTheDocument();
+    expect(focusCalls.focused).toBe(0);
+  });
+
+  it("drops the carried caret when the reader clicks somewhere before the next issue loads", async () => {
+    const page = setup();
+    activateComposer("comment-composer-shell");
+    await waitFor(() => expect(focusCalls.focused).toBe(1));
+    stepNext(page.view.container.querySelector('[data-mc="comment-composer"]')!);
+    page.leave();
+    fireEvent.pointerDown(document.body);
+    page.arrive();
+    expect(await screen.findByTestId("comment-composer-shell")).toBeInTheDocument();
+    expect(focusCalls.focused).toBe(1);
   });
 });

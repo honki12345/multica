@@ -3,6 +3,7 @@ title: 搜索、快捷键与偏好设置
 description: 用 ⌘K 搜索和执行命令，查看和修改键盘快捷键，在任务里查找文字，调整主题、语言、时区等个人偏好。
 ---
 
+{/* Modified by honki12345, 2026: document the previous/next sent-message chat shortcuts (CALA-281), wakeup stops (CALA-318), the chat/inbox list step keys (CALA-328). */}
 {/* Modified by honki12345, 2026: document the previous/next sent-message chat shortcuts (CALA-281), wakeup stops (CALA-318), rename title shortcut (CALA-327). */}
 
 import { Callout } from "fumadocs-ui/components/callout";
@@ -39,6 +40,8 @@ import { Step, Steps } from "fumadocs-ui/components/steps";
 | 问 Multica | `⇧⌘J` | `Ctrl+Shift+J` | 在悬浮聊天窗里开始新对话。 |
 | 上一条已发消息或唤醒 | `⌥⌘[` | `Ctrl+Alt+[` | 在聊天中滚动到你在可见内容之前发送的消息或唤醒分隔线，跳过智能体回复。输入时也可用。 |
 | 下一条已发消息或唤醒 | `⌥⌘]` | `Ctrl+Alt+]` | 滚动到你发送的下一条消息或唤醒分隔线，已是最后一条时滚到最新回复。光标在悬浮聊天窗里时作用于该窗口，否则作用于页面上的聊天。 |
+| 上一个聊天或通知 | `⇧⌘[` | `Ctrl+Shift+[` | 打开聊天页列表中当前聊天上方的聊天，或收件箱中上方的通知。输入时也可用，光标留在原处。macOS 上的 Chrome 和 Safari 会把这个键留给浏览器切换标签页，请使用桌面应用或更换按键。 |
+| 下一个聊天或通知 | `⇧⌘]` | `Ctrl+Shift+]` | 打开下方的聊天或通知。到列表末尾时停止。 |
 | 重命名聊天或任务 | `⌘R` | `Ctrl+R` | 在聊天或任务页面，把光标移到标题并选中全部文字。聊天按 `↵` 保存、`Esc` 取消；任务标题和点击编辑时一样，离开输入框（包括按 `Esc`）就会保存。输入时也能用。光标在悬浮聊天窗里时作用于该窗口的聊天。其他页面保持原样：浏览器会刷新，桌面端什么也不做。 |
 | 在任务中查找 | `⌘F` | `Ctrl+F` | 见下文。 |
 | 归档通知 | `E` | `E` | 在从收件箱打开的任务上，归档它的通知并打开下一条；查看已归档时则取消归档当前打开的通知。见[收件箱](/inbox#处理通知)。 |
