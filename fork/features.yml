@@ -220,7 +220,7 @@ features:
     cards: [CALA-370]
     origin:
       type: ours
-      commits: ["66ffd71be"]
+      commits: ["66ffd71be", "11ee4c97c"]
     files:
       - server/internal/daemon/bare_runtime.go
       - server/internal/daemon/bare_runtime_test.go
