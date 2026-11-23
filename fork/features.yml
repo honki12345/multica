@@ -1113,7 +1113,7 @@ features:
     drop_when: upstream ships a rebindable rename-title shortcut that also works in the desktop app.
 
   - id: reading-pane-scroll-focus
-    summary: After picking a chat (thread row, floating-window history), opening the issue page from a side-panel link or a Work panel Inbox row (desktop Inbox page), and after clicking plain text in the conversation or issue body, ↑/↓/PageUp/PageDown scroll what is being read instead of the list that opened it.
+    summary: After picking a chat (thread row, floating-window history), opening the issue page from a side-panel link or a Work panel Inbox, Snoozed or Archived row (desktop Inbox page), and after clicking plain text in the conversation or issue body, ↑/↓/PageUp/PageDown scroll what is being read instead of the list that opened it.
     status: active
     kind: web-ui
     cards: [CALA-330]
@@ -1144,7 +1144,7 @@ features:
       - path: packages/views/chat/components/use-chat-controller.ts
         why: handleSelectSession is what both chat surfaces wrap to request focus
       - path: packages/views/inbox/components/inbox-list.tsx
-        why: same pattern (tabIndex=-1 list, focus with preventScroll); where the page shows its own list (archive, phone) the detail keeps focus off the issue so ↑/↓ still move the selection
+        why: same pattern (tabIndex=-1 list, focus with preventScroll); on a phone, where the page shows its own list, the detail keeps focus off the issue so ↑/↓ still move the selection
       - path: packages/core/shortcuts/definitions.ts
         why: isEditableShortcutTarget and isPortalLayerShortcutTarget decide when focus is left alone
     upstream_equivalent:
@@ -1180,7 +1180,7 @@ features:
       - vitest: packages/views/issues/components/issue-detail-route.focus.test.tsx
         name: asks the issue page to take the scroll keys when it opens
       - vitest: packages/views/inbox/components/inbox-page.test.tsx
-        name: hands the scroll keys to an issue opened from the Work panel, not on the archive or a phone
+        name: hands the scroll keys to an issue opened from the Work panel on every desktop tab, not on a phone
     scenarios:
       - name: picked chat takes the scroll keys
         path: /<workspace-slug>/chat

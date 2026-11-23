@@ -273,7 +273,7 @@ function CommentInput({ issueId, onSubmit, onAccepted, onEditAnnotation, annotat
         hasAllMembersMention={triggerPreview.hasAllMembersMention} draftContent={composedContent} onActionChange={setAction} />,
     })}
     <div
-      data-mc={COMMENT_COMPOSER}
+      data-mc="comment-composer"
       data-focus-region="composer"
       {...dropZoneProps}
       {...focusProps}

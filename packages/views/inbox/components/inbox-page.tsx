@@ -1100,10 +1100,11 @@ export function InboxPage() {
           // The inbox reads the row it selected itself (see the auto-read
           // effect above), and must keep a row marked unread while it is open.
           readsInbox={false}
-          // On desktop the Inbox tab has no list column of its own: its rows
-          // are the Work panel's, so opening one means reading it and ↑/↓
-          // scroll the issue, not the panel (CALA-330).
-          focusOnOpen={opensAnyLiveRow}
+          // On desktop the page has no list column: every tab's rows are the
+          // Work panel's, so opening one means reading it and ↑/↓ scroll the
+          // issue, not the panel (CALA-330). On a phone the page's own list
+          // keeps focus.
+          focusOnOpen={!isCompact}
           leadingAction={compactBackAction}
           inbox={inboxHost(detailIssueId)}
           onDelete={() => {

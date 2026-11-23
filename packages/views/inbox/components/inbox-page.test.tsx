@@ -1427,23 +1427,27 @@ describe("InboxPage list-step keys (CALA-328)", () => {
     expect(urls()).toEqual(["/acme/inbox?view=snoozed&issue=snoozed-2"]);
   });
 
-  it("hands the scroll keys to an issue opened from the Work panel, not on the archive or a phone", () => {
+  it("hands the scroll keys to an issue opened from the Work panel on every desktop tab, not on a phone", () => {
     const lastFocusOnOpen = () => issueDetailProps.at(-1)?.focusOnOpen;
-    reset();
-    layout.width = DESKTOP;
-    listData.active = ROWS;
-    searchParams = new URLSearchParams("issue=issue-a");
-    const view = render(<InboxPage />);
-    expect(lastFocusOnOpen()).toBe(true);
-    view.unmount();
-
-    reset();
-    layout.width = DESKTOP;
-    listData.archived = ROWS.map((row) => ({ ...row, archived: true }));
-    searchParams = new URLSearchParams("view=archived&issue=issue-a");
-    const archived = render(<InboxPage />);
-    expect(lastFocusOnOpen()).toBe(false);
-    archived.unmount();
+    const until = new Date(Date.now() + 86_400_000).toISOString();
+    const desktop = (query: string) => {
+      reset();
+      layout.width = DESKTOP;
+      listData.active = ROWS;
+      listData.archived = ROWS.map((row) => ({ ...row, archived: true }));
+      listData.snoozed = [{
+        issue_id: "issue-a", issue_identifier: "MUL-1", item_id: "item-a",
+        snoozed_until: until, snoozed_at: new Date().toISOString(), updates: 0,
+      }];
+      searchParams = new URLSearchParams(query);
+      const view = render(<InboxPage />);
+      const value = lastFocusOnOpen();
+      view.unmount();
+      return value;
+    };
+    expect(desktop("issue=issue-a")).toBe(true);
+    expect(desktop("view=archived&issue=issue-a")).toBe(true);
+    expect(desktop("view=snoozed&issue=issue-a")).toBe(true);
 
     reset();
     listData.active = ROWS;
