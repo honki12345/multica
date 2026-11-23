@@ -1,5 +1,7 @@
 "use client";
 
+// Modified by honki12345, 2026: passes the conversation focus request through (CALA-330).
+
 import { useEffect, type ComponentProps, type ReactNode } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { motion, useIsPresent } from "motion/react";
@@ -24,6 +26,8 @@ export function ChatWindowMessages({
   quickActionsPendingMessageId,
   onReady,
   annotations,
+  focusRequested,
+  onFocusRequestApplied,
   children,
 }: {
   sessionId: string | null;
@@ -36,6 +40,8 @@ export function ChatWindowMessages({
   /** This area has something to show — the window can fade in around it. */
   onReady?: () => void;
   annotations?: ComponentProps<typeof ChatMessageList>["annotations"];
+  focusRequested?: boolean;
+  onFocusRequestApplied?: () => void;
   children: ReactNode;
 }) {
   const isPresent = useIsPresent();
@@ -100,6 +106,8 @@ export function ChatWindowMessages({
           quickActionsPendingMessageId={quickActionsPendingMessageId}
           annotations={annotations}
           wakeups={wakeups}
+          focusRequested={focusRequested}
+          onFocusRequestApplied={onFocusRequestApplied}
         />
       ) : children}
     </motion.div>

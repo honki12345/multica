@@ -1,5 +1,7 @@
 "use client";
 
+// Modified by honki12345, 2026: focus with the whole title selected (CALA-327).
+
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { Extension } from "@tiptap/core";
@@ -50,6 +52,8 @@ interface TitleEditorProps {
 interface TitleEditorRef {
   getText: () => string;
   focus: () => void;
+  /** Focus with the whole title selected, ready to be typed over. */
+  selectAll: () => void;
   /**
    * Focus and place the caret at the document position under the given
    * viewport coordinates — same contract as ContentEditorRef.focusAtCoords,
@@ -250,6 +254,9 @@ const TitleEditor = forwardRef<TitleEditorRef, TitleEditorProps>(
       getText: () => editor?.getText() ?? "",
       focus: () => {
         editor?.commands.focus("end");
+      },
+      selectAll: () => {
+        editor?.commands.focus("all");
       },
       focusAtCoords: (coords: { x: number; y: number }) => {
         if (!editor) return;

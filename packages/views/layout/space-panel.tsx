@@ -1,6 +1,8 @@
 "use client";
 
+// Modified by honki12345, 2026: mount the Work Inbox list-step keys with the shell (CALA-328).
 // Modified by honki12345, 2026: mark the space panel as a keyboard focus region (CALA-332).
+
 import { useEffect, useRef } from "react";
 import type { AppSpaceId } from "@multica/core/paths";
 import { cn } from "@multica/ui/lib/utils";
@@ -12,6 +14,7 @@ import { ChatPeek } from "./panels/list-space-peeks";
 import { LIST_COLUMN_WIDTH_CLASS, NAV_COLUMN_MOTION_CLASS, NAV_PEEK_CLASS } from "./rail-styles";
 import { TeamPanel } from "./panels/team-panel";
 import { KeptRowsRelease, WorkPanel } from "./panels/work-panel";
+import { WorkInboxListStep } from "./panels/work-inbox-list-step";
 
 const PANELS: Partial<Record<AppSpaceId, () => React.ReactNode>> = {
   work: WorkPanel,
@@ -53,7 +56,14 @@ export function SpacePanel() {
     return () => root.classList.remove("is-sidebar-collapsed");
   }, [open]);
   if (!shell) return null;
-  if (isCompact) return <KeptRowsRelease />;
+  if (isCompact) {
+    return (
+      <>
+        <KeptRowsRelease />
+        <WorkInboxListStep />
+      </>
+    );
+  }
 
   const { space, hasPanel, peekSpace, navCollapsed } = shell;
   // The current space's own list column floats itself (`ListColumn`).
@@ -63,6 +73,7 @@ export function SpacePanel() {
   return (
     <>
       <KeptRowsRelease />
+      <WorkInboxListStep />
       {hasPanel && (
         <aside
           // A new space mounts at its final width; only toggling animates.

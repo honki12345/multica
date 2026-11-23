@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: add chat previous/next sent-message shortcuts (CALA-281) and chat/inbox list step shortcuts (CALA-328).
+// Modified by honki12345, 2026: add chat previous/next sent-message shortcuts (CALA-281), rename title on Mod+R (CALA-327).
 // Modified by honki12345, 2026: add chat previous/next sent-message shortcuts (CALA-281), focus region keys (CALA-332).
 import {
   getShortcutPlatform,
@@ -15,6 +17,9 @@ export type ShortcutActionId =
   | "newChat"
   | "chatPreviousPrompt"
   | "chatNextPrompt"
+  | "listPreviousItem"
+  | "listNextItem"
+  | "renameTitle"
   | "focusList"
   | "focusBody"
   | "focusComposer"
@@ -135,6 +140,29 @@ export const SHORTCUT_ACTIONS: readonly ShortcutActionDefinition[] = [
     defaultShortcut: createShortcutChord("]", { primary: true, alt: true }),
     allowInEditable: true,
   },
+  // Open the chat or notification above / below the open one in its list.
+  // Shift on the history brackets, as editors and macOS apps step between
+  // tabs. On web, macOS browsers keep this chord for their own tab switching.
+  // `allowInEditable` because the caret usually sits in the chat composer or
+  // a comment box.
+  {
+    id: "listPreviousItem",
+    category: "general",
+    defaultShortcut: createShortcutChord("[", { primary: true, shift: true }),
+    allowInEditable: true,
+  },
+  {
+    id: "listNextItem",
+    category: "general",
+    defaultShortcut: createShortcutChord("]", { primary: true, shift: true }),
+    allowInEditable: true,
+  },
+  // Rename the open chat or issue: focus its title field with the text
+  // selected. Mod+R is the reload key, so it is reserved for every other
+  // action (see RENAME_RELOAD_CHORD); the desktop main process relays it here
+  // instead of swallowing it, and on web the page claims it only where a
+  // title can be renamed.
+  { id: "renameTitle", category: "general", defaultShortcut: primary("R"), allowInEditable: true },
   // Move keyboard focus between the regions of a list-and-detail page: the
   // list, the body being read, and the composer (Buzz's ⌘⇧H / ⌘⇧L / ⌘L and
   // F8 / ⇧F8). All of them work with the caret in an editor, which is where
@@ -291,6 +319,17 @@ function isComposedOptionKey(key: string): boolean {
   return key === "Dead" || (key.length === 1 && key.charCodeAt(0) > 0x7e);
 }
 
+// Shift turns the bracket keys into braces, so ⇧⌘[ arrives as "{". Those
+// chords are named by the bracket, which the Shift modifier already records.
+const SHIFTED_BRACKETS: Record<string, string> = {
+  BracketLeft: "{",
+  BracketRight: "}",
+};
+
+function isShiftedBracket(event: KeyboardEvent): boolean {
+  return event.shiftKey && typeof event.code === "string" && SHIFTED_BRACKETS[event.code] === event.key;
+}
+
 function eventKey(
   event: KeyboardEvent,
   platform: ShortcutPlatform,
@@ -307,6 +346,7 @@ function eventKey(
   ) {
     return keyFromCode(event.code);
   }
+  if (physicalOption && isShiftedBracket(event)) return keyFromCode(event.code);
   if (NON_ACTIONABLE_KEYS.has(event.key)) return null;
   const key = KEY_LABELS[event.key] ?? event.key;
   if (key.length === 1 && /[a-z]/i.test(key)) return key.toUpperCase();
@@ -597,6 +637,26 @@ export function isReservedShortcut(
   return false;
 }
 
+/**
+ * Bare Mod+R, the reload chord, is free for renaming only: the desktop shell
+ * hands it to the renderer instead of reloading, and on web the rename
+ * handlers take it from the browser only where a title can be renamed.
+ */
+const RENAME_RELOAD_CHORD = createShortcutChord("R", { primary: true });
+
+/** `isReservedShortcut`, minus the one reservation an action may take over. */
+export function isReservedShortcutForAction(
+  actionId: ShortcutActionId,
+  shortcut: ShortcutChord,
+  platform: ShortcutPlatform = getShortcutPlatform(),
+  runtime: ShortcutRuntime = getShortcutRuntime(),
+): boolean {
+  if (actionId === "renameTitle" && shortcutChordEquals(shortcut, RENAME_RELOAD_CHORD)) {
+    return false;
+  }
+  return isReservedShortcut(shortcut, platform, runtime);
+}
+
 const PLAIN_GLOBAL_RESERVED_KEYS = new Set([
   "Enter", "Space", "Tab", "Escape", "Backspace", "Delete",
   "Up", "Down", "Left", "Right", "Home", "End", "PageUp", "PageDown",
@@ -626,7 +686,7 @@ export function isShortcutAllowedForAction(
   runtime: ShortcutRuntime = getShortcutRuntime(),
 ): boolean {
   if (!isShortcutChordActionable(shortcut)) return false;
-  if (isReservedShortcut(shortcut, platform, runtime)) return false;
+  if (isReservedShortcutForAction(actionId, shortcut, platform, runtime)) return false;
   // Tab is focus navigation (and Ctrl+Tab is browser tab navigation) on every
   // supported platform. It is never a dependable product-level binding.
   if (shortcut.key === "Tab") return false;

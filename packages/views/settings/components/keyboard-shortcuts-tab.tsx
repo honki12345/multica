@@ -1,5 +1,6 @@
 "use client";
 
+// Modified by honki12345, 2026: record Mod+R for the rename title shortcut (CALA-327).
 // Modified by honki12345, 2026: mark the recorder so the focus region keys can be recorded (CALA-332).
 
 import { useMemo, useState } from "react";
@@ -21,7 +22,7 @@ import { cn } from "@multica/ui/lib/utils";
 import {
   findShortcutConflict,
   createShortcutChord,
-  isReservedShortcut,
+  isReservedShortcutForAction,
   isShortcutAllowedForAction,
   isShortcutModifierKey,
   isPlainShortcut,
@@ -102,7 +103,7 @@ export function KeyboardShortcutsTab() {
       }
       return;
     }
-    if (isReservedShortcut(shortcut)) {
+    if (isReservedShortcutForAction(actionId, shortcut)) {
       setCaptureError({ kind: "reserved" });
       return;
     }

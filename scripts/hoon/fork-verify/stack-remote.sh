@@ -4,6 +4,7 @@
 #   stack-remote.sh up <dir> <name> <db-port> <api-port> <web-port> <version> <commit>
 #   stack-remote.sh down <dir> <name>
 # <dir> holds src.tgz (git archive of the candidate ref) and backup.dump.
+# Sourcing it (tests) defines the functions and runs nothing.
 # Everything it creates is named fv-<name>-*; down removes exactly that.
 set -euo pipefail
 
@@ -33,6 +34,36 @@ wait_for() { # <seconds> <description> <cmd...>
   done
   log "timed out waiting for $what"
   return 1
+}
+
+# DB-backed Go tests need the candidate's schema. The candidate's own image has
+# ./migrate and ./migrations; its ENTRYPOINT is entrypoint.sh, so run the binary
+# directly. Sets gotest_db (ok|failed) and gotest_version; never aborts the stack.
+migrate_gotest_db() {
+  local pw="$1"
+  gotest_db=failed
+  gotest_version=""
+  if ! docker run --rm --network "$net" --entrypoint ./migrate \
+      -e "DATABASE_URL=postgres://multica:${pw}@postgres:5432/multica_gotest?sslmode=disable" \
+      "$bimg" up >"$dir/migrate-gotest.log" 2>&1; then
+    tail -n 20 "$dir/migrate-gotest.log" >&2
+    log "migrating multica_gotest failed; DB-backed Go tests will be unverified"
+    return 0
+  fi
+  gotest_version="$(docker exec "$pg" psql -U multica -d multica_gotest -Atc 'select max(version) from schema_migrations' 2>/dev/null || true)"
+  if [[ -z "$gotest_version" ]]; then
+    log "multica_gotest has no applied migrations; DB-backed Go tests will be unverified"
+    return 0
+  fi
+  gotest_db=ok
+  log "multica_gotest migrated: schema_migrations max=$gotest_version"
+}
+
+# stack.env is what fork_verify.py reads back; gotest_db is ok only when the
+# candidate's migrations really ran on multica_gotest.
+write_stack_env() {
+  printf 'build_secs=%s\nrestore_secs=%s\nboot_secs=%s\nmigrations_before=%s\nmigrations_after=%s\ntables=%s\ngotest_db=%s\ngotest_migrations=%s\n' \
+    "$1" "$2" "$3" "$4" "$5" "$6" "$gotest_db" "$gotest_version" >"$dir/stack.env"
 }
 
 up() {
@@ -68,6 +99,7 @@ up() {
   # A second, empty database for DB-backed Go tests (their fixtures must not
   # land in the restored copy the candidate server reads).
   docker exec "$pg" psql -U multica -d multica -qc 'CREATE DATABASE multica_gotest' >/dev/null
+  migrate_gotest_db "$pw"
   # The dump came from a database whose role is also "multica"; --no-owner keeps
   # it portable if that ever changes. Restore errors on pre-existing extensions
   # are expected; a missing table is not (checked below).
@@ -103,14 +135,15 @@ up() {
   local after
   after="$(docker exec "$pg" psql -U multica -d multica -Atc 'select max(version) from schema_migrations')"
   docker logs "$be" 2>&1 | grep -ciE 'migrat' >"$dir/migrate-lines" || true
-  printf 'build_secs=%s\nrestore_secs=%s\nboot_secs=%s\nmigrations_before=%s\nmigrations_after=%s\ntables=%s\ngotest_db=ok\n' \
-    $((t1 - t0)) $((t2 - t1)) $((t3 - t2)) "$before" "$after" "$tables" >"$dir/stack.env"
+  write_stack_env "$((t1 - t0))" "$((t2 - t1))" "$((t3 - t2))" "$before" "$after" "$tables"
   cat "$dir/stack.env"
   docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}}' "$pg" "$be" "$fe" | sed 's/^/stats /'
 }
 
-case "$cmd" in
-  up) up "$@" ;;
-  down) down ;;
-  *) echo "unknown command $cmd" >&2; exit 2 ;;
-esac
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  case "$cmd" in
+    up) up "$@" ;;
+    down) down ;;
+    *) echo "unknown command $cmd" >&2; exit 2 ;;
+  esac
+fi

@@ -1,3 +1,4 @@
+// Modified by honki12345, 2026: export isReservedShortcutForAction for the rename title shortcut (CALA-327).
 // Modified by honki12345, 2026: export getShortcutDefault for runtime-specific defaults (CALA-332).
 export {
   SHORTCUT_ACTIONS,
@@ -12,6 +13,7 @@ export {
   isEditableShortcutTarget,
   isPortalLayerShortcutTarget,
   isReservedShortcut,
+  isReservedShortcutForAction,
   isShortcutAllowedForAction,
   isShortcutModifierKey,
   type ShortcutActionDefinition,

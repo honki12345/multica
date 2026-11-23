@@ -1,10 +1,12 @@
 "use client";
 
+// Modified by honki12345, 2026: scroll a selection made from elsewhere on the page into view (CALA-328).
 // Modified by honki12345, 2026: mark the list as stepping its own rows for the focus region keys (CALA-332).
 
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -158,6 +160,20 @@ export function InboxList({
     virtuosoRef.current?.scrollIntoView({ index: nextIndex });
     onSelect(nextItem);
   };
+
+  // A selection made from elsewhere on the page (the list-step keys, a link)
+  // brings its row into view, as the arrow keys do. Not on mount, which keeps
+  // the restored scroll offset.
+  const selectedIndex = useMemo(
+    () => (selectedKey ? items.findIndex((item) => (item.issue_id ?? item.id) === selectedKey) : -1),
+    [items, selectedKey],
+  );
+  const shownKeyRef = useRef(selectedKey);
+  useEffect(() => {
+    if (shownKeyRef.current === selectedKey) return;
+    shownKeyRef.current = selectedKey;
+    if (selectedIndex >= 0) virtuosoRef.current?.scrollIntoView({ index: selectedIndex });
+  }, [selectedKey, selectedIndex]);
 
   const loadMore = useCallback(() => {
     if (!loadingMore && !loadMoreError) onLoadMore?.();

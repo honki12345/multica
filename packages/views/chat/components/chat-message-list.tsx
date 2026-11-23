@@ -1,5 +1,6 @@
 "use client";
 
+// Modified by honki12345, 2026: previous/next sent-message shortcuts (CALA-281), wakeup stops (CALA-318), keyboard focus for scrolling (CALA-330).
 // Modified by honki12345, 2026: previous/next sent-message shortcuts (CALA-281), wakeup stops (CALA-318), body focus region (CALA-332).
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -31,6 +32,7 @@ import {
 } from "@multica/ui/icons";
 import { useScrollFade } from "@multica/ui/hooks/use-scroll-fade";
 import { isTaskMessageTaskId, taskMessagesOptions } from "@multica/core/chat/queries";
+import { useTakeKeyboardFocus } from "../../common/take-keyboard-focus";
 import { RichContent } from "../../rich-content";
 import { RichContentScrollRootProvider } from "../../rich-content/scroll-root";
 import { copyText } from "@multica/ui/lib/clipboard";
@@ -113,6 +115,14 @@ interface ChatMessageListProps {
   annotations?: Pick<ChatAnnotations, "cardRef" | "captureProps" | "popup" | "revealSourceRef">;
   /** The conversation's wakeups: dividers for wakeup turns, cards under the replies that made them. */
   wakeups?: ChatWakeup[];
+  /**
+   * The reader just picked this chat (a thread row, a history entry): once the
+   * list has landed, it takes keyboard focus so ↑/↓/PageUp/PageDown scroll the
+   * conversation instead of the list that opened it (CALA-330).
+   */
+  focusRequested?: boolean;
+  /** The request was handled — focus moved, or the caret was left in a text field. */
+  onFocusRequestApplied?: () => void;
 }
 
 // ─── Virtuoso chrome ─────────────────────────────────────────────────────
@@ -214,6 +224,8 @@ export function ChatMessageList({
   quickActionsPendingMessageId = null,
   annotations,
   wakeups,
+  focusRequested = false,
+  onFocusRequestApplied,
 }: ChatMessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrollContainerEl, setScrollContainerEl] = useState<HTMLDivElement | null>(null);
@@ -237,6 +249,12 @@ export function ChatMessageList({
   useEffect(() => {
     if (active && hasReachedLiveEnd) onRevealed?.();
   }, [active, hasReachedLiveEnd, onRevealed]);
+  // A hidden list cannot hold focus; the request waits until it has landed.
+  useTakeKeyboardFocus(
+    active && hasReachedLiveEnd ? scrollContainerEl : null,
+    focusRequested,
+    () => onFocusRequestApplied?.(),
+  );
   // Soft edge fade hinting more content above/below. Kept small so it barely
   // grazes full-bleed previews (image / HTML) at the edges.
   const fadeStyle = useScrollFade(scrollRef, 16);
@@ -396,10 +414,12 @@ export function ChatMessageList({
       ref={setScrollContainerRef}
       data-tab-scroll-root
       data-focus-region="body"
-      // Programmatically focusable, so the region keys can land here and the
-      // arrow keys then scroll the conversation; it adds no tab stop.
-      tabIndex={-1}
       {...{ [PROMPT_NAV_ATTR]: "" }}
+      // Focusable but not a Tab stop: clicking a message's text, a focus
+      // region key or Esc gives the conversation the scroll keys rather than
+      // whatever list row kept focus (CALA-330). The region ring is drawn by
+      // `[data-focus-flash]`, not by focus.
+      tabIndex={-1}
       style={fadeStyle}
       // The gutter lives on the scroll container, so it applies once to the
       // whole list — rows, header, footer — and the scrollbar still rides the

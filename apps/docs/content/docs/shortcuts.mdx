@@ -3,6 +3,8 @@ title: Search, shortcuts, and preferences
 description: Search and run commands with ⌘K, review and rebind keyboard shortcuts, find text inside an issue, and set personal preferences such as theme, language, and time zone.
 ---
 
+{/* Modified by honki12345, 2026: document the previous/next sent-message chat shortcuts (CALA-281), wakeup stops (CALA-318), the chat/inbox list step keys (CALA-328). */}
+{/* Modified by honki12345, 2026: document the previous/next sent-message chat shortcuts (CALA-281), wakeup stops (CALA-318), rename title shortcut (CALA-327). */}
 {/* Modified by honki12345, 2026: document the previous/next sent-message chat shortcuts (CALA-281), wakeup stops (CALA-318), focus region keys (CALA-332). */}
 
 import { Callout } from "fumadocs-ui/components/callout";
@@ -39,6 +41,9 @@ Selecting a result opens it. Hold `⌘` (`Ctrl` on Windows and Linux) while clic
 | Ask Multica | `⇧⌘J` | `Ctrl+Shift+J` | Starts a new chat in the floating window. |
 | Previous sent message or wakeup | `⌥⌘[` | `Ctrl+Alt+[` | In a chat, scrolls to the message you sent, or the point where a wakeup brought the agent back, before the one on screen, skipping replies. Works while typing. |
 | Next sent message or wakeup | `⌥⌘]` | `Ctrl+Alt+]` | Scrolls to the next message you sent or the next wakeup; after the last one, to the latest reply. In the floating window when your cursor is in it, otherwise in the chat on the page. |
+| Previous chat or notification | `⇧⌘[` | `Ctrl+Shift+[` | Opens the chat above the open one in the Chat page's list, or the notification above in the inbox. Works while typing, and the cursor stays where it is. In Chrome and Safari on macOS, the browser keeps this key for switching its own tabs; use the desktop app or change the key. |
+| Next chat or notification | `⇧⌘]` | `Ctrl+Shift+]` | Opens the chat or notification below. Stops at the end of the list. |
+| Rename chat or issue | `⌘R` | `Ctrl+R` | On a chat or an issue, puts the cursor in its title with the text selected. On a chat `↵` saves and `Esc` cancels; an issue title saves when you leave it, `Esc` included, as when you click it. Works while typing. In the floating window when your cursor is in it. Elsewhere `⌘R` keeps its usual meaning: the browser reloads, the desktop app does nothing. |
 | Focus list | `⇧⌘H` | `Ctrl+Shift+H` | Moves keyboard focus to the list beside the page (chats, inbox notifications, the sidebar) and lands on the open row. Press again to switch between the sidebar and a page's own list. Unassigned in the web app: Safari opens its home page on `⇧⌘H`. |
 | Focus content | `⇧⌘L` | `Ctrl+Shift+L` | Moves keyboard focus to what you are reading, so `↑` / `↓` and `Page Up` / `Page Down` scroll it instead of the list. |
 | Focus message box | `⌘L` | `Ctrl+L` | Moves keyboard focus to the chat message box or the issue's comment box. Unassigned in the web app, where browsers use the key for the address bar. |
@@ -95,7 +100,7 @@ Shortcuts are saved on the current device only. On another computer, or when you
 Recording rejects a few kinds of combinations and says why under the keys:
 
 - A combination already assigned to another action.
-- Combinations the browser, the desktop window, or the operating system owns, such as `⌘W`, `⌘R`, `⌘Q`, `⌘,`, editing keys like copy and paste, `⌘0`–`⌘9`, and the zoom keys. In a browser, `⌘P`, `⌘L`, `⌘T`, `⌘N`, `⌘D`, and `⌘U` are off-limits too; the desktop app allows them. On Windows and Linux, any combination with the Win / Super key is rejected.
+- Combinations the browser, the desktop window, or the operating system owns, such as `⌘W`, `⌘R` (except for Rename chat or issue), `⌘Q`, `⌘,`, editing keys like copy and paste, `⌘0`–`⌘9`, and the zoom keys. In a browser, `⌘P`, `⌘L`, `⌘T`, `⌘N`, `⌘D`, and `⌘U` are off-limits too; the desktop app allows them. On Windows and Linux, any combination with the Win / Super key is rejected.
 - Actions that also work inside an input, such as Open search, Toggle chat window, and Find in issue, need `⌘`, `Ctrl`, or `Control`, so they never fire while you type. Voice input also accepts `Option` / `Alt` with a non-printing key, such as `Space`, unless the combination is reserved. A function key such as `F8`, alone or with `Shift`, is allowed too, because it types nothing. `⇧⌘L` is free in the browser as well; the other `⌘L` variants are not.
 - **Send** can only be `↵` or `⌘↵`.
 

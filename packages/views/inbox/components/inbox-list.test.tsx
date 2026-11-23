@@ -1,3 +1,4 @@
+// Modified by honki12345, 2026: cover scrolling a selection made from elsewhere into view (CALA-328).
 import { forwardRef, useImperativeHandle } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -200,6 +201,16 @@ describe("InboxList keyboard navigation", () => {
   });
 });
 
+
+describe("InboxList selection from elsewhere (CALA-328)", () => {
+  it("scrolls a row selected from outside the list into view, and leaves the list alone on mount", () => {
+    const props = { items, view: "inbox" as const, onSelect: vi.fn(), onAction: vi.fn() };
+    const { rerender } = render(<InboxList {...props} selectedKey="issue-a" />);
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    rerender(<InboxList {...props} selectedKey="issue-c" />);
+    expect(scrollIntoView).toHaveBeenCalledWith({ index: 2 });
+  });
+});
 
 describe("InboxList archive pagination", () => {
   it("loads at the end, suppresses automatic retries, and provides a retry button", () => {

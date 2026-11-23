@@ -432,6 +432,18 @@
         "label": "Message envoyé ou réveil suivant",
         "description": "Faire défiler la discussion ouverte jusqu'au message suivant que vous avez envoyé ou au réveil suivant, puis jusqu'à la dernière réponse."
       },
+      "listPreviousItem": {
+        "label": "Discussion ou notification précédente",
+        "description": "Ouvrir la discussion au-dessus de celle ouverte dans la liste, ou la notification au-dessus dans la boîte de réception. Fonctionne pendant la saisie."
+      },
+      "listNextItem": {
+        "label": "Discussion ou notification suivante",
+        "description": "Ouvrir la discussion en dessous de celle ouverte dans la liste, ou la notification en dessous dans la boîte de réception. Fonctionne pendant la saisie."
+      },
+      "renameTitle": {
+        "label": "Renommer la discussion ou la tâche",
+        "description": "Modifier le titre de la discussion ou de la tâche affichée, texte sélectionné."
+      },
       "focusList": {
         "label": "Aller à la liste",
         "description": "Placer le focus clavier sur la liste à côté de la page : discussions, notifications de la boîte de réception ou barre latérale."

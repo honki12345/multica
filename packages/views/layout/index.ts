@@ -1,3 +1,4 @@
+// Modified by honki12345, 2026: export the rename-title shortcut relay for desktop (CALA-327).
 export { AppRail } from "./app-rail";
 export { AppBottomBar } from "./bottom-bar";
 export { AppShellProvider, useAppShell } from "./app-shell-context";
@@ -38,5 +39,6 @@ export { useDashboardGuard } from "./use-dashboard-guard";
 export { WorkspaceLoader } from "./workspace-loader";
 export { WorkspacePresencePrefetch } from "./workspace-presence-prefetch";
 export { GlobalShortcuts } from "./global-shortcuts";
+export { runRenameTitleShortcut } from "./rename-title-shortcut";
 export { NewIssueButton, SearchButton } from "./global-actions";
 export { NavigationProgress } from "./navigation-progress";
