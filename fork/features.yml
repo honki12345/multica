@@ -172,6 +172,15 @@ features:
       - server/pkg/agent/version_test.go
       - server/pkg/db/queries/supplement.sql
       - server/pkg/db/generated/supplement.sql.go
+      - apps/docs/content/docs/providers.mdx
+      - apps/docs/content/docs/providers.zh.mdx
+      - apps/docs/content/docs/providers.zh-Hant.mdx
+      - apps/docs/content/docs/providers.ko.mdx
+      - apps/docs/content/docs/providers.ja.mdx
+      - apps/docs/content/docs/providers.fr.mdx
+      - README.md
+      - README.zh.md
+      - README.ja.md
     watch:
       - path: server/pkg/agent/agent.go
         why: Session.Supplement / SupplementReady contract

@@ -1,3 +1,4 @@
+<!-- Modified by honki12345, 2026: name Hermes on the steering line (hermes-steer-supplement). -->
 <div align="center">
 
 <picture>
@@ -123,7 +124,7 @@ How it compares: [Linear and Jira](https://multica.ai/docs/compare/linear-jira) 
 </p>
 
 - **[Execution log](https://multica.ai/docs/tasks) →** Replay every tool call, command, and error, timestamped.
-- **[Steer a running agent](https://multica.ai/docs/providers#steer-a-running-run) →** Reply while it works and the message lands in the current run, not the next one. Claude Code, Codex, Cursor Agent, Grok, Kiro, Pi, and Antigravity today.
+- **[Steer a running agent](https://multica.ai/docs/providers#steer-a-running-run) →** Reply while it works and the message lands in the current run, not the next one. Claude Code, Codex, Cursor Agent, Grok, Hermes, Kiro, Pi, and Antigravity today.
 - **Usage analytics →** See what each run cost, per agent and per issue.
 - **[Review gates](https://multica.ai/docs/issues) →** Work lands in review, not in main. You decide what ships.
 - **[Inbox](https://multica.ai/docs/inbox) →** Get pinged when an agent needs a call, not for every step.
