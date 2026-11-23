@@ -1,5 +1,7 @@
 "use client";
 
+// Modified by honki12345, 2026: record Mod+R for the rename title shortcut (CALA-327).
+
 import { useMemo, useState } from "react";
 import { Keyboard, RotateCcw, Search, X } from "@multica/ui/icons";
 import { Button } from "@multica/ui/components/ui/button";
@@ -19,7 +21,7 @@ import { cn } from "@multica/ui/lib/utils";
 import {
   findShortcutConflict,
   createShortcutChord,
-  isReservedShortcut,
+  isReservedShortcutForAction,
   isShortcutAllowedForAction,
   isShortcutModifierKey,
   isPlainShortcut,
@@ -100,7 +102,7 @@ export function KeyboardShortcutsTab() {
       }
       return;
     }
-    if (isReservedShortcut(shortcut)) {
+    if (isReservedShortcutForAction(actionId, shortcut)) {
       setCaptureError({ kind: "reserved" });
       return;
     }

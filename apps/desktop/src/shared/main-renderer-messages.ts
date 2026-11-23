@@ -1,3 +1,4 @@
+// Modified by honki12345, 2026: rename-title shortcut channel (CALA-327).
 /**
  * Main-process messages that must wait until a main renderer has installed
  * the matching listener. A BrowserWindow finishing `loadURL` is not enough:
@@ -26,6 +27,8 @@ export function parseTabSelectionShortcutKey(
 export const WORKSPACE_OPEN_PATH_CHANNEL = "workspace:open-path";
 /** Cmd/Ctrl+Shift+N: the renderer picks which workspace gets the new window. */
 export const NEW_WINDOW_SHORTCUT_CHANNEL = "window:new-by-shortcut";
+/** Cmd/Ctrl+R held back from reloading: rename what the focused window shows. */
+export const RENAME_TITLE_SHORTCUT_CHANNEL = "title:rename-by-shortcut";
 
 export const MAIN_RENDERER_MESSAGE_CHANNELS = [
   "auth:token",

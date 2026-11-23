@@ -1,3 +1,4 @@
+// Modified by honki12345, 2026: export isReservedShortcutForAction for the rename title shortcut (CALA-327).
 export {
   SHORTCUT_ACTIONS,
   SHORTCUT_ACTION_BY_ID,
@@ -10,6 +11,7 @@ export {
   isEditableShortcutTarget,
   isPortalLayerShortcutTarget,
   isReservedShortcut,
+  isReservedShortcutForAction,
   isShortcutAllowedForAction,
   isShortcutModifierKey,
   type ShortcutActionDefinition,

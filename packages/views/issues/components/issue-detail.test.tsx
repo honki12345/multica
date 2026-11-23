@@ -1,3 +1,4 @@
+// Modified by honki12345, 2026: cover renaming the issue title with Mod+R (CALA-327).
 // Modified by honki12345, 2026: the opened issue takes the scroll keys from the link that opened it (CALA-330).
 import { forwardRef, useEffect, useRef, useState, useImperativeHandle } from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -8,6 +9,7 @@ import type { AgentTask, Attachment, Issue, IssueStatusEntry, Label, TimelineEnt
 import { issueKeys } from "@multica/core/issues/queries";
 import { issueStatusKeys } from "@multica/core/issue-statuses";
 import { I18nProvider } from "@multica/core/i18n/react";
+import { configureShortcutPlatform } from "@multica/core/shortcuts";
 import { ApiError } from "@multica/core/api/client";
 import { toast } from "sonner";
 import { useResolvedExpandStore } from "@multica/core/issues/stores/resolved-expand-store";
@@ -294,13 +296,19 @@ vi.mock("../../editor", async () => ({
       onReady?.();
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+    const inputRef = useRef<HTMLInputElement>(null);
     useImperativeHandle(ref, () => ({
       getText: () => valueRef.current,
       focus: () => {},
+      selectAll: () => {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      },
       focusAtCoords: () => {},
     }));
     return (
       <input
+        ref={inputRef}
         value={value}
         onChange={(e) => {
           valueRef.current = e.target.value;
@@ -1130,6 +1138,30 @@ describe("IssueDetail (shared)", () => {
       expect(screen.getByTestId("virtuoso-mock")).toBeInTheDocument();
     } finally {
       rects.mockRestore();
+    }
+  });
+
+  it("puts the caret in the title with it all selected on Mod+R, even from the comment box", async () => {
+    configureShortcutPlatform("macos");
+    const rects = vi.spyOn(HTMLElement.prototype, "getClientRects")
+      .mockReturnValue([new DOMRect(0, 0, 1, 1)] as unknown as DOMRectList);
+    try {
+      renderIssueDetail();
+      await screen.findByText("Implement authentication");
+      const composer = screen.getAllByTestId("rich-text-editor")[0]!;
+      composer.focus();
+
+      const notCancelled = fireEvent.keyDown(composer, { key: "r", code: "KeyR", metaKey: true });
+
+      expect(notCancelled).toBe(false);
+      const title = await screen.findByTestId("title-editor");
+      await waitFor(() => expect(title).toHaveFocus());
+      expect(title).toHaveValue("Implement authentication");
+      const input = title as HTMLInputElement;
+      expect([input.selectionStart, input.selectionEnd]).toEqual([0, "Implement authentication".length]);
+    } finally {
+      rects.mockRestore();
+      configureShortcutPlatform(null);
     }
   });
 

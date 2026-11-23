@@ -1,5 +1,6 @@
 "use client";
 
+// Modified by honki12345, 2026: rename the issue title with the renameTitle shortcut (CALA-327).
 // Modified by honki12345, 2026: the opened issue takes the scroll keys from the link that opened it (CALA-330).
 
 import { subIssueCreateDefaults } from "@multica/core/issues";
@@ -221,6 +222,7 @@ import { buildTimelineFindUnits, type TimelineFindUnit } from "../utils/timeline
 import { useJumpToLatest } from "../hooks/use-jump-to-latest";
 import { useNewCommentsWhileAway } from "../hooks/use-new-comments-while-away";
 import { useInPageFind } from "../hooks/use-in-page-find";
+import { useRenameTitleShortcut } from "../../layout/rename-title-shortcut";
 import { useStickyComposer } from "../hooks/use-sticky-composer";
 import { FindBar } from "./find-bar";
 import {
@@ -2723,6 +2725,16 @@ export function IssueDetail({ issueId, onDelete, onDone, onUnsubscribeArchive, d
     pendingDescriptionSaveRef.current = null;
   }, [id]);
   const titleLazy = useLazyEditor({ editorRef: titleEditorRef, resetKey: id });
+  const titleAreaRef = useRef<HTMLDivElement>(null);
+  useRenameTitleShortcut(
+    () => titleAreaRef.current,
+    () => {
+      // A second press while the title is being edited keeps what was typed.
+      if (titleAreaRef.current?.contains(document.activeElement)) return;
+      if (!titleLazy.ready) titleBaseRef.current = issue?.title;
+      titleLazy.activate("all");
+    },
+  );
   const { isDragOver: descDragOver, dropZoneProps: descDropZoneProps } = useFileDropZone({
     onDrop: (files) => files.forEach((file) => descEditorRef.current?.uploadFile(file)),
   });
@@ -3809,7 +3821,7 @@ export function IssueDetail({ issueId, onDelete, onDone, onUnsubscribeArchive, d
             }
           />
           <div id={descriptionSectionId}>
-          <div data-mc="issue-title">
+          <div ref={titleAreaRef} data-mc="issue-title">
           {titleLazy.active && (
             <div className={titleLazy.ready ? undefined : "hidden"}>
               <TitleEditor

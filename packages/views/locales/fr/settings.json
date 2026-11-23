@@ -432,6 +432,10 @@
         "label": "Message envoyé ou réveil suivant",
         "description": "Faire défiler la discussion ouverte jusqu'au message suivant que vous avez envoyé ou au réveil suivant, puis jusqu'à la dernière réponse."
       },
+      "renameTitle": {
+        "label": "Renommer la discussion ou la tâche",
+        "description": "Modifier le titre de la discussion ou de la tâche affichée, texte sélectionné."
+      },
       "findInIssue": {
         "label": "Rechercher dans la tâche",
         "description": "Rechercher dans la tâche ouverte."

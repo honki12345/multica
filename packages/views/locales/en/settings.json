@@ -432,6 +432,10 @@
         "label": "Next sent message or wakeup",
         "description": "Scroll the open chat to the next message you sent or the next wakeup, then to the latest reply."
       },
+      "renameTitle": {
+        "label": "Rename chat or issue",
+        "description": "Edit the title of the chat or issue on screen, with the text selected."
+      },
       "findInIssue": {
         "label": "Find in issue",
         "description": "Search within the open issue detail."

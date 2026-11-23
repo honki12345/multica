@@ -1,4 +1,6 @@
+// Modified by honki12345, 2026: cover selecting the whole title (CALA-327).
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createRef } from "react";
 import { render } from "@testing-library/react";
 
 const mockFocus = vi.hoisted(() => vi.fn());
@@ -40,7 +42,7 @@ vi.mock("@tiptap/react", () => ({
 }));
 
 import { createShortcutChord } from "@multica/core/shortcuts";
-import { TitleEditor, titleShortcutSubmitAllowed } from "./title-editor";
+import { TitleEditor, titleShortcutSubmitAllowed, type TitleEditorRef } from "./title-editor";
 
 describe("TitleEditor", () => {
   beforeEach(() => {
@@ -49,6 +51,15 @@ describe("TitleEditor", () => {
     editorState.isDestroyed = false;
     editorState.text = "";
     editorRef.current = null;
+  });
+
+  it("focuses with the whole title selected through the ref", () => {
+    const ref = createRef<TitleEditorRef>();
+    render(<TitleEditor ref={ref} defaultValue="A title" />);
+
+    ref.current!.selectAll();
+
+    expect(mockFocus).toHaveBeenCalledWith("all");
   });
 
   it("syncs editor content when defaultValue changes externally and editor is unfocused", () => {
@@ -156,4 +167,5 @@ describe("titleShortcutSubmitAllowed", () => {
   it("refuses an unbound send action", () => {
     expect(titleShortcutSubmitAllowed(null)).toBe(false);
   });
+
 });
