@@ -2,7 +2,7 @@
 
 // Modified by honki12345, 2026: mark rows for the focus region keys (CALA-332).
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
-import { StatusIcon } from "../../issues/components";
+import { StatusIcon } from "../../issues/components/status-icon";
 import {
   IssueAgentActivityIndicator,
 } from "../../issues/components/issue-agent-activity-indicator";

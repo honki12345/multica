@@ -172,6 +172,15 @@ features:
       - server/pkg/agent/version_test.go
       - server/pkg/db/queries/supplement.sql
       - server/pkg/db/generated/supplement.sql.go
+      - apps/docs/content/docs/providers.mdx
+      - apps/docs/content/docs/providers.zh.mdx
+      - apps/docs/content/docs/providers.zh-Hant.mdx
+      - apps/docs/content/docs/providers.ko.mdx
+      - apps/docs/content/docs/providers.ja.mdx
+      - apps/docs/content/docs/providers.fr.mdx
+      - README.md
+      - README.zh.md
+      - README.ja.md
     watch:
       - path: server/pkg/agent/agent.go
         why: Session.Supplement / SupplementReady contract
@@ -415,6 +424,7 @@ features:
       - packages/views/chat/components/chat-bar-sessions.test.ts
       - packages/views/chat/components/use-chat-window-anchor.ts
       - packages/views/layout/bottom-bar.tsx
+      - packages/views/layout/bottom-bar.test.tsx
     watch:
       - path: packages/views/chat/components/**
         why: chat-bar-history.tsx renders in the bar; chat-window.tsx anchors on [data-slot="chat-bar"] via use-chat-window-anchor
@@ -480,38 +490,14 @@ features:
 
   - id: inbox-cli-manage
     summary: "Upstream's `multica inbox` management (count, read, unread, archive, unarchive, snooze, unsnooze; list --unread/--issue/--since/--archived/--snoozed) and the owner gate on every inbox route, cherry-picked ahead of an upstream release."
-    status: active
+    status: dropped
     kind: cli
     cards: [CALA-273]
     origin:
       type: upstream-cherry-pick
       upstream_pr: 10861
       commits: ["267194a85", "9ab32e563"]
-    files:
-      - server/cmd/multica/cmd_inbox_manage_test.go
-      - server/cmd/server/inbox_owner_gate_routes_test.go
-      - server/cmd/server/router.go
-      - server/internal/daemon/execenv/runtime_config_sections.go
-      - server/internal/handler/handler.go
-      - server/internal/handler/inbox.go
-      - server/internal/handler/inbox_access_test.go
-      - server/internal/handler/inbox_archive.go
-      - server/internal/handler/inbox_archive_test.go
-      - server/internal/handler/inbox_snooze.go
-      - server/internal/handler/inbox_write_access_test.go
-      - server/internal/service/builtin_skills/multica-platform/SKILL.md
-      - server/internal/service/builtin_skills/multica-platform/references/inbox.md
-      - server/internal/service/builtin_skills_test.go
-      - server/pkg/db/generated/inbox.sql.go
-      - server/pkg/db/generated/inbox_archive.sql.go
-      - server/pkg/db/queries/inbox.sql
-      - server/pkg/db/queries/inbox_archive.sql
-      - apps/docs/content/docs/cli.mdx
-      - apps/docs/content/docs/cli.ko.mdx
-      - apps/docs/content/docs/cli.ja.mdx
-      - apps/docs/content/docs/cli.fr.mdx
-      - apps/docs/content/docs/cli.zh.mdx
-      - apps/docs/content/docs/cli.zh-Hant.mdx
+    files: [server/cmd/multica/cmd_inbox_manage_test.go]
     watch:
       - path: server/cmd/multica/cmd_id_resolver.go
         why: resolveIssueRef / loadActorDisplayLookup used by --issue, read --issue and the FROM column
@@ -542,11 +528,11 @@ features:
         expect:
           - Each command exits 0; `workspaces[].count` for this workspace matches the web Inbox badge (`unread` counts raw notifications).
           - No notification changes read state.
-    drop_when: "an upstream release tag that contains multica-ai/multica#10861 is merged into main (the cherry-picks become no-ops in that merge; `inbox_filter.go` stays with inbox-list-filters)."
+    drop_when: "an upstream release tag that contains multica-ai/multica#10861 is merged into main (the cherry-picks become no-ops in that merge; `inbox_filter.go` stays with inbox-list-filters). Met by v0.11.1 (63cebc194 #10861 and 482ea80f5 #10921 are in the tag): every cherry-picked file is identical to v0.11.1 or differs only by our notice, which the merge removed; the fork wording in the inbox skill reference moved to inbox-list-filters (CALA-292)."
 
   - id: inbox-row-issue-id
-    summary: "An Inbox row click in the Work panel records the issue's id, not the identifier its link opens at, so the open row lights and the issue counts as opened from the Inbox (upstream #10903, cherry-picked ahead of v0.11.1). shortcut-list-step's Work Inbox keys depend on it."
-    status: active
+    summary: "An Inbox row click in the Work panel records the issue's id, not the identifier its link opens at, so the open row lights and the issue counts as opened from the Inbox (upstream #10903, cherry-picked ahead of v0.11.1). shortcut-list-step's Work Inbox keys depended on it until CALA-385."
+    status: dropped
     kind: web-ui
     cards: [CALA-328]
     origin:
@@ -577,7 +563,7 @@ features:
           - '[data-inbox-row] a[aria-current="page"]'
         expect:
           - The clicked row is lit and the issue header shows the Inbox actions.
-    drop_when: "an upstream release tag that contains multica-ai/multica#10903 (v0.11.1 or later) is merged into main (the cherry-pick becomes a no-op in that merge)."
+    drop_when: "an upstream release tag that contains multica-ai/multica#10903 (v0.11.1 or later) is merged into main (the cherry-pick becomes a no-op in that merge). Met by v0.11.1 (5dcabc501 #10903 is in the tag): the three cherry-picked files differed from v0.11.1 only by our notice, so the v0.12.0 absorb took upstream's files (CALA-385)."
 
   - id: inbox-list-filters
     summary: "`multica inbox list` takes the web Inbox's filters as flags and lists the same rows: one per issue, newest first; --ungrouped for every notification. Sits on upstream's list (inbox-cli-manage)."
@@ -592,6 +578,7 @@ features:
       - server/cmd/multica/cmd_inbox_test.go
       - server/cmd/multica/inbox_filter.go
       - server/cmd/multica/inbox_filter_test.go
+      - server/internal/service/builtin_skills/multica-platform/references/inbox.md
       - packages/core/inbox/filter-parity.test.ts
       - packages/core/inbox/testdata/filter-parity.json
       - apps/docs/content/docs/inbox.mdx
@@ -839,7 +826,7 @@ features:
     drop_when: upstream ships keys that step a chat between the reader's own messages and wakeup turns.
 
   - id: shortcut-list-step
-    summary: Mod+Shift+[ / ] open the chat or notification above / below the open one, from anywhere on the page (composer and comment boxes included, which keep the caret), on the Chat page, the Inbox page and an issue opened from the Work panel's Inbox section, list on screen or not.
+    summary: "Mod+Shift+[ / ] open the chat or notification above / below the open one, from anywhere on the page (composer and comment boxes included, which keep the caret), on the Chat page and the Inbox page (where every Work panel Inbox row opens since upstream #11259), list on screen or not."
     status: active
     kind: web-ui
     cards: [CALA-328]
@@ -863,10 +850,6 @@ features:
       - packages/views/inbox/components/inbox-page.test.tsx
       - packages/views/issues/components/comment-input.tsx
       - packages/views/issues/components/comment-composers.test.tsx
-      - packages/views/layout/panels/work-inbox-list-step.tsx
-      - packages/views/layout/panels/work-inbox-list-step.test.tsx
-      - packages/views/layout/space-panel.tsx
-      - packages/views/layout/space-panel.test.tsx
       - packages/views/locales/en/settings.json
       - packages/views/locales/es/settings.json
       - packages/views/locales/fr/settings.json
@@ -893,19 +876,11 @@ features:
       - path: packages/views/editor/use-lazy-editor.ts
         why: activate() is how the next issue's comment box takes the caret
       - path: packages/views/layout/panels/inbox-section.tsx
-        why: useInboxSectionRows and the row click (requestLanding, rememberSidebarIssue) a step repeats
-      - path: packages/views/layout/panels/work-panel.tsx
-        why: rememberClickedIssue records an Inbox row click by issue id (inbox-row-issue-id, upstream PR 10903); a step records the same through the selection store
+        why: every row opens on the Inbox page (`inboxRowHref`), whose list-step keys walk the section's rows on desktop
       - path: packages/views/inbox/components/use-filtered-inbox-rows.ts
-        why: the filtered rows, in order, that a step walks on an issue opened from the section
-      - path: packages/views/inbox/components/use-sidebar-inbox-issue.ts
-        why: fromInbox decides whether the open issue takes the keys
+        why: the filtered rows, in order, that a step walks on the desktop Inbox page
       - path: packages/views/inbox/components/inbox-display.ts
         why: inboxRowHref is where a step lands, as a row click does
-      - path: packages/views/issues/components/issue-detail-route.tsx
-        why: shows only a skeleton while the next issue loads, which is why the Work Inbox keys live with the shell
-      - path: packages/views/issues/actions/issue-inbox-actions.tsx
-        why: the issue header that lists the same rows; a list-step listener added there would fire alongside the shell's
       - path: packages/core/inbox/open-row.ts
         why: inboxRowKey, the key both inbox lists step by
       - path: packages/views/layout/global-shortcuts.tsx
@@ -938,24 +913,18 @@ features:
         name: leaves the keys to the floating chat window, and to Go back / Go forward
       - vitest: packages/views/chat/components/chat-thread-list.scroll.test.tsx
         name: brings a chat opened from elsewhere on the page into view, and leaves the list alone on mount
+      - vitest: packages/views/chat/components/chat-thread-list.scroll.test.tsx
+        name: scrolls the row itself in a short list, which renders without Virtuoso
       - vitest: packages/views/inbox/components/inbox-page.test.tsx
         name: opens the notification below and above on desktop, where the page shows only the detail
       - vitest: packages/views/inbox/components/inbox-page.test.tsx
         name: steps through its own list on a phone while the detail covers it
       - vitest: packages/views/inbox/components/inbox-page.test.tsx
         name: steps within the archive in the archived view
+      - vitest: packages/views/inbox/components/inbox-page.test.tsx
+        name: steps through the snoozed issues on the Snoozed tab, not the live Inbox
       - vitest: packages/views/inbox/components/inbox-list.test.tsx
         name: scrolls a row selected from outside the list into view, and leaves the list alone on mount
-      - vitest: packages/views/layout/panels/work-inbox-list-step.test.tsx
-        name: opens the notification below and above, as a row click would, while focus stays in a comment box
-      - vitest: packages/views/layout/panels/work-inbox-list-step.test.tsx
-        name: counts every press of a burst, the route still on the issue before or already on the next one loading
-      - vitest: packages/views/layout/panels/work-inbox-list-step.test.tsx
-        name: steps on from an issue whose page has not loaded, named by its identifier
-      - vitest: packages/views/layout/panels/work-inbox-list-step.test.tsx
-        name: steps on from a notification archived elsewhere, whose row the section keeps in place
-      - vitest: packages/views/layout/panels/work-inbox-list-step.test.tsx
-        name: stops at the last notification and still claims the key
       - vitest: packages/views/issues/components/comment-composers.test.tsx
         name: takes the caret back in the next issue when the press came from the comment box
       - vitest: packages/views/issues/components/comment-composers.test.tsx
@@ -978,10 +947,10 @@ features:
         expect:
           - Each press opens the chat one row below or above, across the pinned boundary, and the caret stays in the composer.
           - At the last chat further presses do nothing.
-      - name: step through the inbox from the issue
-        path: /<workspace-slug>/issues/<issue-id>
+      - name: step through the inbox from the comment box
+        path: /<workspace-slug>/inbox
         widths: [1440]
-        setup: an issue opened from the Work panel's Inbox section with at least three notifications listed
+        setup: a notification opened from the Work panel's Inbox section with at least three notifications listed
         steps:
           - Click into the comment box of the open issue.
           - Press Cmd+Shift+] twice, then Cmd+Shift+[ once.
@@ -989,7 +958,7 @@ features:
           - '[data-inbox-row] [data-active="true"]'
           - '[data-mc="comment-composer"]'
         expect:
-          - Each press opens the issue of the notification one row below or above, the Inbox row lights follow, and no notification is archived.
+          - Each press opens the notification one row below or above on the Inbox page, the Inbox row lights follow, and no notification is archived.
           - The caret is in the comment box of each issue opened.
       - name: listed in Settings
         path: /<workspace-slug>/settings
@@ -1153,7 +1122,7 @@ features:
     drop_when: upstream ships a rebindable rename-title shortcut that also works in the desktop app.
 
   - id: reading-pane-scroll-focus
-    summary: After picking a chat (thread row, floating-window history) or opening the issue page from a side-panel link, and after clicking plain text in the conversation or issue body, ↑/↓/PageUp/PageDown scroll what is being read instead of the list that opened it.
+    summary: After picking a chat (thread row, floating-window history), opening the issue page from a side-panel link or a Work panel Inbox, Snoozed or Archived row (desktop Inbox page), and after clicking plain text in the conversation or issue body, ↑/↓/PageUp/PageDown scroll what is being read instead of the list that opened it.
     status: active
     kind: web-ui
     cards: [CALA-330]
@@ -1174,6 +1143,8 @@ features:
       - packages/views/issues/components/issue-detail.test.tsx
       - packages/views/issues/components/issue-detail-route.tsx
       - packages/views/issues/components/issue-detail-route.focus.test.tsx
+      - packages/views/inbox/components/inbox-page.tsx
+      - packages/views/inbox/components/inbox-page.test.tsx
     watch:
       - path: packages/views/chat/components/chat-thread-list.tsx
         why: the row that keeps focus after a click; a roving-focus or arrow-key change there decides who owns ↑/↓
@@ -1182,9 +1153,7 @@ features:
       - path: packages/views/chat/components/use-chat-controller.ts
         why: handleSelectSession is what both chat surfaces wrap to request focus
       - path: packages/views/inbox/components/inbox-list.tsx
-        why: same pattern (tabIndex=-1 list, focus with preventScroll); the inbox detail pane must keep focus off the issue so ↑/↓ still move the selection
-      - path: packages/views/inbox/components/inbox-page.tsx
-        why: renders IssueDetail without focusOnOpen on purpose
+        why: same pattern (tabIndex=-1 list, focus with preventScroll); on a phone, where the page shows its own list, the detail keeps focus off the issue so ↑/↓ still move the selection
       - path: packages/core/shortcuts/definitions.ts
         why: isEditableShortcutTarget and isPortalLayerShortcutTarget decide when focus is left alone
     upstream_equivalent:
@@ -1219,6 +1188,8 @@ features:
         name: lets a click on plain text in the body take the keys
       - vitest: packages/views/issues/components/issue-detail-route.focus.test.tsx
         name: asks the issue page to take the scroll keys when it opens
+      - vitest: packages/views/inbox/components/inbox-page.test.tsx
+        name: hands the scroll keys to an issue opened from the Work panel on every desktop tab, not on a phone
     scenarios:
       - name: picked chat takes the scroll keys
         path: /<workspace-slug>/chat
@@ -1396,7 +1367,7 @@ features:
       - path: packages/views/common/take-keyboard-focus.ts
         why: reading-pane-scroll-focus (CALA-330) focuses the same body scroller (chat-message-list.tsx, issue-detail.tsx) on open; the body region reuses that tabIndex=-1 box as its target
       - path: packages/views/common/use-list-step-shortcut.ts
-        why: shortcut-list-step (CALA-328) opens the row above / below in chat-thread-list.tsx, inbox-list.tsx and space-panel.tsx, the same lists the region arrow keys step through
+        why: shortcut-list-step (CALA-328) opens the row above / below in chat-thread-list.tsx, inbox-list.tsx and inbox-page.tsx, the same lists the region arrow keys step through
       - path: packages/views/layout/rename-title-shortcut.ts
         why: shortcut-rename-title (CALA-327) adds Mod+R next to the region keys in definitions.ts and the Settings recorder
     upstream_equivalent:

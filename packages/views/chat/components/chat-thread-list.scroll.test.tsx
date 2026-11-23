@@ -1,14 +1,16 @@
 import { forwardRef, useImperativeHandle } from "react";
 import { render } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@multica/core/i18n/react";
 import type { Agent, ChatSession } from "@multica/core/types";
 import enChat from "../../locales/en/chat.json";
 import enIssues from "../../locales/en/issues.json";
 
 // jsdom has no layout, so the real Virtuoso cannot show whether a row came
-// into view. The mock exposes the handle the list drives.
+// into view. The mock exposes the handle the list drives; a short list has
+// no Virtuoso and scrolls the mounted row itself.
 const scrollIntoView = vi.hoisted(() => vi.fn());
+const rowScrollIntoView = vi.hoisted(() => vi.fn());
 vi.mock("react-virtuoso", () => ({
   Virtuoso: forwardRef(function MockVirtuoso(
     { data, itemContent }: { data: ChatSession[]; itemContent: (index: number, s: ChatSession) => React.ReactNode },
@@ -40,9 +42,10 @@ vi.mock("@tanstack/react-query", async (importOriginal) => ({
 }));
 
 import { ChatThreadList } from "./chat-thread-list";
+import { SESSION_LIST_VIRTUALIZE_AFTER } from "./session-history-list";
 
 const agent = { id: "agent-1", name: "Alpha" } as unknown as Agent;
-const sessions: ChatSession[] = ["a", "b", "c"].map((id, i) => ({
+const session = (id: string, i: number): ChatSession => ({
   id,
   workspace_id: "ws-1",
   agent_id: "agent-1",
@@ -55,21 +58,42 @@ const sessions: ChatSession[] = ["a", "b", "c"].map((id, i) => ({
   pinned: false,
   created_at: new Date(0).toISOString(),
   updated_at: new Date(Date.UTC(2026, 10, 1) - i * 60_000).toISOString(),
-}));
+});
+const shortList = ["a", "b", "c"].map(session);
+const longList = Array.from({ length: SESSION_LIST_VIRTUALIZE_AFTER + 1 }, (_, i) => session(`s${i}`, i));
 
-const ui = (active: string | null) => (
+const ui = (active: string | null, sessions = shortList) => (
   <I18nProvider locale="en" resources={{ en: { chat: enChat, issues: enIssues } }}>
     <ChatThreadList sessions={sessions} agents={[agent]} activeSessionId={active} onSelectSession={vi.fn()} onArchive={vi.fn()} />
   </I18nProvider>
 );
 
-beforeEach(() => scrollIntoView.mockClear());
+const elementScrollIntoView = Element.prototype.scrollIntoView;
+beforeEach(() => {
+  scrollIntoView.mockClear();
+  rowScrollIntoView.mockClear();
+  Element.prototype.scrollIntoView = rowScrollIntoView;
+});
+afterEach(() => {
+  Element.prototype.scrollIntoView = elementScrollIntoView;
+});
 
 describe("ChatThreadList scroll to the open chat (CALA-328)", () => {
   it("brings a chat opened from elsewhere on the page into view, and leaves the list alone on mount", () => {
-    const view = render(ui("a"));
+    const view = render(ui("s0", longList));
     expect(scrollIntoView).not.toHaveBeenCalled();
-    view.rerender(ui("c"));
+    view.rerender(ui("s2", longList));
     expect(scrollIntoView).toHaveBeenCalledWith({ index: 2 });
+  });
+
+  it("scrolls the row itself in a short list, which renders without Virtuoso", () => {
+    const view = render(ui("a"));
+    expect(rowScrollIntoView).not.toHaveBeenCalled();
+    view.rerender(ui("c"));
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(rowScrollIntoView).toHaveBeenCalledTimes(1);
+    expect(rowScrollIntoView.mock.contexts[0]).toBe(
+      view.getByText("Chat c").closest("[data-chat-thread-row]"),
+    );
   });
 });

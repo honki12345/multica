@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: the status group (trial, team) never shrinks beside scrolling chat chips (CALA-72).
+
 import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NavigationProvider, type NavigationAdapter } from "../navigation";
@@ -17,6 +19,10 @@ const h = vi.hoisted(() => ({
   team: { working: [], stuck: [], byAgent: new Map() } as TeamStatus,
 }));
 
+vi.mock("@multica/core/permissions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@multica/core/permissions")>()),
+  useIsGuest: () => false,
+}));
 vi.mock("@multica/core/chat", () => ({
   useChatStore: Object.assign(
     (selector: (state: typeof h.chat) => unknown) => selector(h.chat),
@@ -31,6 +37,7 @@ vi.mock("@multica/ui/hooks/use-mobile", () => ({ useIsMobile: () => h.isMobile }
 vi.mock("./panels/team-status", () => ({ useTeamAgentStatus: () => h.team }));
 vi.mock("./app-shell-context", () => ({ useAppShell: () => null }));
 vi.mock("../chat/components/chat-bar", () => ({ ChatBar: () => <div data-testid="chat-bar" /> }));
+vi.mock("../billing/trial-status", () => ({ TrialStatus: () => null }));
 
 function renderBar(pathname = "/acme/issues") {
   const adapter: NavigationAdapter = {
@@ -83,8 +90,23 @@ describe("AppBottomBar", () => {
     renderBar();
 
     expect(
-      screen.getByRole("link", { name: "3 tasks waiting on an offline runtime" }),
+      screen.getByRole("link", { name: "3 runs waiting on an offline runtime" }),
     ).toHaveAttribute("href", "/acme/agents");
+  });
+
+  it("never lets the status group shrink beside the chat chips", () => {
+    h.team.stuck = [{ id: "a1" }];
+    h.team.byAgent = new Map([["a1", { queuedCount: 1 }]]);
+    renderBar();
+
+    const link = screen.getByRole("link", { name: "1 run waiting on an offline runtime" });
+    let node: HTMLElement | null = link.parentElement;
+    const footer = screen.getByRole("contentinfo");
+    while (node && node !== footer) {
+      expect(node.className).not.toMatch(/\bmin-w-0\b/);
+      expect(node.className).toMatch(/\bshrink-0\b/);
+      node = node.parentElement;
+    }
   });
 
   it("drops quick chat on the Chat tab, which already shows it full-page", () => {
