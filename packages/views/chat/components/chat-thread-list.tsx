@@ -278,6 +278,32 @@ export function ChatThreadList({
     if (activeIndex >= 0) listRef.current?.scrollIntoView({ index: activeIndex });
   }, [activeSessionId, activeIndex]);
 
+  // Home / End reach the ends of the whole list. The list is windowed, so the
+  // first or last chat may not be mounted for the focus region keys to find;
+  // scroll it in by index and focus its row once it mounts.
+  const rowNodesRef = useRef(new Map<string, HTMLElement>());
+  const focusOnMountRef = useRef<string | null>(null);
+  const bindRowNode = (id: string, node: HTMLElement | null) => {
+    if (!node) {
+      rowNodesRef.current.delete(id);
+      return;
+    }
+    rowNodesRef.current.set(id, node);
+    if (focusOnMountRef.current === id) {
+      focusOnMountRef.current = null;
+      node.focus({ preventScroll: true });
+    }
+  };
+  const focusListEnd = (key: "Home" | "End") => {
+    const index = key === "Home" ? 0 : shownSessions.length - 1;
+    const id = shownSessions[index]?.id;
+    if (!id) return;
+    listRef.current?.scrollToIndex({ index, align: key === "Home" ? "start" : "end" });
+    const mounted = rowNodesRef.current.get(id);
+    focusOnMountRef.current = mounted ? null : id;
+    mounted?.focus({ preventScroll: true });
+  };
+
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [confirmingStopId, setConfirmingStopId] = useState<string | null>(null);
   const [stoppingTaskId, setStoppingTaskId] = useState<string | null>(null);
@@ -579,7 +605,10 @@ export function ChatThreadList({
       <SortableChatRow key={session.id} id={session.id} sortable={sortable}>
         {(drag) => (
       <div
-        ref={drag.setNodeRef}
+        ref={(node) => {
+          drag.setNodeRef(node);
+          bindRowNode(session.id, node);
+        }}
         style={drag.style}
         aria-current={isCurrent ? "true" : undefined}
         aria-describedby={drag.describedBy}
@@ -625,6 +654,12 @@ export function ChatThreadList({
           if (draggingRef.current || isConfirmingAction || isRenaming) return;
           if (drag.onKeyDown && e.target === e.currentTarget && e.code === "Space") {
             drag.onKeyDown(e);
+            return;
+          }
+          const plain = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+          if (plain && e.target === e.currentTarget && (e.key === "Home" || e.key === "End")) {
+            e.preventDefault();
+            focusListEnd(e.key);
             return;
           }
           handleRowActivationKey(e, () => onSelectSession(session));
