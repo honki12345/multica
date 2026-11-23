@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: cover the remembered bottom-bar chip order (CALA-300).
+
 import { beforeEach, describe, expect, it } from "vitest";
 import { createChatStore, DRAFT_NEW_SESSION } from "./store";
 import type { StorageAdapter } from "../types";
@@ -302,13 +304,36 @@ describe("chat store — bottom bar chips", () => {
     expect(kept).not.toContain("s0");
   });
 
+  it("remembers the order the chips were dragged into, across a reload", () => {
+    const storage = memStorage();
+    const store = createChatStore({ storage });
+
+    store.getState().setChatBarOrder(["b", "a", "b", "c"]);
+
+    expect(store.getState().chatBarOrder).toEqual(["b", "a", "c"]);
+    expect(createChatStore({ storage }).getState().chatBarOrder).toEqual(["b", "a", "c"]);
+  });
+
+  it("forgets a closed chip's place, so it comes back first", () => {
+    const storage = memStorage();
+    const store = createChatStore({ storage });
+    store.getState().keepChatInBar("a");
+    store.getState().setChatBarOrder(["b", "a", "c"]);
+
+    store.getState().dismissChatFromBar("a", "2026-11-11T08:00:00Z");
+
+    expect(store.getState().chatBarOrder).toEqual(["b", "c"]);
+    expect(createChatStore({ storage }).getState().chatBarOrder).toEqual(["b", "c"]);
+  });
+
   it("reads a malformed blob as empty", () => {
     const storage = memStorage();
-    storage.setItem(BAR_KEY, JSON.stringify({ kept: "nope", dismissed: [1] }));
+    storage.setItem(BAR_KEY, JSON.stringify({ kept: "nope", dismissed: [1], order: { a: 1 } }));
     const state = createChatStore({ storage }).getState();
 
     expect(state.chatBarKept).toEqual([]);
     expect(state.chatBarDismissed).toEqual({});
+    expect(state.chatBarOrder).toEqual([]);
   });
 });
 

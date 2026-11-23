@@ -1,3 +1,5 @@
+// Modified by honki12345, 2026: remember the order bottom-bar chat chips were dragged into (CALA-300).
+
 import { create } from "zustand";
 import type { StorageAdapter } from "../types";
 import type { Attachment } from "../types/attachment";
@@ -81,12 +83,14 @@ const FLOATING_KEY = "multica:chat:floatingChatEnabled";
 const QUICK_CHAT_AGENT_KEY = "multica:chat:quickChatAgentId";
 /**
  * The chats kept as chips in the bottom bar, per workspace:
- * `{ kept: sessionId[], dismissed: { [sessionId]: activity } }`.
+ * `{ kept: sessionId[], dismissed: { [sessionId]: activity }, order: sessionId[] }`.
  *
  * `kept` is every chat opened in the quick-chat window and not closed from the
  * bar since, newest first. `dismissed` records the chat's last activity at the
  * moment its chip was closed, so the chip stays away until the chat moves
  * again; without it, closing the chip of an unread chat would do nothing.
+ * `order` is the chip order last dragged into, left to right; a closed chip
+ * leaves it, so it comes back first.
  */
 const CHAT_BAR_KEY = "multica:chat:bar";
 /** Chips are a working set, not a history: the oldest fall off. */
@@ -96,33 +100,39 @@ const CHAT_BAR_MAX_DISMISSED = 50;
 interface ChatBarSlots {
   kept: string[];
   dismissed: Record<string, string>;
+  order: string[];
+}
+
+function stringIds(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
 }
 
 function readChatBar(storage: StorageAdapter, key: string): ChatBarSlots {
-  const empty: ChatBarSlots = { kept: [], dismissed: {} };
+  const empty: ChatBarSlots = { kept: [], dismissed: {}, order: [] };
   const raw = storage.getItem(key);
   if (!raw) return empty;
   try {
-    const parsed = JSON.parse(raw) as { kept?: unknown; dismissed?: unknown };
+    const parsed = JSON.parse(raw) as { kept?: unknown; dismissed?: unknown; order?: unknown };
     if (typeof parsed !== "object" || parsed === null) return empty;
-    const kept = Array.isArray(parsed.kept)
-      ? parsed.kept.filter((id): id is string => typeof id === "string")
-      : [];
+    const kept = stringIds(parsed.kept);
     const dismissed: Record<string, string> = {};
     if (typeof parsed.dismissed === "object" && parsed.dismissed !== null) {
       for (const [id, activity] of Object.entries(parsed.dismissed)) {
         if (typeof activity === "string") dismissed[id] = activity;
       }
     }
-    return { kept, dismissed };
+    return { kept, dismissed, order: [...new Set(stringIds(parsed.order))] };
   } catch {
     return empty;
   }
 }
 
 function writeChatBar(storage: StorageAdapter, key: string, slots: ChatBarSlots) {
-  if (slots.kept.length === 0 && Object.keys(slots.dismissed).length === 0) storage.removeItem(key);
-  else storage.setItem(key, JSON.stringify(slots));
+  if (slots.kept.length === 0 && Object.keys(slots.dismissed).length === 0 && slots.order.length === 0) {
+    storage.removeItem(key);
+  } else {
+    storage.setItem(key, JSON.stringify(slots));
+  }
 }
 
 function readDrafts(storage: StorageAdapter, key: string): Record<string, string> {
@@ -367,6 +377,8 @@ export interface ChatState {
   chatBarKept: string[];
   /** Chips closed from the bar: sessionId → the chat's activity at that moment. */
   chatBarDismissed: Record<string, string>;
+  /** Chip order the user dragged into, left to right. */
+  chatBarOrder: string[];
   /** Drafts per session: sessionId (or DRAFT_NEW_SESSION) → markdown text. */
   inputDrafts: Record<string, string>;
   /** Attachment rows referenced by each input draft. */
@@ -393,6 +405,8 @@ export interface ChatState {
   keepChatInBar: (sessionId: string) => void;
   /** Close a chat's chip until the chat moves past `activity`. */
   dismissChatFromBar: (sessionId: string, activity: string) => void;
+  /** Remember the chips' order after a drag, left to right. */
+  setChatBarOrder: (order: readonly string[]) => void;
   /** sessionId accepts a real session UUID or DRAFT_NEW_SESSION. */
   setInputDraft: (sessionId: string, draft: string) => void;
   /** Append a markdown fragment to a draft slot's text (upload write-back). */
@@ -465,6 +479,7 @@ export function createChatStore(options: ChatStoreOptions) {
     newChatRequest: 0,
     chatBarKept: initialChatBar.kept,
     chatBarDismissed: initialChatBar.dismissed,
+    chatBarOrder: initialChatBar.order,
     inputDrafts: initialDraftSlots.inputDrafts,
     inputDraftAttachments: initialDraftSlots.inputDraftAttachments,
     appliedDraftRestoreIds: readAppliedRestores(storage, wsKey(APPLIED_RESTORES_KEY)),
@@ -527,7 +542,7 @@ export function createChatStore(options: ChatStoreOptions) {
       set((state) => ({ newChatRequest: state.newChatRequest + 1 }));
     },
     keepChatInBar: (sessionId) => {
-      const { chatBarKept, chatBarDismissed } = get();
+      const { chatBarKept, chatBarDismissed, chatBarOrder } = get();
       const wasDismissed = sessionId in chatBarDismissed;
       if (chatBarKept.includes(sessionId) && !wasDismissed) return;
       const kept = [sessionId, ...chatBarKept.filter((id) => id !== sessionId)].slice(
@@ -536,19 +551,26 @@ export function createChatStore(options: ChatStoreOptions) {
       );
       const dismissed = { ...chatBarDismissed };
       delete dismissed[sessionId];
-      writeChatBar(storage, wsKey(CHAT_BAR_KEY), { kept, dismissed });
+      writeChatBar(storage, wsKey(CHAT_BAR_KEY), { kept, dismissed, order: chatBarOrder });
       set({ chatBarKept: kept, chatBarDismissed: dismissed });
     },
     dismissChatFromBar: (sessionId, activity) => {
-      const { chatBarKept, chatBarDismissed } = get();
+      const { chatBarKept, chatBarDismissed, chatBarOrder } = get();
       const kept = chatBarKept.filter((id) => id !== sessionId);
       // Re-insert so the entry is the newest, then drop the oldest over the cap.
       const rest = Object.entries(chatBarDismissed).filter(([id]) => id !== sessionId);
       const dismissed = Object.fromEntries(
         [...rest, [sessionId, activity] as const].slice(-CHAT_BAR_MAX_DISMISSED),
       );
-      writeChatBar(storage, wsKey(CHAT_BAR_KEY), { kept, dismissed });
-      set({ chatBarKept: kept, chatBarDismissed: dismissed });
+      const order = chatBarOrder.filter((id) => id !== sessionId);
+      writeChatBar(storage, wsKey(CHAT_BAR_KEY), { kept, dismissed, order });
+      set({ chatBarKept: kept, chatBarDismissed: dismissed, chatBarOrder: order });
+    },
+    setChatBarOrder: (next) => {
+      const { chatBarKept, chatBarDismissed } = get();
+      const order = [...new Set(next)];
+      writeChatBar(storage, wsKey(CHAT_BAR_KEY), { kept: chatBarKept, dismissed: chatBarDismissed, order });
+      set({ chatBarOrder: order });
     },
     // Append-only until the server confirms. There is deliberately no capacity
     // cap: every entry in here is an UNconfirmed consume, and evicting one
@@ -788,6 +810,7 @@ export function createChatStore(options: ChatStoreOptions) {
       quickChatAgentId: storage.getItem(wsKey(QUICK_CHAT_AGENT_KEY)),
       chatBarKept: nextChatBar.kept,
       chatBarDismissed: nextChatBar.dismissed,
+      chatBarOrder: nextChatBar.order,
       inputDrafts: nextDrafts,
       inputDraftAttachments: nextDraftAttachments,
       appliedDraftRestoreIds: readAppliedRestores(storage, wsKey(APPLIED_RESTORES_KEY)),

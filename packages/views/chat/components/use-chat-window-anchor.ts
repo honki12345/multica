@@ -1,6 +1,6 @@
 "use client";
 
-// Modified by honki12345, 2026: anchor the chat window to a scrolled chip (CALA-72).
+// Modified by honki12345, 2026: anchor the chat window to a chip in the chip strip (CALA-72); follow it when chips are reordered (CALA-300) or moved by +N (CALA-350).
 
 import { useLayoutEffect, useRef, useState } from "react";
 
@@ -9,8 +9,10 @@ export const CHAT_WINDOW_INSET = 8;
 
 /** The quick-chat group in the bottom bar. */
 const CHAT_BAR_SELECTOR = '[data-slot="chat-bar"]';
-/** The scrolling strip of chips inside it. */
+/** The strip of chips inside it. */
 const CHAT_BAR_CHIPS_SELECTOR = '[data-slot="chat-bar-chips"]';
+/** The chips and their "+N" button, right-aligned in the bar. */
+const CHAT_BAR_CHIP_GROUP_SELECTOR = '[data-slot="chat-bar-chip-group"]';
 /** The bottom-bar control the open window belongs to. */
 const PRESSED_ANCHOR_SELECTOR = '[data-chat-anchor][aria-pressed="true"]';
 /** Anything in the bar that opens or switches the window. */
@@ -24,7 +26,7 @@ const ANCHOR_TRIGGER_SELECTOR = "[data-chat-anchor], [data-chat-anchor-trigger]"
  *
  * The window is placed when it opens, when the bar opens another chat in it,
  * and when its container resizes; after that it follows its control if the
- * bar's chips reflow or their strip scrolls. It stays put otherwise: a chip appearing for the chat
+ * bar's chips reflow or are dragged into another order. It stays put otherwise: a chip appearing for the chat
  * just started must not move it under the person typing in it.
  *
  * `width` is the width the window is sized to, not the one it is animating
@@ -89,37 +91,57 @@ export function useChatWindowAnchor(
     };
     document.addEventListener("click", onClick);
 
-    // The strip of chips scrolls when they do not fit; keep the window over its
-    // chip. Listened to in the capture phase so a strip mounted later counts.
-    const onScroll = (event: Event) => {
-      if (!(event.target instanceof Element) || !event.target.matches(CHAT_BAR_CHIPS_SELECTOR)) return;
-      if (pressedAnchor()?.dataset.chatAnchor === placedAt) measure();
+    // Dragging chips into another order moves the control without resizing
+    // the bar: follow it once the strip's chips are reordered, and again when
+    // they finish sliding into place. Hover colours and a chip's own content
+    // (its running mark) change too, and must not move the window.
+    const followMovedChips = () => {
+      if (pressedAnchor()?.dataset.chatAnchor !== placedAt) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
     };
-    document.addEventListener("scroll", onScroll, true);
+    const onTransitionEnd = (event: TransitionEvent) => {
+      if (event.propertyName !== "transform") return;
+      if (!(event.target instanceof Element) || !event.target.closest(CHAT_BAR_CHIPS_SELECTOR)) return;
+      followMovedChips();
+    };
+    document.addEventListener("transitionend", onTransitionEnd, true);
+    const chipsObserver = new MutationObserver((records) => {
+      if (records.some((record) => record.target instanceof Element && record.target.matches(CHAT_BAR_CHIPS_SELECTOR))) {
+        followMovedChips();
+      }
+    });
+    const barForChips = document.querySelector(CHAT_BAR_SELECTOR);
+    if (barForChips) chipsObserver.observe(barForChips, { childList: true, subtree: true });
 
     if (typeof ResizeObserver === "undefined") {
       return () => {
         measureRef.current = null;
         cancelAnimationFrame(frame);
         document.removeEventListener("click", onClick);
-        document.removeEventListener("scroll", onScroll, true);
+        document.removeEventListener("transitionend", onTransitionEnd, true);
+        chipsObserver.disconnect();
       };
     }
     const observer = new ResizeObserver(measure);
     observer.observe(container);
     // A chip leaving the bar (its chat was read) shifts the ones beside it.
     // Follow the control the window is above, but not a change of control.
+    // The bar fills its row, so the chips' group is watched too: "+N" coming
+    // or going, or a chip changing width, moves the chips but not the bar.
     const barObserver = new ResizeObserver(() => {
       if (pressedAnchor()?.dataset.chatAnchor === placedAt) measure();
     });
-    const bar = document.querySelector(CHAT_BAR_SELECTOR);
-    if (bar) barObserver.observe(bar);
+    if (barForChips) barObserver.observe(barForChips);
+    const chipGroup = document.querySelector(CHAT_BAR_CHIP_GROUP_SELECTOR);
+    if (chipGroup) barObserver.observe(chipGroup);
 
     return () => {
       measureRef.current = null;
       cancelAnimationFrame(frame);
       document.removeEventListener("click", onClick);
-      document.removeEventListener("scroll", onScroll, true);
+      document.removeEventListener("transitionend", onTransitionEnd, true);
+      chipsObserver.disconnect();
       observer.disconnect();
       barObserver.disconnect();
     };

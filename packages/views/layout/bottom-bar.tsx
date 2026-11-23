@@ -1,6 +1,6 @@
 "use client";
 
-// Modified by honki12345, 2026: keep team status from shrinking beside scrolling chat chips (CALA-72).
+// Modified by honki12345, 2026: keep team status from shrinking beside quick chat's chips (CALA-72, CALA-350).
 
 import { TriangleAlert } from "@multica/ui/icons";
 import { useChatStore } from "@multica/core/chat";
@@ -30,8 +30,8 @@ function TeamStatus({ wsId }: { wsId: string }) {
   );
 
   return (
-    // shrink-0: when quick chat runs out of room its chips scroll; the status
-    // is never squeezed for them.
+    // shrink-0: when quick chat runs out of room its chips fold into "+N"; the
+    // status is never squeezed for them.
     <div className="flex shrink-0 items-center gap-1">
       {waitingTasks > 0 && (
         <AppLink
