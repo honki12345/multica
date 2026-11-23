@@ -8315,6 +8315,10 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	agentName = task.Agent.Name
 	skills = task.Agent.Skills
 	instructions = task.Agent.Instructions
+	bare := bareRuntime(provider, task.Agent)
+	if bare {
+		instructions = ""
+	}
 
 	// Prepare isolated execution environment.
 	// Repos are passed as metadata only — the agent checks them out on demand
@@ -8470,6 +8474,15 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	var cursorMcpAuthSource string
 	var cursorMcpAuthStore string
 	var cursorUserDataDir string
+	if bare {
+		// No MCP of any origin reaches a bare run: the agent's own mcp_config,
+		// the runtime overlay, Remote MCP brokers and plugin hook tools.
+		task.RemoteMCPConnections = nil
+		task.PluginHookTools = nil
+		bareAgent := *task.Agent
+		bareAgent.McpConfig = nil
+		task.Agent = &bareAgent
+	}
 	remoteMCPConfig, remoteMCPDiagnostics, remoteMCPBrokers, remoteMCPErr := startTaskRemoteMCPBrokers(
 		prepareCtx, ctx, task.ID, provider, task.RemoteMCPConnections,
 		func(resolveCtx context.Context, contributionID string) (http.Header, error) {
@@ -9054,9 +9067,9 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	}
 
 	// Build the runtime brief and inject it into the provider-specific
-	// instruction file when supported.
-	runtimeBrief, err := execenv.InjectRuntimeConfig(env.WorkDir, provider, taskCtx)
-	runtimeBriefWritten := err == nil
+	// instruction file when supported. A bare run writes none.
+	runtimeBrief, err := injectRuntimeBrief(bare, env.WorkDir, provider, taskCtx)
+	runtimeBriefWritten := err == nil && !bare
 	if err != nil {
 		d.logger.Warn("execenv: inject runtime config failed (non-fatal)", "error", err)
 	}
@@ -9092,7 +9105,7 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 			promptOptions = append(promptOptions, WithWorktreeCommitsAllLeftovers())
 		}
 	}
-	prompt, skillInvocation := buildRuntimePrompt(task, provider, env.SkillDirectories, promptOptions...)
+	prompt, skillInvocation := buildTaskPrompt(bare, task, provider, env, promptOptions...)
 
 	// Pass task-scoped auth credentials and context so the spawned agent CLI
 	// can call the Multica API and the local daemon (e.g. `multica repo checkout`).
@@ -9266,13 +9279,13 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	}()
 	retiredSessionID = gateOpenCodeResumeToSaneClock(ctx, &task, &taskCtx, provider, backendConfig, env.WorkDir, effectiveMcpConfig, taskLog)
 	if retiredSessionID != "" {
-		if freshBrief, briefErr := execenv.InjectRuntimeConfig(env.WorkDir, provider, taskCtx); briefErr != nil {
+		if freshBrief, briefErr := injectRuntimeBrief(bare, env.WorkDir, provider, taskCtx); briefErr != nil {
 			return TaskResult{}, fmt.Errorf("prepare fresh OpenCode session after clock check: %w", briefErr)
 		} else {
 			runtimeBrief = freshBrief
-			runtimeBriefWritten = true
+			runtimeBriefWritten = !bare
 		}
-		prompt, skillInvocation = buildRuntimePrompt(task, provider, env.SkillDirectories, promptOptions...)
+		prompt, skillInvocation = buildTaskPrompt(bare, task, provider, env, promptOptions...)
 	}
 	backend, err := agent.ResolveBackend(provider, backendConfig)
 	if err != nil {
@@ -9410,6 +9423,11 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	// context and bloats every turn.
 	if providerNeedsInlineSystemPrompt(provider) {
 		execOpts.SystemPrompt = runtimeBrief
+	}
+	if bare {
+		// The notice is directions; a lost resume is already the
+		// `prior_session: not restored` fact when the daemon knows it.
+		execOpts.ResumeContinuityNotice = ""
 	}
 
 	// A quick-actions refresh task from a server that predates server-side
@@ -9567,17 +9585,17 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 		execOpts.ResumeContinuityNotice = ""
 		taskCtx.PriorSessionResumed = false
 		runtimeBriefWritten = false
-		freshBrief, briefErr := execenv.InjectRuntimeConfig(env.WorkDir, provider, taskCtx)
+		freshBrief, briefErr := injectRuntimeBrief(bare, env.WorkDir, provider, taskCtx)
 		if briefErr != nil {
 			taskLog.Warn("execenv: re-inject cold runtime config for fresh retry failed (non-fatal)", "error", briefErr)
 		} else {
 			runtimeBrief = freshBrief
-			runtimeBriefWritten = true
+			runtimeBriefWritten = !bare
 			if providerNeedsInlineSystemPrompt(provider) {
 				execOpts.SystemPrompt = runtimeBrief
 			}
 		}
-		freshPrompt, freshSkills := buildRuntimePrompt(task, provider, env.SkillDirectories, promptOptions...)
+		freshPrompt, freshSkills := buildTaskPrompt(bare, task, provider, env, promptOptions...)
 		execOpts.SkillInvocation = freshSkills
 
 		receiptInput.Prompt = freshPrompt
