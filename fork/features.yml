@@ -285,10 +285,10 @@ features:
     drop_when: upstream's resident mode exposes the daemon port to resident tool shells.
 
   - id: chat-bar-all-chips
-    summary: The bottom chat bar shows every chat chip in a sideways-scrolling strip instead of folding extras into a +N menu.
+    summary: "The bottom chat bar shows as many chat chips as fit in its width and folds the rest into upstream's +N menu. Differs from upstream only in having no 4-chip cap and in measuring each chip's real width instead of assuming 170px per chip next to a fixed 560px for the rest of the bar."
     status: active
     kind: web-ui
-    cards: [CALA-72]
+    cards: [CALA-72, CALA-350]
     origin:
       type: ours
       commits: ["6565efb51"]
@@ -323,35 +323,48 @@ features:
       - path: packages/ui/styles/**
         why: tokens and utilities the strip's layout uses
       - path: packages/views/locales/*/chat.json
-        why: bar.close_chip and the now-unused bar.more_* strings
+        why: bar.close_chip and bar.more_* (the +N button's label)
+      - path: packages/ui/components/ui/dropdown-menu.tsx
+        why: the +N menu
     upstream_equivalent:
-      symbols: [maxChipsForWidth, useMaxChips, chat-bar-chips]
+      symbols: [maxChipsForWidth, useMaxChips, chipsThatFit, chat-bar-chips]
       keywords: [chat bar overflow, chat chips, bottom bar chips]
     tests:
       - vitest: packages/views/chat/components/chat-bar.test.tsx
-        name: shows a chip for every chat instead of folding the rest into a +N menu
+        name: shows every chip when they all fit, with no +N button
       - vitest: packages/views/chat/components/chat-bar.test.tsx
-        name: scrolls the open chat's chip into view, so the window opens above it
+        name: folds the chips that do not fit into a +N button
+      - vitest: packages/views/chat/components/chat-bar.test.tsx
+        name: counts again when the bar is resized
+      - vitest: packages/views/chat/components/chat-bar.test.tsx
+        name: brings the open chat's chip out of +N, so the window opens above it
+      - vitest: packages/views/chat/components/chat-bar.test.tsx
+        name: opens a folded chat from the +N menu, in the dragged order
       - vitest: packages/views/chat/components/chat-bar-sessions.test.ts
         name: shows every chip with no overflow when there is no limit
+      - vitest: packages/views/chat/components/chat-bar-sessions.test.ts
+        name: has no cap on how many chips fit
+      - vitest: packages/views/chat/components/chat-bar-sessions.test.ts
+        name: counts the open chat's chip first when it would be folded away
       - vitest: packages/views/layout/bottom-bar.test.tsx
     scenarios:
-      - name: every chip visible, strip scrolls
+      - name: as many chips as fit, then +N
         path: /<workspace-slug>/issues
-        widths: [1440, 900]
-        setup: at least 8 chats that are running, unread or opened in quick chat
+        widths: [1920, 1440, 1100, 900]
+        setup: at least 12 chats that are running, unread or opened in quick chat
         steps:
-          - Open the page and wait for the bottom bar.
-          - Count chips inside [data-slot="chat-bar-chips"].
-          - Scroll the mouse wheel over the strip.
-          - Click the right-most chip.
+          - Open the page at 1920px and wait for the bottom bar.
+          - Count chips inside [data-slot="chat-bar-chips"] and read the +N button.
+          - Make the window narrower, step by step down to 900px.
+          - Open the +N menu and pick a chat.
         selectors:
           - '[data-slot="chat-bar"]'
           - '[data-slot="chat-bar-chips"] [data-chat-anchor]'
         expect:
-          - One chip per qualifying chat; no "+N" button (aria-label "N more chats") anywhere in the bar.
-          - The wheel scrolls the strip sideways; team status and the Ask Multica button keep their width.
-          - The clicked chip scrolls fully into view and the chat window opens above it.
+          - More than 4 chips when they fit; the +N button (aria-label "N more chats") only when some do not.
+          - Chips plus +N always fit beside team status and Ask Multica; nothing scrolls sideways, nothing is clipped.
+          - Narrowing the window folds more chips into +N; widening brings them back.
+          - The picked chat's chip comes out of +N into the strip and the chat window opens above it.
       - name: bar hidden on a narrow window
         path: /<workspace-slug>/issues
         widths: [700]
@@ -360,12 +373,12 @@ features:
         selectors: []
         expect:
           - No [data-slot="chat-bar"] (upstream behaviour below 768px, unchanged).
-    drop_when: upstream shows every chip without a +N overflow menu.
+    drop_when: upstream drops the 4-chip cap from maxChipsForWidth, or the user accepts upstream's cap.
 
   # Split from chat-bar-all-chips: upstream can ship either one without the
   # other, so each is dropped on its own condition.
   - id: chat-bar-chip-reorder
-    summary: Bottom-bar chat chips can be dragged (or moved with Space and the arrow keys) into any order, which is remembered per workspace; new chips come in on the left.
+    summary: Bottom-bar chat chips can be dragged (or moved with Space and the arrow keys) into any order, which is remembered per workspace; new chips come in on the left, and the chips folded into +N follow the same order.
     status: active
     kind: web-ui
     cards: [CALA-300]
@@ -418,21 +431,23 @@ features:
         name: stays put when a chip is only hovered or its chat starts running
       - vitest: packages/views/chat/components/chat-bar.test.tsx
         name: opens a chat on a click right after a keyboard drag is cancelled with Escape
+      - vitest: packages/views/chat/components/chat-bar.test.tsx
+        name: keeps the dragged order, folding the chips at its end
+      - vitest: packages/views/chat/components/chat-bar.test.tsx
+        name: keeps the folded chips after the shown ones when a shown chip is dragged
     scenarios:
       - name: drag a chip into another place
         path: /<workspace-slug>/issues
         widths: [1440, 900]
-        setup: at least 8 chats that are running, unread or opened in quick chat, more than the strip shows at once
+        setup: at least 8 chats that are running, unread or opened in quick chat
         steps:
           - Drag the left-most chip to the right by more than 5px and drop it two chips over.
-          - Drag a chip to the strip's right edge and hold it there.
           - Click a chip without moving the pointer.
           - Reload the page.
         selectors:
           - '[data-slot="chat-bar-chips"] [data-chat-chip]'
         expect:
-          - The other chips slide aside while dragging; the chip lands where it was dropped and the chat does not open.
-          - Holding a chip at the edge scrolls the strip.
+          - The other chips slide aside while dragging; the chip lands where it was dropped and the chat does not open. A chip cannot be dragged past the strip into +N.
           - A plain click opens or closes the chat window as before.
           - The order survives the reload; localStorage multica:chat:bar has an order list.
       - name: keyboard reorder

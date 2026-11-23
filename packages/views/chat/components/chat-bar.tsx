@@ -1,8 +1,8 @@
 "use client";
 
-// Modified by honki12345, 2026: render all chat chips in a horizontally scrolling strip (CALA-72); drag chips to reorder them (CALA-300).
+// Modified by honki12345, 2026: no cap on chat chips, as many as fit by their measured width before +N (CALA-72, CALA-350); drag chips to reorder them (CALA-300).
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   KeyboardCode,
@@ -14,7 +14,7 @@ import {
   type DragEndEvent,
   type KeyboardSensorOptions,
 } from "@dnd-kit/core";
-import { restrictToFirstScrollableAncestor, restrictToHorizontalAxis } from "@dnd-kit/modifiers";
+import { restrictToHorizontalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
 import {
   SortableContext,
   arrayMove,
@@ -30,6 +30,12 @@ import { chatSessionsOptions, pendingChatTasksOptions } from "@multica/core/chat
 import { useWorkspaceId } from "@multica/core/hooks";
 import type { ChatSession } from "@multica/core/types";
 import { TooltipHint } from "@multica/ui/components/common/tooltip-hint";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@multica/ui/components/ui/dropdown-menu";
 import { STAR_STROKE, starPath } from "@multica/ui/lib/multica-brand";
 import { cn } from "@multica/ui/lib/utils";
 import { ActionShortcutKeycaps } from "../../common/shortcut-keycaps";
@@ -37,11 +43,21 @@ import { useT } from "../../i18n";
 import { BOTTOM_BAR_ITEM_CLASS } from "../../layout/bottom-bar-styles";
 import { useDragClickGuard } from "../../layout/use-drag-click-guard";
 import { ChatBarHistory } from "./chat-bar-history";
-import { chatActivity, selectChatBarSessions, type ChatBarSession } from "./chat-bar-sessions";
+import {
+  chatActivity,
+  chipsThatFit,
+  foldChatBarSessions,
+  selectChatBarSessions,
+  type ChatBarSession,
+} from "./chat-bar-sessions";
 
 const EMPTY_SESSIONS: ChatSession[] = [];
 const STAR = starPath(STAR_STROKE);
-const DRAG_MODIFIERS = [restrictToHorizontalAxis, restrictToFirstScrollableAncestor];
+const DRAG_MODIFIERS = [restrictToHorizontalAxis, restrictToParentElement];
+/** `gap-0.5`, between two chips and between the last chip and "+N". */
+const CHIP_GAP = 2;
+const CHIP_CLASS = cn(BOTTOM_BAR_ITEM_CLASS, "gap-1 pl-1.5");
+const MORE_CLASS = cn(BOTTOM_BAR_ITEM_CLASS, "px-1.5 tabular-nums");
 /** Stop waiting for the key that ended a drag to come up, e.g. after a blur. */
 const KEY_RELEASE_TIMEOUT_MS = 1000;
 // Space picks a chip up and puts it down. Enter is left to the button, so it
@@ -65,16 +81,6 @@ function MulticaStar() {
     </svg>
   );
 }
-/**
- * Scrolls the strip so the chip is wholly inside it. Done by hand rather than
- * with `scrollIntoView`, which would also scroll the strip's ancestors.
- */
-function scrollChipIntoView(strip: HTMLElement, chip: HTMLElement) {
-  const stripBox = strip.getBoundingClientRect();
-  const chipBox = chip.getBoundingClientRect();
-  if (chipBox.left < stripBox.left) strip.scrollLeft -= stripBox.left - chipBox.left;
-  else if (chipBox.right > stripBox.right) strip.scrollLeft += chipBox.right - stripBox.right;
-}
 
 /**
  * A chat's state, in a slot of one size whatever the state: a chip must not
@@ -92,6 +98,20 @@ function SessionMark({ item }: { item: ChatBarSession }) {
         />
       )}
     </span>
+  );
+}
+
+/** What a chip shows: its chat's state and title. */
+function ChipFace({ item, title }: { item: ChatBarSession; title: string }) {
+  return (
+    <>
+      <SessionMark item={item} />
+      {/* The close button sits over the end of the title rather than
+          beside it, so showing it never changes the chip's width. */}
+      <span className="max-w-32 truncate group-focus-within/chip:[mask-image:linear-gradient(to_right,black_calc(100%-26px),transparent_calc(100%-14px))] group-hover/chip:[mask-image:linear-gradient(to_right,black_calc(100%-26px),transparent_calc(100%-14px))]">
+        {title}
+      </span>
+    </>
   );
 }
 
@@ -138,14 +158,9 @@ function SortableChip({
           onClick={(event) => {
             if (!event.defaultPrevented) onToggle();
           }}
-          className={cn(BOTTOM_BAR_ITEM_CLASS, "gap-1 pl-1.5", isDragging && "cursor-grabbing")}
+          className={cn(CHIP_CLASS, isDragging && "cursor-grabbing")}
         >
-          <SessionMark item={item} />
-          {/* The close button sits over the end of the title rather than
-              beside it, so showing it never changes the chip's width. */}
-          <span className="max-w-32 truncate group-focus-within/chip:[mask-image:linear-gradient(to_right,black_calc(100%-26px),transparent_calc(100%-14px))] group-hover/chip:[mask-image:linear-gradient(to_right,black_calc(100%-26px),transparent_calc(100%-14px))]">
-            {title}
-          </span>
+          <ChipFace item={item} title={title} />
         </button>
       </TooltipHint>
       <button
@@ -163,7 +178,9 @@ function SortableChip({
 /**
  * Quick chat in the bottom bar: a chip per chat that needs watching or was
  * opened here, then Ask Multica, which starts a new chat, and the history.
- * Chips can be dragged into any order, which is remembered per workspace.
+ * As many chips as fit are shown, measured by their own width; the rest fold
+ * into a "+N" menu. Chips can be dragged into any order, which is remembered
+ * per workspace.
  * The chat window opens above whichever control is pressed:
  * `useChatWindowAnchor` finds it by `data-chat-anchor`, and re-places the
  * window on a click that carries that attribute or `data-chat-anchor-trigger`.
@@ -184,7 +201,8 @@ export function ChatBar() {
   const keepChatInBar = useChatStore((s) => s.keepChatInBar);
   const dismissChatFromBar = useChatStore((s) => s.dismissChatFromBar);
   const setChatBarOrder = useChatStore((s) => s.setChatBarOrder);
-  const stripRef = useRef<HTMLDivElement>(null);
+  const roomRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLDivElement>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, KEYBOARD_DRAG),
@@ -207,16 +225,45 @@ export function ChatBar() {
     if (openSessionId) keepChatInBar(openSessionId);
   }, [openSessionId, keepChatInBar]);
 
-  // Every chip is shown; when they do not fit, the strip scrolls sideways
-  // instead of folding the rest into a "+N" menu.
-  const { visible } = useMemo(
-    () => selectChatBarSessions({ sessions, runningSessionIds, openSessionId, kept, dismissed, order }),
+  // Every chip, in order: with no limit, all of them come back as visible.
+  const chips = useMemo(
+    () => selectChatBarSessions({ sessions, runningSessionIds, openSessionId, kept, dismissed, order }).visible,
     [sessions, runningSessionIds, openSessionId, kept, dismissed, order],
   );
+  // How many chips fit; null until the bar is laid out, when all are shown.
+  const [fit, setFit] = useState<number | null>(null);
+  const { visible, overflow } = useMemo(
+    () => foldChatBarSessions(chips, fit ?? chips.length),
+    [chips, fit],
+  );
   const chipIdList = useMemo(() => visible.map((item) => item.session.id), [visible]);
-  // Which chips there are, not their order: a drag must not scroll the strip
-  // back to the open chat's chip.
-  const chipSet = [...chipIdList].sort().join("\n");
+
+  // Each chip is measured in a hidden row that holds all of them, so a folded
+  // chip's width is known before it is given room.
+  const chipsRef = useRef(chips);
+  chipsRef.current = chips;
+  const measureFit = useCallback(() => {
+    const room = roomRef.current?.getBoundingClientRect().width ?? 0;
+    const row = measureRef.current;
+    if (!row || room <= 0) return setFit(null);
+    const widths = new Map<string, number>();
+    let more = 0;
+    for (const el of Array.from(row.children) as HTMLElement[]) {
+      const { width } = el.getBoundingClientRect();
+      if (el.dataset.measureChip) widths.set(el.dataset.measureChip, width);
+      else more = width;
+    }
+    setFit(chipsThatFit({ items: chipsRef.current, widthOf: (id) => widths.get(id) ?? 0, room, gap: CHIP_GAP, more }));
+  }, []);
+  useLayoutEffect(measureFit, [chips, measureFit]);
+  useEffect(() => {
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measureFit);
+    if (roomRef.current) observer.observe(roomRef.current);
+    // A title's font can load after the first measure.
+    if (measureRef.current) observer.observe(measureRef.current);
+    return () => observer.disconnect();
+  }, [measureFit]);
 
   // Space clicks the chip when it comes up, which can be well after the
   // keydown that ended a keyboard drag; hold the guard until then.
@@ -258,27 +305,11 @@ export function ChatBar() {
       const from = chipIdList.indexOf(String(active.id));
       const to = chipIdList.indexOf(String(over.id));
       if (from === -1 || to === -1) return;
-      setChatBarOrder(arrayMove(chipIdList, from, to));
+      // Only shown chips are dragged; the folded ones keep their order after them.
+      setChatBarOrder([...arrayMove(chipIdList, from, to), ...overflow.map((item) => item.session.id)]);
     },
-    [chipIdList, setChatBarOrder, settleDrag],
+    [chipIdList, overflow, setChatBarOrder, settleDrag],
   );
-
-  // The window opens above the open chat's chip, so that chip has to be in
-  // view. Runs before the anchor hook measures it on the next frame.
-  useLayoutEffect(() => {
-    const strip = stripRef.current;
-    if (!strip || !openSessionId) return;
-    const chip = Array.from(strip.querySelectorAll<HTMLElement>("[data-chat-anchor]")).find(
-      (el) => el.dataset.chatAnchor === openSessionId,
-    );
-    if (chip) scrollChipIntoView(strip, chip);
-  }, [openSessionId, chipSet]);
-
-  // A mouse wheel only scrolls vertically; turn it into the strip's sideways scroll.
-  const onStripWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
-    event.currentTarget.scrollLeft += event.deltaY;
-  };
   const openOnChip = visible.some((item) => item.open);
   const askPressed = isOpen && !openOnChip;
 
@@ -314,43 +345,73 @@ export function ChatBar() {
   const askLabel = t(($) => $.fab.default);
 
   return (
-    <div data-slot="chat-bar" className="flex min-w-0 items-center gap-0.5">
-      {visible.length > 0 && (
-        <div
-          ref={stripRef}
-          data-slot="chat-bar-chips"
-          onWheel={onStripWheel}
-          // py/px: room for the chips' focus outline, which the scroller would clip.
-          className="flex min-w-0 items-center gap-0.5 overflow-x-auto overscroll-x-contain px-0.5 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            modifiers={DRAG_MODIFIERS}
-            onDragStart={startDrag}
-            onDragEnd={onDragEnd}
-            onDragCancel={settleDrag}
-          >
-            <SortableContext items={chipIdList} strategy={horizontalListSortingStrategy}>
-              {visible.map((item) => {
-                const title = titleOf(item.session);
-                return (
-                  <SortableChip
-                    key={item.session.id}
-                    item={item}
-                    title={title}
-                    state={stateOf(item)}
-                    closeLabel={t(($) => $.bar.close_chip, { title })}
-                    onToggle={() => toggleSession(item.session)}
-                    onClose={() => closeChip(item)}
-                  />
-                );
-              })}
-            </SortableContext>
-          </DndContext>
+    <div data-slot="chat-bar" className="relative flex min-w-0 flex-1 items-center justify-end gap-0.5">
+      {/* The room the chips get: whatever the bar's other content leaves. */}
+      <div ref={roomRef} data-slot="chat-bar-room" className="flex min-w-0 flex-1 items-center justify-end gap-0.5">
+        {visible.length > 0 && (
+          <div data-slot="chat-bar-chips" className="flex shrink-0 items-center gap-0.5">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              modifiers={DRAG_MODIFIERS}
+              autoScroll={false}
+              onDragStart={startDrag}
+              onDragEnd={onDragEnd}
+              onDragCancel={settleDrag}
+            >
+              <SortableContext items={chipIdList} strategy={horizontalListSortingStrategy}>
+                {visible.map((item) => {
+                  const title = titleOf(item.session);
+                  return (
+                    <SortableChip
+                      key={item.session.id}
+                      item={item}
+                      title={title}
+                      state={stateOf(item)}
+                      closeLabel={t(($) => $.bar.close_chip, { title })}
+                      onToggle={() => toggleSession(item.session)}
+                      onClose={() => closeChip(item)}
+                    />
+                  );
+                })}
+              </SortableContext>
+            </DndContext>
+          </div>
+        )}
+        {overflow.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger aria-label={t(($) => $.bar.more, { count: overflow.length })} className={MORE_CLASS}>
+              +{overflow.length}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" side="top" sideOffset={8} className="max-w-72 min-w-48">
+              {overflow.map((item) => (
+                <DropdownMenuItem
+                  key={item.session.id}
+                  data-chat-anchor-trigger
+                  onClick={() => openSession(item.session)}
+                >
+                  <span className="flex shrink-0 [&_svg]:size-3.5">
+                    <SessionMark item={item} />
+                  </span>
+                  <span className="min-w-0 truncate">{titleOf(item.session)}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+      {/* Every chip at its own width, and the widest "+N", out of sight. */}
+      <div aria-hidden inert className="pointer-events-none invisible absolute top-0 left-0 size-0 overflow-hidden">
+        <div ref={measureRef} data-slot="chat-bar-measure" className="flex w-max">
+          {chips.map((item) => (
+            <span key={item.session.id} data-measure-chip={item.session.id} className={CHIP_CLASS}>
+              <ChipFace item={item} title={titleOf(item.session)} />
+            </span>
+          ))}
+          <span className={MORE_CLASS}>+{chips.length}</span>
         </div>
-      )}
-      {visible.length > 0 && (
+      </div>
+      {chips.length > 0 && (
         <span aria-hidden className="mx-1.5 h-3.5 w-px shrink-0 bg-surface-border" />
       )}
       <TooltipHint

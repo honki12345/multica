@@ -1,8 +1,8 @@
-// Modified by honki12345, 2026: cover chat bar sessions with no chip cap (CALA-72).
+// Modified by honki12345, 2026: cover chat bar sessions with no chip cap (CALA-72), the dragged order (CALA-300) and fitting chips by width (CALA-350).
 
 import { describe, expect, it } from "vitest";
 import type { ChatSession } from "@multica/core/types";
-import { chatActivity, selectChatBarSessions } from "./chat-bar-sessions";
+import { chatActivity, chipsThatFit, selectChatBarSessions } from "./chat-bar-sessions";
 
 function session(id: string, minute: number, overrides: Partial<ChatSession> = {}): ChatSession {
   const at = new Date(Date.UTC(2026, 10, 11, 8, minute)).toISOString();
@@ -211,5 +211,56 @@ describe("selectChatBarSessions", () => {
     });
 
     expect(ids(visible)).toEqual(["only"]);
+  });
+});
+
+describe("chipsThatFit", () => {
+  const item = (id: string, open = false) => ({
+    session: session(id, 1),
+    running: false,
+    unread: true,
+    open,
+  });
+  const fit = (items: ReturnType<typeof item>[], widths: Record<string, number>, room: number) =>
+    chipsThatFit({ items, widthOf: (id) => widths[id] ?? 0, room, gap: 2, more: 30 });
+
+  it("fits every chip when they all fit, with no room kept for +N", () => {
+    const items = ["a", "b", "c"].map((id) => item(id));
+    // 3 x 100 plus 2 gaps of 2px.
+    expect(fit(items, { a: 100, b: 100, c: 100 }, 304)).toBe(3);
+  });
+
+  it("fits as many chips as there is room for beside the +N button", () => {
+    const items = ["a", "b", "c", "d"].map((id) => item(id));
+    const widths = { a: 100, b: 100, c: 100, d: 100 };
+    // a, b and the +N button: 100 + 2 + 100 + 2 + 30.
+    expect(fit(items, widths, 303)).toBe(2);
+    expect(fit(items, widths, 234)).toBe(2);
+    expect(fit(items, widths, 233)).toBe(1);
+  });
+
+  it("measures each chip, so short titles fit more chips", () => {
+    const items = ["a", "b", "c", "d", "e"].map((id) => item(id));
+    expect(fit(items, { a: 40, b: 40, c: 40, d: 40, e: 160 }, 200)).toBe(4);
+  });
+
+  it("has no cap on how many chips fit", () => {
+    const items = Array.from({ length: 12 }, (_, n) => item(`s${n}`));
+    const widths = Object.fromEntries(items.map((it) => [it.session.id, 60]));
+    expect(fit(items, widths, 2000)).toBe(12);
+  });
+
+  it("always fits one chip", () => {
+    const items = ["a", "b"].map((id) => item(id));
+    expect(fit(items, { a: 100, b: 100 }, 50)).toBe(1);
+  });
+
+  it("counts the open chat's chip first when it would be folded away", () => {
+    // The open chip is brought to the front, so the room it takes is what counts.
+    const items = [item("a"), item("b"), item("c"), item("open", true)];
+    const widths = { a: 40, b: 40, c: 40, open: 150 };
+    // In order, a, b and c fit beside +N; with the open chip first only it and a do.
+    expect(fit(items, widths, 200)).toBe(1);
+    expect(fit(items, widths, 230)).toBe(2);
   });
 });

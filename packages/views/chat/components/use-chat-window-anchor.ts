@@ -1,6 +1,6 @@
 "use client";
 
-// Modified by honki12345, 2026: anchor the chat window to a scrolled chip (CALA-72); follow it when chips are reordered (CALA-300).
+// Modified by honki12345, 2026: anchor the chat window to a chip in the chip strip (CALA-72); follow it when chips are reordered (CALA-300).
 
 import { useLayoutEffect, useRef, useState } from "react";
 
@@ -9,7 +9,7 @@ export const CHAT_WINDOW_INSET = 8;
 
 /** The quick-chat group in the bottom bar. */
 const CHAT_BAR_SELECTOR = '[data-slot="chat-bar"]';
-/** The scrolling strip of chips inside it. */
+/** The strip of chips inside it. */
 const CHAT_BAR_CHIPS_SELECTOR = '[data-slot="chat-bar-chips"]';
 /** The bottom-bar control the open window belongs to. */
 const PRESSED_ANCHOR_SELECTOR = '[data-chat-anchor][aria-pressed="true"]';
@@ -24,7 +24,7 @@ const ANCHOR_TRIGGER_SELECTOR = "[data-chat-anchor], [data-chat-anchor-trigger]"
  *
  * The window is placed when it opens, when the bar opens another chat in it,
  * and when its container resizes; after that it follows its control if the
- * bar's chips reflow, are dragged into another order, or their strip scrolls. It stays put otherwise: a chip appearing for the chat
+ * bar's chips reflow or are dragged into another order. It stays put otherwise: a chip appearing for the chat
  * just started must not move it under the person typing in it.
  *
  * `width` is the width the window is sized to, not the one it is animating
@@ -89,14 +89,6 @@ export function useChatWindowAnchor(
     };
     document.addEventListener("click", onClick);
 
-    // The strip of chips scrolls when they do not fit; keep the window over its
-    // chip. Listened to in the capture phase so a strip mounted later counts.
-    const onScroll = (event: Event) => {
-      if (!(event.target instanceof Element) || !event.target.matches(CHAT_BAR_CHIPS_SELECTOR)) return;
-      if (pressedAnchor()?.dataset.chatAnchor === placedAt) measure();
-    };
-    document.addEventListener("scroll", onScroll, true);
-
     // Dragging chips into another order moves the control without resizing
     // the bar: follow it once the strip's chips are reordered, and again when
     // they finish sliding into place. Hover colours and a chip's own content
@@ -125,7 +117,6 @@ export function useChatWindowAnchor(
         measureRef.current = null;
         cancelAnimationFrame(frame);
         document.removeEventListener("click", onClick);
-        document.removeEventListener("scroll", onScroll, true);
         document.removeEventListener("transitionend", onTransitionEnd, true);
         chipsObserver.disconnect();
       };
@@ -143,7 +134,6 @@ export function useChatWindowAnchor(
       measureRef.current = null;
       cancelAnimationFrame(frame);
       document.removeEventListener("click", onClick);
-      document.removeEventListener("scroll", onScroll, true);
       document.removeEventListener("transitionend", onTransitionEnd, true);
       chipsObserver.disconnect();
       observer.disconnect();
