@@ -280,27 +280,35 @@ export function ChatThreadList({
 
   // Home / End reach the ends of the whole list. The list is windowed, so the
   // first or last chat may not be mounted for the focus region keys to find;
-  // scroll it in by index and focus its row once it mounts.
+  // scroll it in by index and focus its row once it mounts. The wait is only
+  // honoured while focus is still where the key was pressed (or fell to <body>
+  // when that row scrolled out); a reader who has moved on keeps their focus.
   const rowNodesRef = useRef(new Map<string, HTMLElement>());
-  const focusOnMountRef = useRef<string | null>(null);
+  const pendingEndRef = useRef<{ id: string; from: HTMLElement } | null>(null);
+  useEffect(() => {
+    pendingEndRef.current = null;
+  }, [view]);
   const bindRowNode = (id: string, node: HTMLElement | null) => {
     if (!node) {
       rowNodesRef.current.delete(id);
       return;
     }
     rowNodesRef.current.set(id, node);
-    if (focusOnMountRef.current === id) {
-      focusOnMountRef.current = null;
+    const pending = pendingEndRef.current;
+    if (pending?.id !== id) return;
+    pendingEndRef.current = null;
+    const active = node.ownerDocument.activeElement;
+    if (active === pending.from || active === node.ownerDocument.body || !active) {
       node.focus({ preventScroll: true });
     }
   };
-  const focusListEnd = (key: "Home" | "End") => {
+  const focusListEnd = (key: "Home" | "End", from: HTMLElement) => {
     const index = key === "Home" ? 0 : shownSessions.length - 1;
     const id = shownSessions[index]?.id;
     if (!id) return;
     listRef.current?.scrollToIndex({ index, align: key === "Home" ? "start" : "end" });
     const mounted = rowNodesRef.current.get(id);
-    focusOnMountRef.current = mounted ? null : id;
+    pendingEndRef.current = mounted ? null : { id, from };
     mounted?.focus({ preventScroll: true });
   };
 
@@ -659,7 +667,7 @@ export function ChatThreadList({
           const plain = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
           if (plain && e.target === e.currentTarget && (e.key === "Home" || e.key === "End")) {
             e.preventDefault();
-            focusListEnd(e.key);
+            focusListEnd(e.key, e.currentTarget);
             return;
           }
           handleRowActivationKey(e, () => onSelectSession(session));
