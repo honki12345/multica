@@ -251,8 +251,12 @@ func TestBuildBarePromptPerRunKind(t *testing.T) {
 		task Task
 		want []string
 	}{
-		{"assignment", func() Task { t := base; t.IssueID = "issue-1"; t.HandoffNote = "only touch docs"; return t }(),
-			[]string{"run: issue_assignment", "issue_id: issue-1", "only touch docs"}},
+		{"assignment", func() Task {
+			t := base
+			t.IssueID, t.HandoffNote = "issue-1", "only touch docs"
+			t.Repos = []RepoData{{URL: "https://github.com/honki12345/multica", Ref: "main"}}
+			return t
+		}(), []string{"run: issue_assignment", "issue_id: issue-1", "only touch docs", "repo: https://github.com/honki12345/multica main"}},
 		{"wakeup", func() Task {
 			t := base
 			t.IssueID, t.WakeupID, t.HandoffNote, t.TriggerCommentID = "issue-1", "wake-1", "[WAKEUP]\ncheck the PR", "comment-9"

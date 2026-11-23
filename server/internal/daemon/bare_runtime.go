@@ -138,6 +138,9 @@ func buildBarePrompt(task Task, workDir string) string {
 	} else {
 		add("project_id", task.ProjectID)
 	}
+	for _, r := range task.Repos {
+		add("repo", strings.TrimSpace(r.URL+" "+r.Ref))
+	}
 
 	var b strings.Builder
 	b.WriteString("[Multica run]\n")
