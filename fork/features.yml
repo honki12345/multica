@@ -213,6 +213,69 @@ features:
           - The run's messages include "⏩ Steer queued" and the run's result reflects the extra instruction.
     drop_when: upstream adds hermes to the task-supplement providers (supplement.sql provider list and SupportsTaskSupplement).
 
+  - id: hermes-bare-runtime
+    summary: A Hermes agent with runtime_config {"bare":true} runs without the runtime brief, agent instructions or MCP, on a facts-only turn prompt; Multica know-how comes from the agent's own skills.
+    status: active
+    kind: daemon
+    cards: [CALA-370]
+    origin:
+      type: ours
+      commits: ["66ffd71be"]
+    files:
+      - server/internal/daemon/bare_runtime.go
+      - server/internal/daemon/bare_runtime_test.go
+      - server/internal/daemon/daemon.go
+    watch:
+      - path: server/internal/daemon/prompt.go
+        why: the full per-turn prompt a bare run replaces; new prompt kinds or facts land here first
+      - path: server/internal/daemon/chat_skills.go
+        why: buildRuntimePrompt, the non-bare prompt path buildTaskPrompt falls through to
+      - path: server/internal/daemon/execenv/runtime_config*.go
+        why: InjectRuntimeConfig and the brief sections a bare run skips
+      - path: server/internal/daemon/execenv/reply_instructions.go
+        why: comment reply and continuity text a bare run must not carry
+      - path: server/internal/daemon/types.go
+        why: Task and AgentData fields the facts block reads (RuntimeConfig, trigger, chat, wakeup, quick-create)
+      - path: server/internal/daemon/runtime_mcp.go
+        why: runtime MCP overlay merged into a non-bare run's mcp_config
+      - path: server/internal/daemon/remote_mcp_broker.go
+        why: Remote MCP brokers a bare run drops
+      - path: server/internal/daemon/plugin_hook_mcp.go
+        why: plugin hook MCP a bare run drops
+      - path: server/pkg/agent/hermes.go
+        why: session/new mcpServers, ResumeContinuityNotice prepend and SystemPrompt handling
+      - path: server/internal/handler/daemon.go
+        why: the claim forwards agent.runtime_config only when non-empty
+      - path: server/internal/service/task.go
+        why: completion comment synthesis a bare run relies on to land its result
+      - path: server/internal/service/issue_wakeup_evidence.go
+        why: the [WAKEUP] note (checkin command) a bare run passes through verbatim
+    upstream_equivalent:
+      symbols: [bareRuntime, buildBarePrompt]
+      keywords: [bare runtime, minimal brief, disable runtime brief, no agents.md]
+    tests:
+      - go: server/internal/daemon
+        name: TestRunTaskBareHermesCommentTurnCarriesOnlyFacts
+      - go: server/internal/daemon
+        name: TestRunTaskBareHermesChatTurnCarriesMessageAndAttachments
+      - go: server/internal/daemon
+        name: TestRunTaskNonBareHermesKeepsBriefPromptAndMCP
+      - go: server/internal/daemon
+        name: TestBareRuntimeOnlyAppliesToHermes
+      - go: server/internal/daemon
+        name: TestBuildBarePromptPerRunKind
+    scenarios:
+      - name: bare and non-bare runs of the same issue
+        setup: a test Hermes agent on a separate daemon profile, runtime_config {"bare":true}, the multica-runtime skill installed in its Hermes home
+        steps:
+          - Assign a test issue to the agent and let the run finish.
+          - Clear runtime_config.bare and comment on the issue.
+          - Compare the two runs' context receipts (`multica issue runs <issue>`) and the workdir.
+        expect:
+          - The bare run has no AGENTS.md in its workdir, no MCP servers and a facts-only prompt; a result comment still lands on the issue.
+          - The non-bare run carries the runtime brief and the agent's instructions as before.
+    drop_when: upstream ships a per-agent switch that disables the runtime brief and per-turn directions.
+
   - id: resident-daemon-local-commands
     summary: repo checkout and environment commands work from a resident Hermes tool shell (daemon port and agent name come from the context file).
     status: active

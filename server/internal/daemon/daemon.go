@@ -1,4 +1,4 @@
-// Modified by honki12345, 2026: resident Hermes gateway mode (shared sessions, task context file).
+// Modified by honki12345, 2026: resident Hermes gateway mode (shared sessions, task context file); bare Hermes runtime (CALA-370).
 
 package daemon
 
