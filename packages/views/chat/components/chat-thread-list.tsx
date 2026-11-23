@@ -1,6 +1,7 @@
 "use client";
 
-// Modified by honki12345, 2026: drag pinned chats into order, saved on the server (CALA-316).
+// Modified by honki12345, 2026: drag pinned chats into order, saved on the server (CALA-316); scroll the chat opened from elsewhere on the page into view (CALA-328).
+// Modified by honki12345, 2026: drag pinned chats into order, saved on the server (CALA-316), rows for the focus region keys (CALA-332).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -23,6 +24,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import type { VirtuosoHandle } from "react-virtuoso";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlarmClock,
@@ -165,6 +167,8 @@ function toPreview(content: string): string {
     .trim();
 }
 
+
+export type ChatThreadListView = "history" | "archived";
 /**
  * IM-style conversation list: each row is agent avatar + session title + agent
  * name + last-message preview + time, with a red unread *count* badge. An
@@ -187,6 +191,8 @@ export function ChatThreadList({
   activeSessionId,
   onSelectSession,
   onArchive,
+  view: controlledView,
+  onViewChange,
 }: {
   sessions: ChatSession[];
   agents: Agent[];
@@ -196,6 +202,12 @@ export function ChatThreadList({
   // aware (desktop advances to the next chat; mobile drops back to the list)
   // and routes through the shared controller — see ChatPage.handleArchive.
   onArchive: (session: ChatSession) => void;
+  /**
+   * Which view is showing, for a parent that acts on it too (the Chat
+   * page's list-step keys walk the view on screen). Uncontrolled otherwise.
+   */
+  view?: ChatThreadListView;
+  onViewChange?: (view: ChatThreadListView) => void;
 }) {
   const { t } = useT("chat");
   const { t: tLayout } = useT("layout");
@@ -242,10 +254,63 @@ export function ChatThreadList({
   // Which view is showing. Falls back to history when the archived list drains
   // (last chat unarchived / deleted) so we never strand the user on an empty
   // archive.
-  const [view, setView] = useState<"history" | "archived">("history");
+  const [localView, setLocalView] = useState<ChatThreadListView>("history");
+  const view = controlledView ?? localView;
+  const setView = (next: ChatThreadListView) => {
+    setLocalView(next);
+    onViewChange?.(next);
+  };
   useEffect(() => {
     if (view === "archived" && archivedSessions.length === 0) setView("history");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setView only forwards to the parent
   }, [view, archivedSessions.length]);
+
+  // A chat opened from elsewhere on the page (the list-step keys) brings its
+  // row into view. Virtuoso's call is a no-op while the row is visible, so a
+  // click leaves the list where it is; mounting keeps its scroll position.
+  const listRef = useRef<VirtuosoHandle>(null);
+  const shownSessions = view === "archived" ? archivedSessions : historySessions;
+  const activeIndex = shownSessions.findIndex((s) => s.id === activeSessionId);
+  const shownActiveRef = useRef(activeSessionId);
+  useEffect(() => {
+    if (shownActiveRef.current === activeSessionId) return;
+    shownActiveRef.current = activeSessionId;
+    if (activeIndex >= 0) listRef.current?.scrollIntoView({ index: activeIndex });
+  }, [activeSessionId, activeIndex]);
+
+  // Home / End reach the ends of the whole list. The list is windowed, so the
+  // first or last chat may not be mounted for the focus region keys to find;
+  // scroll it in by index and focus its row once it mounts. The wait is only
+  // honoured while focus is still where the key was pressed (or fell to <body>
+  // when that row scrolled out); a reader who has moved on keeps their focus.
+  const rowNodesRef = useRef(new Map<string, HTMLElement>());
+  const pendingEndRef = useRef<{ id: string; from: HTMLElement } | null>(null);
+  useEffect(() => {
+    pendingEndRef.current = null;
+  }, [view]);
+  const bindRowNode = (id: string, node: HTMLElement | null) => {
+    if (!node) {
+      rowNodesRef.current.delete(id);
+      return;
+    }
+    rowNodesRef.current.set(id, node);
+    const pending = pendingEndRef.current;
+    if (pending?.id !== id) return;
+    pendingEndRef.current = null;
+    const active = node.ownerDocument.activeElement;
+    if (active === pending.from || active === node.ownerDocument.body || !active) {
+      node.focus({ preventScroll: true });
+    }
+  };
+  const focusListEnd = (key: "Home" | "End", from: HTMLElement) => {
+    const index = key === "Home" ? 0 : shownSessions.length - 1;
+    const id = shownSessions[index]?.id;
+    if (!id) return;
+    listRef.current?.scrollToIndex({ index, align: key === "Home" ? "start" : "end" });
+    const mounted = rowNodesRef.current.get(id);
+    pendingEndRef.current = mounted ? null : { id, from };
+    mounted?.focus({ preventScroll: true });
+  };
 
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [confirmingStopId, setConfirmingStopId] = useState<string | null>(null);
@@ -548,10 +613,15 @@ export function ChatThreadList({
       <SortableChatRow key={session.id} id={session.id} sortable={sortable}>
         {(drag) => (
       <div
-        ref={drag.setNodeRef}
+        ref={(node) => {
+          drag.setNodeRef(node);
+          bindRowNode(session.id, node);
+        }}
         style={drag.style}
         aria-current={isCurrent ? "true" : undefined}
         aria-describedby={drag.describedBy}
+        data-focus-row=""
+        {...(isCurrent ? { "data-focus-region-target": "" } : {})}
         tabIndex={0}
         onPointerDown={drag.onPointerDown}
         onClick={(e) => {
@@ -585,12 +655,19 @@ export function ChatThreadList({
           e.preventDefault();
           window.open(getShareableUrl(href), "_blank", "noopener,noreferrer");
         }}
+        data-dragging={drag.isDragging ? "" : undefined}
         onKeyDown={(e) => {
           // A drag under way owns the keys: the one that drops the row must
           // not also open it.
           if (draggingRef.current || isConfirmingAction || isRenaming) return;
           if (drag.onKeyDown && e.target === e.currentTarget && e.code === "Space") {
             drag.onKeyDown(e);
+            return;
+          }
+          const plain = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+          if (plain && e.target === e.currentTarget && (e.key === "Home" || e.key === "End")) {
+            e.preventDefault();
+            focusListEnd(e.key, e.currentTarget);
             return;
           }
           handleRowActivationKey(e, () => onSelectSession(session));
@@ -789,7 +866,7 @@ export function ChatThreadList({
           </span>
         </button>
         <div className="min-h-0 flex-1">
-          {withDrag(<SessionHistoryList sessions={archivedSessions} renderRow={renderRow} />)}
+          {withDrag(<SessionHistoryList sessions={archivedSessions} renderRow={renderRow} listRef={listRef} />)}
         </div>
         {rowContextMenu}
       </div>
@@ -830,6 +907,7 @@ export function ChatThreadList({
           sessions={historySessions}
           renderRow={renderRow}
           footer={archivedEntry}
+          listRef={listRef}
         />,
       )}
       {rowContextMenu}

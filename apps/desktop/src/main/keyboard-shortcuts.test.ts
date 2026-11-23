@@ -1,4 +1,6 @@
 // @vitest-environment node
+// Modified by honki12345, 2026: Cmd/Ctrl+R renames the open title instead of being swallowed (CALA-327).
+// Modified by honki12345, 2026: the focus region keys reach the renderer (CALA-332).
 import { describe, expect, it, vi } from "vitest";
 import { handleAppShortcut, type ShortcutInput } from "./keyboard-shortcuts";
 
@@ -35,16 +37,36 @@ function key(
 }
 
 describe("handleAppShortcut — reload blocking", () => {
-  it("swallows Cmd+R on macOS", () => {
+  it("hands Cmd+R to the renderer as rename instead of reloading on macOS", () => {
     const wc = makeWc();
-    expect(handleAppShortcut(key("r", { meta: true }), wc, "darwin")).toBe(true);
+    expect(handleAppShortcut(key("r", { meta: true }), wc, "darwin")).toBe("rename-title");
     expect(wc.setZoomLevel).not.toHaveBeenCalled();
   });
 
-  it("swallows Ctrl+R on Linux/Windows", () => {
+  it("hands Ctrl+R to the renderer as rename on Linux/Windows", () => {
     const wc = makeWc();
-    expect(handleAppShortcut(key("r", { control: true }), wc, "linux")).toBe(true);
-    expect(handleAppShortcut(key("R", { control: true }), wc, "win32")).toBe(true);
+    expect(handleAppShortcut(key("r", { control: true }), wc, "linux")).toBe("rename-title");
+    expect(handleAppShortcut(key("R", { control: true }), wc, "win32")).toBe("rename-title");
+  });
+
+  it("swallows a held Cmd+R without asking again", () => {
+    const wc = makeWc();
+    expect(
+      handleAppShortcut({ ...key("r", { meta: true }), isAutoRepeat: true }, wc, "darwin"),
+    ).toBe(true);
+  });
+
+  it("keeps swallowing the force-reload and other modified variants", () => {
+    const wc = makeWc();
+    expect(handleAppShortcut(key("R", { meta: true, shift: true }), wc, "darwin")).toBe(true);
+    expect(handleAppShortcut(key("r", { meta: true, alt: true }), wc, "darwin")).toBe(true);
+    expect(handleAppShortcut(key("r", { meta: true, control: true }), wc, "darwin")).toBe(true);
+    expect(handleAppShortcut(key("R", { control: true, shift: true }), wc, "win32")).toBe(true);
+  });
+
+  it("does not treat Ctrl+R on macOS as rename", () => {
+    const wc = makeWc();
+    expect(handleAppShortcut(key("r", { control: true }), wc, "darwin")).toBe(false);
   });
 
   it("swallows F5 regardless of modifier", () => {
@@ -427,5 +449,19 @@ describe("handleAppShortcut — close tab (Cmd/Ctrl+W)", () => {
         "darwin",
       ),
     ).toBe(true);
+  });
+});
+
+describe("handleAppShortcut — focus region keys reach the renderer", () => {
+  // The renderer owns Cmd+L / Cmd+Shift+H / Cmd+Shift+L and F8 / Shift+F8
+  // (packages/core/shortcuts); main must leave them alone.
+  it("passes the region chords through on every platform", () => {
+    const wc = makeWc();
+    expect(handleAppShortcut(key("l", { meta: true }), wc, "darwin")).toBe(false);
+    expect(handleAppShortcut(key("H", { meta: true, shift: true }), wc, "darwin")).toBe(false);
+    expect(handleAppShortcut(key("L", { meta: true, shift: true }), wc, "darwin")).toBe(false);
+    expect(handleAppShortcut(key("l", { control: true }), wc, "win32")).toBe(false);
+    expect(handleAppShortcut(key("F8", {}, "F8"), wc, "darwin")).toBe(false);
+    expect(handleAppShortcut(key("F8", { shift: true }, "F8"), wc, "linux")).toBe(false);
   });
 });

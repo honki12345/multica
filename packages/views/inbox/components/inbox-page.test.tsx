@@ -1,10 +1,12 @@
+// Modified by honki12345, 2026: cover the list-step keys on the Inbox page (CALA-328).
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 import type { AgentTask, InboxItem } from "@multica/core/types";
 import { useInboxFilterStore } from "@multica/core/inbox/filter-store";
 import { useInboxSelectionStore } from "@multica/core/inbox/selection-store";
 import { useCommandBarContextStore } from "@multica/core/command-bar";
+import { configureShortcutPlatform } from "@multica/core/shortcuts";
 import { InboxPage } from "./inbox-page";
 
 vi.mock("sonner", () => ({
@@ -146,9 +148,10 @@ vi.mock("../../issues/components/issue-detail", () => ({
 
 const replace = vi.fn();
 let searchParams = new URLSearchParams();
+let pathname = "/acme/inbox";
 
 vi.mock("../../navigation", () => ({
-  useNavigation: () => ({ searchParams, replace }),
+  useNavigation: () => ({ pathname, searchParams, replace }),
   // Real hook: reports the detail-pane swap to the shell's progress bar.
   // Nothing here renders that bar, and the page reads nothing back from it.
   useReportNavigating: () => {},
@@ -279,6 +282,7 @@ function reset() {
   activeFailure.refetch.mockClear();
   queryCalls.length = 0;
   searchParams = new URLSearchParams();
+  pathname = "/acme/inbox";
   replace.mockClear();
   markReadMutate.mockReset();
   markUnreadMutate.mockClear();
@@ -1287,5 +1291,88 @@ describe("InboxPage", () => {
 
     expect(replace).toHaveBeenCalledWith("/acme/issues/issue-404");
     expect(replace).not.toHaveBeenCalledWith("/acme/inbox");
+  });
+});
+
+describe("InboxPage list-step keys (CALA-328)", () => {
+  const ROWS = [
+    item({ id: "n-a", issue_id: "issue-a", created_at: "2026-06-15T10:00:00Z" }),
+    item({ id: "n-b", issue_id: "issue-b", created_at: "2026-06-15T09:00:00Z" }),
+    item({ id: "n-c", issue_id: "issue-c", created_at: "2026-06-15T08:00:00Z" }),
+  ];
+
+  function step(target: Element | Document, key: "[" | "]") {
+    return fireEvent.keyDown(target, {
+      key: key === "[" ? "{" : "}",
+      code: key === "[" ? "BracketLeft" : "BracketRight",
+      metaKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+  }
+  const urls = () => replace.mock.calls.map(([url]) => url as string);
+
+  afterEach(() => {
+    // A press's cursor outlives the page for a second; a click ends it.
+    fireEvent.pointerDown(document);
+    configureShortcutPlatform(null);
+  });
+
+  it("opens the notification below and above on desktop, where the page shows only the detail", () => {
+    reset();
+    configureShortcutPlatform("macos");
+    layout.width = DESKTOP;
+    listData.active = ROWS;
+    searchParams = new URLSearchParams("issue=issue-a");
+    render(<InboxPage />);
+    expect(screen.queryByTestId("list")).toBeNull();
+
+    const comment = document.createElement("textarea");
+    document.body.appendChild(comment);
+    comment.focus();
+    try {
+      step(comment, "]");
+      step(comment, "]");
+      expect(urls()).toEqual(["/acme/inbox?issue=issue-b", "/acme/inbox?issue=issue-c"]);
+      expect(document.activeElement).toBe(comment);
+      expect(step(comment, "]")).toBe(false);
+      expect(urls()).toHaveLength(2);
+    } finally {
+      comment.remove();
+    }
+  });
+
+  it("steps through its own list on a phone while the detail covers it", () => {
+    reset();
+    configureShortcutPlatform("macos");
+    listData.active = ROWS;
+    searchParams = new URLSearchParams("issue=issue-b");
+    render(<InboxPage />);
+    expect(screen.queryByTestId("list")).toBeNull();
+    step(document.body, "[");
+    expect(urls()).toEqual(["/acme/inbox?issue=issue-a"]);
+  });
+
+  it("steps within the archive in the archived view", () => {
+    reset();
+    configureShortcutPlatform("macos");
+    layout.width = DESKTOP;
+    listData.archived = ROWS.map((row) => ({ ...row, archived: true }));
+    searchParams = new URLSearchParams("view=archived&issue=issue-a");
+    render(<InboxPage />);
+    step(document.body, "]");
+    expect(urls()).toEqual(["/acme/inbox?view=archived&issue=issue-b"]);
+  });
+
+  it("stays off once the page is no longer the current route", () => {
+    reset();
+    configureShortcutPlatform("macos");
+    layout.width = DESKTOP;
+    listData.active = ROWS;
+    pathname = "/acme/issues/issue-a";
+    render(<InboxPage />);
+    expect(step(document.body, "]")).toBe(true);
+    expect(urls()).toEqual([]);
   });
 });

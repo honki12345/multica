@@ -1,5 +1,8 @@
 "use client";
 
+// Modified by honki12345, 2026: the list-step keys open the chat above / below, list shown or not (CALA-328).
+// Modified by honki12345, 2026: picking a thread hands keyboard focus to the conversation (CALA-330).
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Bot, MessageSquare, Plus } from "@multica/ui/icons";
 import { toast } from "sonner";
@@ -9,7 +12,7 @@ import { useIsCompact } from "@multica/ui/hooks/use-mobile";
 import { useRequiredWorkspaceSlug, useWorkspacePaths } from "@multica/core/paths";
 import { getCurrentSlug } from "@multica/core/platform";
 import { useChatStore } from "@multica/core/chat";
-import { chatQuickActionsPendingOptions } from "@multica/core/chat/queries";
+import { chatQuickActionsPendingOptions, sortChatSessions } from "@multica/core/chat/queries";
 import { useRegenerateChatQuickActions } from "@multica/core/chat/mutations";
 import { useQuickActionsPendingTimeout } from "@multica/core/chat/use-quick-actions-pending-timeout";
 import { useQuickActionsFailureToast } from "./components/use-quick-actions-failure-toast";
@@ -26,7 +29,7 @@ import { ChatMessageList, ChatMessageSkeleton } from "./components/chat-message-
 import { ChatInput } from "./components/chat-input";
 import { ChatQueue } from "./components/chat-queue";
 import { ChatWakeupStrip, useChatWakeups } from "./components/chat-wakeups";
-import { ChatThreadList } from "./components/chat-thread-list";
+import { ChatThreadList, type ChatThreadListView } from "./components/chat-thread-list";
 import { ChatSessionHeader } from "./components/chat-session-header";
 import { EmptyState } from "./components/chat-empty-state";
 import { NewChatButton } from "./components/new-chat-button";
@@ -39,6 +42,7 @@ import { AgentAccessRevokedBanner } from "./components/agent-access-revoked-bann
 import { RuntimeRequiredBanner } from "./components/runtime-required-banner";
 import { ChatAppRequests } from "../common/app-requests";
 import { useRegisterCommandBarContext } from "../search/register-context";
+import { useListStepShortcut } from "../common/use-list-step-shortcut";
 
 /**
  * Chat tab — the first-class two-pane surface (thread list on the left,
@@ -151,10 +155,17 @@ export function ChatPage() {
     if (urlAgent) consumedAgentIntent.current = urlAgent;
   };
 
+  // Picking a thread means reading it: the conversation takes the keys from
+  // the row that was clicked, once it has landed (CALA-330). The request names
+  // the picked chat, so it never reaches a chat opened another way (a deep
+  // link, back/forward) when the picked one had nothing to show.
+  const [focusRequestFor, setFocusRequestFor] = useState<string | null>(null);
+
   const handleSelect = (session: ChatSession) => {
     supersedeAgentIntent();
     c.handleSelectSession(session);
     setComposingNew(false);
+    setFocusRequestFor(session.id);
   };
 
   // Single archive path for both entry points (thread-list row + conversation
@@ -174,6 +185,27 @@ export function ChatPage() {
     }
     c.archiveSession(session.id);
   };
+
+  // The list-step keys walk the view the chat list shows, in its order:
+  // pinned first, then by activity; in the archive, the archive. Owned here,
+  // with the view, because a compact layout unmounts the list while a chat is
+  // open.
+  const [listView, setListView] = useState<ChatThreadListView>("history");
+  const stepSessions = useMemo(
+    () => sortChatSessions(c.sessions.filter((s) => (s.status === "archived") === (listView === "archived"))),
+    [c.sessions, listView],
+  );
+  const stepSessionIds = useMemo(() => stepSessions.map((s) => s.id), [stepSessions]);
+  useListStepShortcut({
+    scope: "chat",
+    enabled: isCurrentChatRoute,
+    keys: stepSessionIds,
+    openKey: c.activeSessionId ?? null,
+    onStep: (index) => {
+      const session = stepSessions[index];
+      if (session) handleSelect(session);
+    },
+  });
 
   const startNewChat = (agent: Agent | null) => {
     // A manual ⊕ pick outranks a pending deep link; when called FROM the
@@ -272,6 +304,8 @@ export function ChatPage() {
         activeSessionId={c.activeSessionId}
         onSelectSession={handleSelect}
         onArchive={handleArchive}
+        view={listView}
+        onViewChange={setListView}
       />
     </div>
   );
@@ -360,6 +394,8 @@ export function ChatPage() {
           quickActionsPendingMessageId={quickActionsPending?.message_id ?? null}
           annotations={annotations}
           wakeups={wakeups}
+          focusRequested={!!c.activeSessionId && focusRequestFor === c.activeSessionId}
+          onFocusRequestApplied={() => setFocusRequestFor(null)}
         />
       ) : (
         <EmptyState

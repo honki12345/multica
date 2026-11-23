@@ -1,5 +1,9 @@
 "use client";
 
+// Modified by honki12345, 2026: rename the open chat with the renameTitle shortcut (CALA-327).
+// Modified by honki12345, 2026: picking a chat from the history hands keyboard focus to the conversation (CALA-330).
+// Modified by honki12345, 2026: the floating window keeps its own focus regions (CALA-332).
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
@@ -56,6 +60,7 @@ import { ChatWakeupStrip, useChatWakeups } from "./chat-wakeups";
 import { ChatAppRequests } from "../../common/app-requests";
 import { EmptyState } from "./chat-empty-state";
 import { SessionRenameInput } from "./session-rename-input";
+import { useRenameTitleShortcut } from "../../layout/rename-title-shortcut";
 import { SessionHistoryList } from "./session-history-list";
 import { chatActivity } from "./chat-bar-sessions";
 import { ChatResizeHandles } from "./chat-resize-handles";
@@ -102,6 +107,14 @@ export function ChatWindow() {
   const newChatRequest = useChatStore((s) => s.newChatRequest);
   const { focusRequest: openFocusRequest } = useChatInputFocus(isOpen, windowRef, newChatRequest);
   const focusRequest = c.focusInputRequest + openFocusRequest;
+  // Picking a chat from the history means reading it: the conversation takes
+  // the keys once it has landed (CALA-330). The caret stays in the composer.
+  // The request names the picked chat, like the chat page's.
+  const [focusRequestFor, setFocusRequestFor] = useState<string | null>(null);
+  const selectSessionToRead = (session: ChatSession) => {
+    c.handleSelectSession(session);
+    setFocusRequestFor(session.id);
+  };
 
   const annotations = useChatAnnotations({
     sessionId: activeSessionId,
@@ -238,6 +251,7 @@ export function ChatWindow() {
   return (
     <motion.div
       data-mc="chat-window"
+      data-focus-scope=""
       ref={windowRef}
       inert={!isOpen}
       aria-hidden={!isOpen}
@@ -280,7 +294,7 @@ export function ChatWindow() {
             // sessions can still resolve their avatar.
             agents={c.agents}
             activeSessionId={activeSessionId}
-            onSelectSession={c.handleSelectSession}
+            onSelectSession={selectSessionToRead}
             onArchiveSession={handleArchiveSession}
           />
         </div>
@@ -363,6 +377,8 @@ export function ChatWindow() {
             quickActionsPendingMessageId={quickActionsPending?.message_id ?? null}
             onReady={markContentReady}
             annotations={annotations}
+            focusRequested={!!activeSessionId && focusRequestFor === activeSessionId}
+            onFocusRequestApplied={() => setFocusRequestFor(null)}
           >
             <EmptyState
               agent={activeAgent}
@@ -658,6 +674,19 @@ function SessionDropdown({
   // session id (not the full session) so a stale closure can't overwrite a
   // newer rename pulled in via WS.
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  // The window header has no title field of its own: renaming happens on the
+  // open chat's row in the history list, so the shortcut opens the list there.
+  const renamable = activeSession && activeSession.status !== "archived" ? activeSession : null;
+  useRenameTitleShortcut(
+    // A new chat has no title yet: nothing to rename, so the key stays free.
+    () => (renamable ? triggerRef.current : null),
+    () => {
+      if (!renamable) return;
+      setRenamingId(renamable.id);
+      setIsHistoryOpen(true);
+    },
+  );
   const updateSession = useUpdateChatSession();
   const queryClient = useQueryClient();
   const formatTimeAgo = useFormatTimeAgo();
@@ -991,7 +1020,7 @@ function SessionDropdown({
     <>
       <Popover open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
         <div className="flex min-w-0 items-center gap-1">
-          <PopoverTrigger className="flex max-w-96 min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 transition-colors hover:bg-accent data-[popup-open]:bg-accent data-open:bg-accent">
+          <PopoverTrigger ref={triggerRef} className="flex max-w-96 min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 transition-colors hover:bg-accent data-[popup-open]:bg-accent data-open:bg-accent">
             {triggerAgent && (
               <ActorAvatar
                 actorType="agent"
@@ -1034,6 +1063,9 @@ function SessionDropdown({
           align="start"
           className="max-h-96 w-auto min-w-[max(16rem,var(--anchor-width,16rem))] max-w-96 gap-0 overflow-hidden p-1"
           onClick={(e) => e.stopPropagation()}
+          // A row opened in rename mode focuses its own input; the popup's
+          // default first-tabbable focus would take the caret away from it.
+          initialFocus={renamingId === null}
         >
           {historySessions.length === 0 ? (
             <div className="px-2 py-1.5 text-caption text-muted-foreground">
@@ -1049,6 +1081,7 @@ function SessionDropdown({
                 renderRow={renderRow}
                 estimatedRowHeight={44}
                 maxHeight={320}
+                initialSessionId={renamingId}
               />
             </div>
           )}

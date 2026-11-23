@@ -1,11 +1,15 @@
+// Modified by honki12345, 2026: cover renaming the issue title with Mod+R (CALA-327).
+// Modified by honki12345, 2026: the opened issue takes the scroll keys from the link that opened it (CALA-330).
 import { forwardRef, useEffect, useRef, useState, useImperativeHandle } from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { AgentTask, Attachment, Issue, IssueStatusEntry, Label, TimelineEntry } from "@multica/core/types";
 import { issueKeys } from "@multica/core/issues/queries";
 import { issueStatusKeys } from "@multica/core/issue-statuses";
 import { I18nProvider } from "@multica/core/i18n/react";
+import { configureShortcutPlatform } from "@multica/core/shortcuts";
 import { ApiError } from "@multica/core/api/client";
 import { toast } from "sonner";
 import { useResolvedExpandStore } from "@multica/core/issues/stores/resolved-expand-store";
@@ -300,13 +304,19 @@ vi.mock("../../editor", async () => ({
       onReady?.();
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+    const inputRef = useRef<HTMLInputElement>(null);
     useImperativeHandle(ref, () => ({
       getText: () => valueRef.current,
       focus: () => {},
+      selectAll: () => {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      },
       focusAtCoords: () => {},
     }));
     return (
       <input
+        ref={inputRef}
         value={value}
         onChange={(e) => {
           valueRef.current = e.target.value;
@@ -925,6 +935,62 @@ describe("IssueDetail (shared)", () => {
     });
   });
 
+  describe("keyboard focus when the issue opens (CALA-330)", () => {
+    const scroller = (container: HTMLElement) =>
+      container.querySelector<HTMLElement>("[data-tab-scroll-root]")!;
+    const renderOpenedFrom = (focusOnOpen: boolean) => {
+      const link = document.createElement("a");
+      link.href = "#issue";
+      link.textContent = "Open issue";
+      document.body.appendChild(link);
+      link.focus();
+      const queryClient = createTestQueryClient();
+      const view = render(
+        <I18nProvider locale="en" resources={TEST_RESOURCES}>
+          <QueryClientProvider client={queryClient}>
+            <IssueDetail issueId="issue-1" focusOnOpen={focusOnOpen} />
+          </QueryClientProvider>
+        </I18nProvider>,
+      );
+      return { ...view, link };
+    };
+
+    afterEach(() => {
+      document.querySelectorAll('a[href="#issue"]').forEach((el) => el.remove());
+    });
+
+    it("moves focus from the link that opened the issue to its body, without scrolling", async () => {
+      const focus = vi.spyOn(HTMLElement.prototype, "focus");
+      const { container } = renderOpenedFrom(true);
+      await screen.findByDisplayValue("Add JWT auth to the backend");
+
+      await waitFor(() => expect(document.activeElement).toBe(scroller(container)));
+      expect(focus).toHaveBeenLastCalledWith({ preventScroll: true });
+      expect(scroller(container).tabIndex).toBe(-1);
+      focus.mockRestore();
+    });
+
+    it("leaves focus where it is unless the host asks", async () => {
+      const { link } = renderOpenedFrom(false);
+      await screen.findByDisplayValue("Add JWT auth to the backend");
+
+      expect(document.activeElement).toBe(link);
+    });
+
+    it("lets a click on plain text in the body take the keys", async () => {
+      const { container, link } = renderOpenedFrom(false);
+      await screen.findByDisplayValue("Add JWT auth to the backend");
+      expect(document.activeElement).toBe(link);
+      const text = document.createElement("p");
+      text.textContent = "plain body text";
+      scroller(container).appendChild(text);
+
+      await userEvent.click(text);
+
+      expect(document.activeElement).toBe(scroller(container));
+    });
+  });
+
   it("passes the issue's agent assignment to the local-directory hint", async () => {
     const agent = { id: "agent-vue", name: "Vue developer", runtime_id: "runtime-vue" };
     mockApiObj.getIssue.mockResolvedValue({
@@ -1081,6 +1147,30 @@ describe("IssueDetail (shared)", () => {
       await waitFor(() => expect(document.getElementById("comment-history-30")).not.toBeNull());
       expect(document.querySelectorAll('[id^="comment-history-"]').length).toBeLessThanOrEqual(8);
       expect(screen.getByTestId("virtuoso-mock")).toBeInTheDocument();
+    } finally {
+      rects.mockRestore();
+      configureShortcutPlatform(null);
+    }
+  });
+
+  it("puts the caret in the title with it all selected on Mod+R, even from the comment box", async () => {
+    configureShortcutPlatform("macos");
+    const rects = vi.spyOn(HTMLElement.prototype, "getClientRects")
+      .mockReturnValue([new DOMRect(0, 0, 1, 1)] as unknown as DOMRectList);
+    try {
+      renderIssueDetail();
+      await screen.findByText("Implement authentication");
+      const composer = screen.getAllByTestId("rich-text-editor")[0]!;
+      composer.focus();
+
+      const notCancelled = fireEvent.keyDown(composer, { key: "r", code: "KeyR", metaKey: true });
+
+      expect(notCancelled).toBe(false);
+      const title = await screen.findByTestId("title-editor");
+      await waitFor(() => expect(title).toHaveFocus());
+      expect(title).toHaveValue("Implement authentication");
+      const input = title as HTMLInputElement;
+      expect([input.selectionStart, input.selectionEnd]).toEqual([0, "Implement authentication".length]);
     } finally {
       rects.mockRestore();
       configureShortcutPlatform(null);

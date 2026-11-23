@@ -1,4 +1,6 @@
-// Modified by honki12345, 2026: add chat previous/next sent-message shortcuts (CALA-281).
+// Modified by honki12345, 2026: add chat previous/next sent-message shortcuts (CALA-281) and chat/inbox list step shortcuts (CALA-328).
+// Modified by honki12345, 2026: add chat previous/next sent-message shortcuts (CALA-281), rename title on Mod+R (CALA-327).
+// Modified by honki12345, 2026: add chat previous/next sent-message shortcuts (CALA-281), focus region keys (CALA-332).
 import {
   getShortcutPlatform,
   getShortcutRuntime,
@@ -15,6 +17,14 @@ export type ShortcutActionId =
   | "newChat"
   | "chatPreviousPrompt"
   | "chatNextPrompt"
+  | "listPreviousItem"
+  | "listNextItem"
+  | "renameTitle"
+  | "focusList"
+  | "focusBody"
+  | "focusComposer"
+  | "focusNextRegion"
+  | "focusPreviousRegion"
   | "findInIssue"
   | "archiveInboxItem"
   | "unsubscribeArchiveInboxItem"
@@ -59,6 +69,11 @@ export interface ShortcutActionDefinition {
   id: ShortcutActionId;
   category: ShortcutCategory;
   defaultShortcut: ShortcutChord | null;
+  /**
+   * Default in a browser tab when it differs from `defaultShortcut`, because
+   * the browser takes that chord before the page sees it.
+   */
+  webDefaultShortcut?: ShortcutChord | null;
   /** Whether the global handler may run while focus is inside an editor/control. */
   allowInEditable: boolean;
 }
@@ -125,6 +140,69 @@ export const SHORTCUT_ACTIONS: readonly ShortcutActionDefinition[] = [
     defaultShortcut: createShortcutChord("]", { primary: true, alt: true }),
     allowInEditable: true,
   },
+  // Open the chat or notification above / below the open one in its list.
+  // Shift on the history brackets, as editors and macOS apps step between
+  // tabs. On web, macOS browsers keep this chord for their own tab switching.
+  // `allowInEditable` because the caret usually sits in the chat composer or
+  // a comment box.
+  {
+    id: "listPreviousItem",
+    category: "general",
+    defaultShortcut: createShortcutChord("[", { primary: true, shift: true }),
+    allowInEditable: true,
+  },
+  {
+    id: "listNextItem",
+    category: "general",
+    defaultShortcut: createShortcutChord("]", { primary: true, shift: true }),
+    allowInEditable: true,
+  },
+  // Rename the open chat or issue: focus its title field with the text
+  // selected. Mod+R is the reload key, so it is reserved for every other
+  // action (see RENAME_RELOAD_CHORD); the desktop main process relays it here
+  // instead of swallowing it, and on web the page claims it only where a
+  // title can be renamed.
+  { id: "renameTitle", category: "general", defaultShortcut: primary("R"), allowInEditable: true },
+  // Move keyboard focus between the regions of a list-and-detail page: the
+  // list, the body being read, and the composer (Buzz's ⌘⇧H / ⌘⇧L / ⌘L and
+  // F8 / ⇧F8). All of them work with the caret in an editor, which is where
+  // the reader usually is when they want to leave it. Safari takes ⌘L
+  // (address bar) and ⌘⇧H (home page) before the page sees them, and their
+  // Option variants are taken too (⌥⌘L opens Downloads, ⌥⌘H hides other
+  // apps), so on the web those two ship unassigned; F8 / ⇧F8 reach every
+  // region there.
+  {
+    id: "focusList",
+    category: "general",
+    defaultShortcut: createShortcutChord("H", { primary: true, shift: true }),
+    webDefaultShortcut: null,
+    allowInEditable: true,
+  },
+  {
+    id: "focusBody",
+    category: "general",
+    defaultShortcut: createShortcutChord("L", { primary: true, shift: true }),
+    allowInEditable: true,
+  },
+  {
+    id: "focusComposer",
+    category: "general",
+    defaultShortcut: primary("L"),
+    webDefaultShortcut: null,
+    allowInEditable: true,
+  },
+  {
+    id: "focusNextRegion",
+    category: "general",
+    defaultShortcut: createShortcutChord("F8"),
+    allowInEditable: true,
+  },
+  {
+    id: "focusPreviousRegion",
+    category: "general",
+    defaultShortcut: createShortcutChord("F8", { shift: true }),
+    allowInEditable: true,
+  },
   { id: "findInIssue", category: "general", defaultShortcut: primary("F"), allowInEditable: true },
   {
     id: "archiveInboxItem",
@@ -181,6 +259,18 @@ export const SHORTCUT_ACTION_BY_ID = Object.fromEntries(
   SHORTCUT_ACTIONS.map((action) => [action.id, action]),
 ) as Record<ShortcutActionId, ShortcutActionDefinition>;
 
+/** The shipped binding for `actionId` in `runtime`, before user overrides. */
+export function getShortcutDefault(
+  actionId: ShortcutActionId,
+  runtime: ShortcutRuntime = getShortcutRuntime(),
+): ShortcutChord | null {
+  const action = SHORTCUT_ACTION_BY_ID[actionId];
+  if (runtime === "web" && action.webDefaultShortcut !== undefined) {
+    return action.webDefaultShortcut;
+  }
+  return action.defaultShortcut;
+}
+
 const MODIFIER_KEYS = new Set([
   "Alt", "AltGraph", "CapsLock", "Control", "Fn", "FnLock", "Hyper",
   "Meta", "NumLock", "ScrollLock", "Shift", "Super", "Symbol", "SymbolLock",
@@ -229,6 +319,17 @@ function isComposedOptionKey(key: string): boolean {
   return key === "Dead" || (key.length === 1 && key.charCodeAt(0) > 0x7e);
 }
 
+// Shift turns the bracket keys into braces, so ⇧⌘[ arrives as "{". Those
+// chords are named by the bracket, which the Shift modifier already records.
+const SHIFTED_BRACKETS: Record<string, string> = {
+  BracketLeft: "{",
+  BracketRight: "}",
+};
+
+function isShiftedBracket(event: KeyboardEvent): boolean {
+  return event.shiftKey && typeof event.code === "string" && SHIFTED_BRACKETS[event.code] === event.key;
+}
+
 function eventKey(
   event: KeyboardEvent,
   platform: ShortcutPlatform,
@@ -245,6 +346,7 @@ function eventKey(
   ) {
     return keyFromCode(event.code);
   }
+  if (physicalOption && isShiftedBracket(event)) return keyFromCode(event.code);
   if (NON_ACTIONABLE_KEYS.has(event.key)) return null;
   const key = KEY_LABELS[event.key] ?? event.key;
   if (key.length === 1 && /[a-z]/i.test(key)) return key.toUpperCase();
@@ -488,6 +590,16 @@ const BROWSER_ONLY_PRIMARY_RESERVED_KEYS = new Set([
   "P", "L", "T", "N", "D", "U",
 ]);
 
+// Extra-modifier variants of the keys above that every supported browser and
+// window manager hands to the page (checked in Chrome and Safari on macOS).
+const FREE_PRIMARY_VARIANTS: Record<string, readonly string[]> = {
+  L: ["shift"],
+};
+
+function isFunctionKey(key: string): boolean {
+  return /^F([1-9]|1[0-9]|2[0-4])$/.test(key);
+}
+
 /** Browser/window/OS accelerators the app cannot reliably own in `runtime`. */
 export function isReservedShortcut(
   shortcut: ShortcutChord,
@@ -498,8 +610,9 @@ export function isReservedShortcut(
   if (key === "F5") return true;
   if (modifiers.primary) {
     if (isReservedIn(PRIMARY_RESERVED_VARIANTS, shortcut)) return true;
-    if (BROWSER_ONLY_PRIMARY_RESERVED_KEYS.has(key)) {
-      if (runtime !== "desktop" || extraModifiers(modifiers) !== "") return true;
+    const extra = extraModifiers(modifiers);
+    if (BROWSER_ONLY_PRIMARY_RESERVED_KEYS.has(key) && !FREE_PRIMARY_VARIANTS[key]?.includes(extra)) {
+      if (runtime !== "desktop" || extra !== "") return true;
     }
     const mac = platform === "macos";
     if (mac && isReservedIn(MACOS_PRIMARY_RESERVED_VARIANTS, shortcut)) return true;
@@ -522,6 +635,26 @@ export function isReservedShortcut(
   }
 
   return false;
+}
+
+/**
+ * Bare Mod+R, the reload chord, is free for renaming only: the desktop shell
+ * hands it to the renderer instead of reloading, and on web the rename
+ * handlers take it from the browser only where a title can be renamed.
+ */
+const RENAME_RELOAD_CHORD = createShortcutChord("R", { primary: true });
+
+/** `isReservedShortcut`, minus the one reservation an action may take over. */
+export function isReservedShortcutForAction(
+  actionId: ShortcutActionId,
+  shortcut: ShortcutChord,
+  platform: ShortcutPlatform = getShortcutPlatform(),
+  runtime: ShortcutRuntime = getShortcutRuntime(),
+): boolean {
+  if (actionId === "renameTitle" && shortcutChordEquals(shortcut, RENAME_RELOAD_CHORD)) {
+    return false;
+  }
+  return isReservedShortcut(shortcut, platform, runtime);
 }
 
 const PLAIN_GLOBAL_RESERVED_KEYS = new Set([
@@ -553,7 +686,7 @@ export function isShortcutAllowedForAction(
   runtime: ShortcutRuntime = getShortcutRuntime(),
 ): boolean {
   if (!isShortcutChordActionable(shortcut)) return false;
-  if (isReservedShortcut(shortcut, platform, runtime)) return false;
+  if (isReservedShortcutForAction(actionId, shortcut, platform, runtime)) return false;
   // Tab is focus navigation (and Ctrl+Tab is browser tab navigation) on every
   // supported platform. It is never a dependable product-level binding.
   if (shortcut.key === "Tab") return false;
@@ -573,6 +706,9 @@ export function isShortcutAllowedForAction(
     return hasCommand || (shortcut.modifiers.alt && (shortcut.key === "Space" || shortcut.key.length > 1));
   }
   if (SHORTCUT_ACTION_BY_ID[actionId].allowInEditable) {
+    // A bare or Shift function key types nothing, so it is as safe inside an
+    // editor as a Command chord.
+    if (isFunctionKey(shortcut.key) && !shortcut.modifiers.alt && !hasCommand) return true;
     return hasCommand;
   }
   return hasModifier || !PLAIN_GLOBAL_RESERVED_KEYS.has(shortcut.key);

@@ -1,8 +1,12 @@
 "use client";
 
+// Modified by honki12345, 2026: scroll a selection made from elsewhere on the page into view (CALA-328).
+// Modified by honki12345, 2026: mark the list as stepping its own rows for the focus region keys (CALA-332).
+
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -157,6 +161,20 @@ export function InboxList({
     onSelect(nextItem);
   };
 
+  // A selection made from elsewhere on the page (the list-step keys, a link)
+  // brings its row into view, as the arrow keys do. Not on mount, which keeps
+  // the restored scroll offset.
+  const selectedIndex = useMemo(
+    () => (selectedKey ? items.findIndex((item) => (item.issue_id ?? item.id) === selectedKey) : -1),
+    [items, selectedKey],
+  );
+  const shownKeyRef = useRef(selectedKey);
+  useEffect(() => {
+    if (shownKeyRef.current === selectedKey) return;
+    shownKeyRef.current = selectedKey;
+    if (selectedIndex >= 0) virtuosoRef.current?.scrollIntoView({ index: selectedIndex });
+  }, [selectedKey, selectedIndex]);
+
   const loadMore = useCallback(() => {
     if (!loadingMore && !loadMoreError) onLoadMore?.();
   }, [loadingMore, loadMoreError, onLoadMore]);
@@ -218,6 +236,8 @@ export function InboxList({
       // Programmatically focusable only: the rows already carry their own tab
       // stops, so a tabbable container would just add a redundant one.
       tabIndex={-1}
+      // Steps its own selection on the arrow keys; the region keys leave it be.
+      data-focus-rows="self"
       onKeyDown={handleKeyDown}
       className="flex-1 min-h-0 overflow-y-auto outline-none"
     >

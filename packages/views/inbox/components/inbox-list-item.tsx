@@ -1,5 +1,6 @@
 "use client";
 
+// Modified by honki12345, 2026: mark rows for the focus region keys (CALA-332).
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import { StatusIcon } from "../../issues/components";
 import {
@@ -104,6 +105,8 @@ export function InboxListItem({
       data-mc="inbox-item"
       data-read={item.read === true ? "true" : "false"}
       data-selected={isSelected ? "true" : "false"}
+      data-focus-row=""
+      {...(isSelected ? { "data-focus-region-target": "" } : {})}
       role="button"
       tabIndex={0}
       onClick={(e) => {

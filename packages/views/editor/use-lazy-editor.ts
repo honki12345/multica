@@ -1,5 +1,7 @@
 "use client";
 
+// Modified by honki12345, 2026: activate with the whole text selected (CALA-327).
+
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { TextAnchor } from "./text-anchor";
 
@@ -9,6 +11,7 @@ import type { TextAnchor } from "./text-anchor";
  */
 export interface LazyEditorHandle {
   focus: () => void;
+  selectAll?: () => void;
   focusAtCoords?: (coords: { x: number; y: number }) => void;
   focusAtAnchor?: (anchor: TextAnchor) => void;
   uploadFile?: (file: File) => void;
@@ -19,12 +22,15 @@ export interface LazyEditorHandle {
  * character M", layout-independent) wins over the raw click coordinates;
  * coordinates remain as the fallback for clicks that yield no text anchor
  * (image, table chrome, margin) and for single-line hosts like the title.
+ * `"all"` selects the whole text instead (a keyboard rename, CALA-327).
  */
-export interface LazyFocusTarget {
-  x: number;
-  y: number;
-  anchor?: TextAnchor;
-}
+export type LazyFocusTarget =
+  | {
+      x: number;
+      y: number;
+      anchor?: TextAnchor;
+    }
+  | "all";
 
 export interface UseLazyEditorOptions {
   /**
@@ -100,7 +106,10 @@ export function useLazyEditor({
     (target: LazyFocusTarget | null) => {
       const handle = editorRef.current;
       if (!handle) return;
-      if (target?.anchor && handle.focusAtAnchor) handle.focusAtAnchor(target.anchor);
+      if (target === "all") {
+        if (handle.selectAll) handle.selectAll();
+        else handle.focus();
+      } else if (target?.anchor && handle.focusAtAnchor) handle.focusAtAnchor(target.anchor);
       else if (target && handle.focusAtCoords) handle.focusAtCoords(target);
       else handle.focus();
     },

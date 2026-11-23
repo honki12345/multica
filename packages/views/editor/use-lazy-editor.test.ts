@@ -1,9 +1,10 @@
+// Modified by honki12345, 2026: cover activating with the whole text selected (CALA-327).
 import { describe, it, expect, vi } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 import { useLazyEditor, type LazyEditorHandle } from "./use-lazy-editor";
 
 function makeHandle() {
-  return { focus: vi.fn(), focusAtCoords: vi.fn(), uploadFile: vi.fn() };
+  return { focus: vi.fn(), focusAtCoords: vi.fn(), selectAll: vi.fn(), uploadFile: vi.fn() };
 }
 
 describe("useLazyEditor", () => {
@@ -63,5 +64,22 @@ describe("useLazyEditor", () => {
     rerender({ key: "issue-2" });
     expect(result.current.active).toBe(false);
     expect(result.current.ready).toBe(false);
+  });
+
+  it("selects the whole text once ready when activated to select all", () => {
+    const handle = makeHandle();
+    const editorRef = { current: handle as LazyEditorHandle };
+    const { result } = renderHook(() => useLazyEditor({ editorRef }));
+
+    act(() => result.current.activate("all"));
+    expect(handle.selectAll).not.toHaveBeenCalled();
+
+    act(() => result.current.onReady());
+    expect(handle.selectAll).toHaveBeenCalledTimes(1);
+    expect(handle.focusAtCoords).not.toHaveBeenCalled();
+
+    // Already live: selects straight away.
+    act(() => result.current.activate("all"));
+    expect(handle.selectAll).toHaveBeenCalledTimes(2);
   });
 });

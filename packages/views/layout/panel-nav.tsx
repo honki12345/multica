@@ -1,5 +1,6 @@
 "use client";
 
+// Modified by honki12345, 2026: sidebar rows join the focus region keys (CALA-332).
 import { createContext, useContext, useId, useRef, type RefObject } from "react";
 import { ChevronDown } from "@multica/ui/icons";
 import { cn } from "@multica/ui/lib/utils";
@@ -162,7 +163,13 @@ export const PANEL_ROW_CLASS =
 
 /** The `nav-item` theme anchor; every row with an active state carries it. */
 export function panelRowAnchor(active: boolean) {
-  return { "data-mc": "nav-item", "data-active": active ? "true" : "false" } as const;
+  return {
+    "data-mc": "nav-item",
+    "data-active": active ? "true" : "false",
+    // The focus region keys step through these rows and land on the active one.
+    "data-focus-row": "",
+    ...(active ? { "data-focus-region-target": "" } : {}),
+  } as const;
 }
 
 export function panelRowStateClass(active: boolean) {

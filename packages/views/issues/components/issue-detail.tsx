@@ -1,5 +1,9 @@
 "use client";
 
+// Modified by honki12345, 2026: rename the issue title with the renameTitle shortcut (CALA-327).
+// Modified by honki12345, 2026: the opened issue takes the scroll keys from the link that opened it (CALA-330).
+// Modified by honki12345, 2026: mark the issue body as a keyboard focus region (CALA-332).
+
 import { subIssueCreateDefaults } from "@multica/core/issues";
 import {
   issueBehavesAs,
@@ -11,6 +15,7 @@ import { IssueAppRequests } from "../../common/app-requests";
 import { useStatusLabel } from "../utils/status-label";
 import { priorityLabel } from "../utils/priority-label";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
+import { useTakeKeyboardFocus } from "../../common/take-keyboard-focus";
 import { useState, useEffect, useCallback, useMemo, useRef, useId, Fragment, type ComponentProps, type ReactNode } from "react";
 import { Virtuoso, type ListRange, type VirtuosoHandle } from "react-virtuoso";
 import { useDefaultLayout, usePanelRef } from "react-resizable-panels";
@@ -219,6 +224,7 @@ import { estimateTimelineItemHeights, timelineCharsPerLine } from "../utils/time
 import { useJumpToLatest } from "../hooks/use-jump-to-latest";
 import { useNewCommentsWhileAway } from "../hooks/use-new-comments-while-away";
 import { useInPageFind } from "../hooks/use-in-page-find";
+import { useRenameTitleShortcut } from "../../layout/rename-title-shortcut";
 import { useStickyComposer } from "../hooks/use-sticky-composer";
 import { FindBar } from "./find-bar";
 import {
@@ -1285,6 +1291,12 @@ interface IssueDetailProps {
   /** A bar the host shows under the header, above the scrolling body. */
   notice?: ReactNode;
   /**
+   * The issue was opened by a click or Enter on a link elsewhere (the side
+   * panel, a list): once it has loaded, its body takes keyboard focus so
+   * ↑/↓/PageUp/PageDown scroll the issue instead of the panel (CALA-330).
+   */
+  focusOnOpen?: boolean;
+  /**
    * Read the viewer's inbox notifications on this issue while it is on screen
    * (MUL-8588). The inbox turns this off for the issue it has open: it reads
    * the notification it selected itself, and keeps one marked unread there.
@@ -1503,7 +1515,7 @@ export function IssueDetailSkeleton({
 
 // IssueDetail
 
-export function IssueDetail({ issueId, onDelete, onDone, onUnsubscribeArchive, defaultSidebarOpen = true, layoutId = ISSUE_DETAIL_LAYOUT_ID, highlightCommentId: linkedCommentId, highlightRequestToken: linkedRequestToken, highlightRequestPending = false, onHighlightLanded, highlightAppRequestId, leadingAction, variant = "page", trailingActions, notice, readsInbox = true, skipInitialRefetch = false, openDeliverable, onDeliverableLinkDone }: IssueDetailProps) {
+export function IssueDetail({ issueId, onDelete, onDone, onUnsubscribeArchive, defaultSidebarOpen = true, layoutId = ISSUE_DETAIL_LAYOUT_ID, highlightCommentId: linkedCommentId, highlightRequestToken: linkedRequestToken, highlightRequestPending = false, onHighlightLanded, highlightAppRequestId, leadingAction, variant = "page", trailingActions, notice, focusOnOpen = false, readsInbox = true, skipInitialRefetch = false, openDeliverable, onDeliverableLinkDone }: IssueDetailProps) {
   const isPeek = variant === "peek";
   const { t } = useT("issues");
   const { t: tCommon } = useT("common");
@@ -2831,6 +2843,16 @@ export function IssueDetail({ issueId, onDelete, onDone, onUnsubscribeArchive, d
     pendingDescriptionSaveRef.current = null;
   }, [id]);
   const titleLazy = useLazyEditor({ editorRef: titleEditorRef, resetKey: id });
+  const titleAreaRef = useRef<HTMLDivElement>(null);
+  useRenameTitleShortcut(
+    () => titleAreaRef.current,
+    () => {
+      // A second press while the title is being edited keeps what was typed.
+      if (titleAreaRef.current?.contains(document.activeElement)) return;
+      if (!titleLazy.ready) titleBaseRef.current = issue?.title;
+      titleLazy.activate("all");
+    },
+  );
   const { isDragOver: descDragOver, dropZoneProps: descDropZoneProps } = useFileDropZone({
     onDrop: (files) => files.forEach((file) => descEditorRef.current?.uploadFile(file)),
   });
@@ -3128,6 +3150,12 @@ export function IssueDetail({ issueId, onDelete, onDone, onUnsubscribeArchive, d
   }, [handleToggleSidebar, id, sidebarOpen]);
 
   useRightSidebarShortcut(rightSidebarShortcutTargetRef, handleToggleSidebar);
+
+  // Once per issue: the body takes the keys when it first appears.
+  const [focusSettledFor, setFocusSettledFor] = useState<string | null>(null);
+  useTakeKeyboardFocus(scrollContainerEl, focusOnOpen && focusSettledFor !== id, () =>
+    setFocusSettledFor(id),
+  );
 
   useIssueDetailScrollRestore({
     restoreKey: `${wsId}:${id}`,
@@ -3889,7 +3917,12 @@ export function IssueDetail({ issueId, onDelete, onDone, onUnsubscribeArchive, d
         <div
           ref={attachScrollContainer}
           data-tab-scroll-root={isPeek ? undefined : scrollContainerKey}
-          className="@container relative flex-1 overflow-y-auto [scrollbar-gutter:stable_both-edges]"
+          data-focus-region="body"
+          // Focusable but not a Tab stop: a click on the body's text, a
+          // focus region key or Esc gives it the scroll keys instead of the
+          // panel link that opened the issue.
+          tabIndex={-1}
+          className="@container relative flex-1 overflow-y-auto outline-none [scrollbar-gutter:stable_both-edges]"
           onContextMenu={pageMenu.onContextMenu}
         >
         {/* Gutters: 32px is a comfortable reading margin on a desktop column
@@ -3917,7 +3950,7 @@ export function IssueDetail({ issueId, onDelete, onDone, onUnsubscribeArchive, d
             }
           />
           <div id={descriptionSectionId}>
-          <div data-mc="issue-title">
+          <div ref={titleAreaRef} data-mc="issue-title">
           {titleLazy.active && (
             <div className={titleLazy.ready ? undefined : "hidden"}>
               <TitleEditor

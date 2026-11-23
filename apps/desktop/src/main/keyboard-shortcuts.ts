@@ -1,3 +1,4 @@
+// Modified by honki12345, 2026: Cmd/Ctrl+R renames the open title instead of being swallowed (CALA-327).
 import type { WebContents } from "electron";
 import type { TabSelectionShortcutKey } from "../shared/main-renderer-messages";
 
@@ -29,12 +30,14 @@ const ZOOM_MAX = 4.5;
  * Window shortcut outcomes tell the caller whether to continue, preventDefault,
  * or dispatch a renderer action. Prevent handled input from also firing the menu
  * accelerator. Handle zoom here for consistent keyboard-layout behavior.
- * open-settings, select-tab, and new-window actions route to a main window.
+ * open-settings, select-tab, and new-window actions route to a main window;
+ * rename-title goes back to the window it was pressed in.
  */
 export type ShortcutResult =
   | boolean
   | "close-tab"
   | "open-settings"
+  | "rename-title"
   | "new-window"
   | { action: "select-tab"; key: TabSelectionShortcutKey };
 
@@ -49,9 +52,13 @@ export function handleAppShortcut(
   const noSecondaryModifiers = !secondary && !input.alt;
 
   // Block reload — accidental Cmd+R / Ctrl+R / F5 destroys in-memory state
-  // (tabs, drafts, WS connections) with no URL bar to recover from.
-  if ((primary && input.key.toLowerCase() === "r") || input.key === "F5") {
-    return true;
+  // (tabs, drafts, WS connections) with no URL bar to recover from. The bare
+  // chord is still the renderer's rename-title shortcut, so it is handed back
+  // as a message: preventDefault alone would also drop the page's own keydown.
+  if (input.key === "F5") return true;
+  if (primary && input.key.toLowerCase() === "r") {
+    if (!noSecondaryModifiers || input.shift || input.isAutoRepeat) return true;
+    return "rename-title";
   }
 
   if (!primary || !noSecondaryModifiers) return false;

@@ -426,6 +426,38 @@
         "label": "下一則已傳訊息或喚醒",
         "description": "在目前聊天中捲動到你傳送的下一則訊息或喚醒分隔線，已是最後一則時捲到最新回覆。"
       },
+      "listPreviousItem": {
+        "label": "上一個聊天或通知",
+        "description": "開啟聊天列表中目前聊天上方的聊天，或收件箱中上方的通知。輸入時也可使用。"
+      },
+      "listNextItem": {
+        "label": "下一個聊天或通知",
+        "description": "開啟聊天列表中目前聊天下方的聊天，或收件箱中下方的通知。輸入時也可使用。"
+      },
+      "renameTitle": {
+        "label": "重新命名聊天或任務",
+        "description": "編輯目前聊天或任務的標題，並選取全部文字。"
+      },
+      "focusList": {
+        "label": "聚焦列表",
+        "description": "將鍵盤焦點移到頁面旁的列表：聊天、收件匣通知或側邊欄。"
+      },
+      "focusBody": {
+        "label": "聚焦內文",
+        "description": "將鍵盤焦點移到正在閱讀的內容，方向鍵隨後捲動它。"
+      },
+      "focusComposer": {
+        "label": "聚焦輸入框",
+        "description": "將鍵盤焦點移到訊息或留言輸入框。"
+      },
+      "focusNextRegion": {
+        "label": "下一個區域",
+        "description": "將鍵盤焦點移到列表、內文、輸入框中的下一個。"
+      },
+      "focusPreviousRegion": {
+        "label": "上一個區域",
+        "description": "將鍵盤焦點移到列表、內文、輸入框中的上一個。"
+      },
       "findInIssue": {
         "label": "在任務中查詢",
         "description": "搜尋當前開啟的任務詳情。"

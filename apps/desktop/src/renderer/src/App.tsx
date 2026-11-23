@@ -1,3 +1,4 @@
+// Modified by honki12345, 2026: mount the rename-title shortcut relay (CALA-327).
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { CoreProvider } from "@multica/core/platform";
@@ -21,6 +22,7 @@ import { DesktopDevToolbar } from "./components/desktop-dev-toolbar";
 import { useTabStore } from "./stores/tab-store";
 import { useWindowOverlayStore } from "./stores/window-overlay-store";
 import { useOpenSettingsShortcut } from "./hooks/use-open-settings-shortcut";
+import { useRenameTitleShortcutRelay } from "./hooks/use-rename-title-shortcut";
 import { useTabSelectionShortcut } from "./hooks/use-tab-selection-shortcut";
 import { useDaemonIPCBridge } from "./platform/daemon-ipc-bridge";
 import { syncDaemonOnLogin } from "./platform/daemon-login-sync";
@@ -408,6 +410,8 @@ export default function App() {
   // Fixed browser-style tab selection is also owned by main so it remains
   // available while focus sits inside editors, inputs, menus, or dialogs.
   useTabSelectionShortcut();
+  // Cmd/Ctrl+R never reaches the page: main relays it to rename the title.
+  useRenameTitleShortcutRelay();
 
   // Flush a freeze/crash breadcrumb the main process parked from a previous
   // session. A true hang or process death can't report itself when it happens

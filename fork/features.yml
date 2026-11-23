@@ -521,6 +521,41 @@ features:
           - No notification changes read state.
     drop_when: "an upstream release tag that contains multica-ai/multica#10861 is merged into main (the cherry-picks become no-ops in that merge; `inbox_filter.go` stays with inbox-list-filters). Met by v0.11.1 (63cebc194 #10861 and 482ea80f5 #10921 are in the tag): every cherry-picked file is identical to v0.11.1 or differs only by our notice, which the merge removed; the fork wording in the inbox skill reference moved to inbox-list-filters (CALA-292)."
 
+  - id: inbox-row-issue-id
+    summary: "An Inbox row click in the Work panel records the issue's id, not the identifier its link opens at, so the open row lights and the issue counts as opened from the Inbox (upstream #10903, cherry-picked ahead of v0.11.1). shortcut-list-step's Work Inbox keys depend on it."
+    status: dropped
+    kind: web-ui
+    cards: [CALA-328]
+    origin:
+      type: upstream-cherry-pick
+      upstream_pr: 10903
+      commits: ["4c4b06694"]
+    files:
+      - packages/views/layout/panels/inbox-section.tsx
+      - packages/views/layout/panels/work-panel.tsx
+      - packages/views/layout/panels/work-panel.test.tsx
+    watch:
+      - path: packages/views/inbox/components/inbox-display.ts
+        why: inboxRowHref opens an issue at its identifier, which is why the click reads data-issue-id
+    upstream_equivalent:
+      prs: [10903]
+      keywords: [data-issue-id, light the Work panel Inbox row]
+    tests:
+      - vitest: packages/views/layout/panels/work-panel.test.tsx
+        name: lights an issue opened from the Inbox at its identifier URL
+    scenarios:
+      - name: the Inbox row of an issue opened from it lights
+        path: /<workspace-slug>/issues
+        widths: [1440]
+        setup: a member with notifications on issues that have identifiers
+        steps:
+          - Open an issue page, then click the second row of the Work panel's Inbox section.
+        selectors:
+          - '[data-inbox-row] a[aria-current="page"]'
+        expect:
+          - The clicked row is lit and the issue header shows the Inbox actions.
+    drop_when: "an upstream release tag that contains multica-ai/multica#10903 (v0.11.1 or later) is merged into main (the cherry-pick becomes a no-op in that merge). Met by v0.11.1 (5dcabc501 #10903 is in the tag): the three cherry-picked files differed from v0.11.1 only by our notice, so the v0.12.0 absorb took upstream's files (CALA-385)."
+
   - id: inbox-list-filters
     summary: "`multica inbox list` takes the web Inbox's filters as flags and lists the same rows: one per issue, newest first; --ungrouped for every notification. Sits on upstream's list (inbox-cli-manage)."
     status: active
@@ -637,6 +672,8 @@ features:
     watch:
       - path: packages/core/chat/queries.ts
         why: sortChatSessions, the only ordering today
+      - path: packages/views/common/use-list-step-shortcut.ts
+        why: shortcut-list-step (CALA-328) also edits chat-thread-list.tsx and walks the order the list shows; a filter or sort must hand that shown order to it
     upstream_equivalent:
       keywords: [chat list filter, chat sort]
     drop_when: upstream adds filtering and sorting to the chat list.
@@ -779,6 +816,441 @@ features:
           - General lists "Previous sent message or wakeup" (⌥⌘[) and "Next sent message or wakeup" (⌥⌘]), recordable and resettable like the others.
     drop_when: upstream ships keys that step a chat between the reader's own messages and wakeup turns.
 
+  - id: shortcut-list-step
+    summary: Mod+Shift+[ / ] open the chat or notification above / below the open one, from anywhere on the page (composer and comment boxes included, which keep the caret), on the Chat page, the Inbox page and an issue opened from the Work panel's Inbox section, list on screen or not.
+    status: active
+    kind: web-ui
+    cards: [CALA-328]
+    origin:
+      type: ours
+      commits: ["759ab3826", "92e9a4273", "b8a1e9ce6", "77a821d37", "3f2ae664a"]
+    files:
+      - packages/core/shortcuts/definitions.ts
+      - packages/core/shortcuts/definitions.test.ts
+      - packages/views/common/list-step.ts
+      - packages/views/common/list-step.test.ts
+      - packages/views/common/use-list-step-shortcut.ts
+      - packages/views/chat/chat-page.tsx
+      - packages/views/chat/components/chat-thread-list.tsx
+      - packages/views/chat/chat-page.test.tsx
+      - packages/views/chat/components/chat-thread-list.scroll.test.tsx
+      - packages/views/chat/components/session-history-list.tsx
+      - packages/views/inbox/components/inbox-list.tsx
+      - packages/views/inbox/components/inbox-list.test.tsx
+      - packages/views/inbox/components/inbox-page.tsx
+      - packages/views/inbox/components/inbox-page.test.tsx
+      - packages/views/issues/components/comment-input.tsx
+      - packages/views/issues/components/comment-composers.test.tsx
+      - packages/views/layout/panels/work-inbox-list-step.tsx
+      - packages/views/layout/panels/work-inbox-list-step.test.tsx
+      - packages/views/layout/space-panel.tsx
+      - packages/views/layout/space-panel.test.tsx
+      - packages/views/locales/en/settings.json
+      - packages/views/locales/es/settings.json
+      - packages/views/locales/fr/settings.json
+      - packages/views/locales/ja/settings.json
+      - packages/views/locales/ko/settings.json
+      - packages/views/locales/ru/settings.json
+      - packages/views/locales/zh-Hans/settings.json
+      - packages/views/locales/zh-Hant/settings.json
+      - apps/docs/content/docs/shortcuts.mdx
+      - apps/docs/content/docs/shortcuts.ko.mdx
+      - apps/docs/content/docs/shortcuts.ja.mdx
+      - apps/docs/content/docs/shortcuts.zh.mdx
+      - apps/docs/content/docs/shortcuts.zh-Hant.mdx
+      - apps/docs/content/docs/shortcuts.fr.mdx
+    watch:
+      - path: packages/core/chat/queries.ts
+        why: sortChatSessions decides the chat order the keys walk (pinned first, then activity)
+      - path: packages/views/chat/components/chat-window.tsx
+        why: data-mc="chat-window" marks the floating window, which keeps the keys to itself
+      - path: packages/views/layout/panels/list-space-peeks.tsx
+        why: the chat list preview over another page mounts ChatThreadList; the keys belong to ChatPage, so it takes none
+      - path: packages/views/issues/components/issue-detail.tsx
+        why: keys CommentInput by issue, so the next issue's comment box mounts anew and takes the carried caret
+      - path: packages/views/editor/use-lazy-editor.ts
+        why: activate() is how the next issue's comment box takes the caret
+      - path: packages/views/layout/panels/inbox-section.tsx
+        why: useInboxSectionRows and the row click (requestLanding, rememberSidebarIssue) a step repeats
+      - path: packages/views/layout/panels/work-panel.tsx
+        why: rememberClickedIssue records an Inbox row click by issue id (upstream PR 10903, in v0.11.1); a step records the same through the selection store
+      - path: packages/views/inbox/components/use-filtered-inbox-rows.ts
+        why: the filtered rows, in order, that a step walks on an issue opened from the section
+      - path: packages/views/inbox/components/use-sidebar-inbox-issue.ts
+        why: fromInbox decides whether the open issue takes the keys
+      - path: packages/views/inbox/components/inbox-display.ts
+        why: inboxRowHref is where a step lands, as a row click does
+      - path: packages/views/issues/components/issue-detail-route.tsx
+        why: shows only a skeleton while the next issue loads, which is why the Work Inbox keys live with the shell
+      - path: packages/views/issues/actions/issue-inbox-actions.tsx
+        why: the issue header that lists the same rows; a list-step listener added there would fire alongside the shell's
+      - path: packages/core/inbox/open-row.ts
+        why: inboxRowKey, the key both inbox lists step by
+      - path: packages/views/layout/global-shortcuts.tsx
+        why: a new global default on Mod+Shift+[ or ] would fire alongside this one
+      - path: apps/desktop/src/main/keyboard-shortcuts.ts
+        why: a desktop main-process accelerator on Mod+Shift+[ or ] would take the chord before the page
+      - path: packages/views/chat/components/use-chat-controller.ts
+        why: handleSelectSession opens the chat a step names, as a row click does
+    upstream_equivalent:
+      symbols: [listPreviousItem, listNextItem, useListStepShortcut, stepListIndex]
+      keywords: [next chat, previous chat, next notification, previous notification, cycle chats]
+    tests:
+      - vitest: packages/core/shortcuts/definitions.test.ts
+        name: steps the chat and inbox lists with Mod+Shift+[ and ] everywhere, composer included
+      - vitest: packages/views/common/list-step.test.ts
+        name: stops at either end instead of wrapping around
+      - vitest: packages/views/common/list-step.test.ts
+        name: enters the list at the top going down and at the bottom going up when the open row is not listed
+      - vitest: packages/views/chat/chat-page.test.tsx
+        name: opens the chat below and above in the order the list shows, across the pinned boundary
+      - vitest: packages/views/chat/chat-page.test.tsx
+        name: stops at either end and still claims the keys there
+      - vitest: packages/views/chat/chat-page.test.tsx
+        name: "walks the view the list shows: the archive once it is open, the history after"
+      - vitest: packages/views/chat/chat-page.test.tsx
+        name: works from the composer while a compact layout shows only the conversation
+      - vitest: packages/views/chat/chat-page.test.tsx
+        name: counts every press of a burst, even before the open chat has caught up
+      - vitest: packages/views/chat/chat-page.test.tsx
+        name: leaves the keys to the floating chat window, and to Go back / Go forward
+      - vitest: packages/views/chat/components/chat-thread-list.scroll.test.tsx
+        name: brings a chat opened from elsewhere on the page into view, and leaves the list alone on mount
+      - vitest: packages/views/inbox/components/inbox-page.test.tsx
+        name: opens the notification below and above on desktop, where the page shows only the detail
+      - vitest: packages/views/inbox/components/inbox-page.test.tsx
+        name: steps through its own list on a phone while the detail covers it
+      - vitest: packages/views/inbox/components/inbox-page.test.tsx
+        name: steps within the archive in the archived view
+      - vitest: packages/views/inbox/components/inbox-list.test.tsx
+        name: scrolls a row selected from outside the list into view, and leaves the list alone on mount
+      - vitest: packages/views/layout/panels/work-inbox-list-step.test.tsx
+        name: opens the notification below and above, as a row click would, while focus stays in a comment box
+      - vitest: packages/views/layout/panels/work-inbox-list-step.test.tsx
+        name: counts every press of a burst, the route still on the issue before or already on the next one loading
+      - vitest: packages/views/layout/panels/work-inbox-list-step.test.tsx
+        name: steps on from an issue whose page has not loaded, named by its identifier
+      - vitest: packages/views/layout/panels/work-inbox-list-step.test.tsx
+        name: steps on from a notification archived elsewhere, whose row the section keeps in place
+      - vitest: packages/views/layout/panels/work-inbox-list-step.test.tsx
+        name: stops at the last notification and still claims the key
+      - vitest: packages/views/issues/components/comment-composers.test.tsx
+        name: takes the caret back in the next issue when the press came from the comment box
+      - vitest: packages/views/issues/components/comment-composers.test.tsx
+        name: keeps the caret through a burst while the next issue is still loading
+      - vitest: packages/views/issues/components/comment-composers.test.tsx
+        name: leaves the next issue's comment box closed when the press came from elsewhere
+      - vitest: packages/views/issues/components/comment-composers.test.tsx
+        name: drops the carried caret when the reader clicks somewhere before the next issue loads
+    scenarios:
+      - name: step through chats from the composer
+        path: /<workspace-slug>/chat
+        widths: [1440]
+        setup: at least five chats, two of them pinned, opened from the chat list on the desktop app (macOS Chrome and Safari keep the chord for tab switching)
+        steps:
+          - Open the top pinned chat and click into the composer.
+          - Press Cmd+Shift+] three times, then Cmd+Shift+[ once.
+          - Press Cmd+Shift+] until the list stops changing.
+        selectors:
+          - '[aria-current="true"]'
+        expect:
+          - Each press opens the chat one row below or above, across the pinned boundary, and the caret stays in the composer.
+          - At the last chat further presses do nothing.
+      - name: step through the inbox from the issue
+        path: /<workspace-slug>/issues/<issue-id>
+        widths: [1440]
+        setup: an issue opened from the Work panel's Inbox section with at least three notifications listed
+        steps:
+          - Click into the comment box of the open issue.
+          - Press Cmd+Shift+] twice, then Cmd+Shift+[ once.
+        selectors:
+          - '[data-inbox-row] [data-active="true"]'
+          - '[data-mc="comment-composer"]'
+        expect:
+          - Each press opens the issue of the notification one row below or above, the Inbox row lights follow, and no notification is archived.
+          - The caret is in the comment box of each issue opened.
+      - name: listed in Settings
+        path: /<workspace-slug>/settings
+        widths: [1440]
+        steps:
+          - Open Settings, then Shortcuts.
+        selectors: []
+        expect:
+          - General lists "Previous chat or notification" (⇧⌘[) and "Next chat or notification" (⇧⌘]), recordable and resettable like the others.
+    drop_when: upstream ships keys that open the chat or notification above / below the open one from anywhere on the page.
+
+  - id: shortcut-rename-title
+    summary: Mod+R puts the caret in the open chat's or issue's title with the text selected, in the chat page, the issue page and the floating chat window; the desktop app relays the chord instead of swallowing it as reload.
+    status: active
+    kind: web-ui
+    cards: [CALA-327]
+    origin:
+      type: ours
+      commits: ["446785443", "2d13300d5", "069a16791", "70c21f590", "5250809ed"]
+    files:
+      - packages/core/shortcuts/definitions.ts
+      - packages/core/shortcuts/definitions.test.ts
+      - packages/core/shortcuts/index.ts
+      - packages/views/layout/rename-title-shortcut.ts
+      - packages/views/layout/rename-title-shortcut.test.tsx
+      - packages/views/layout/index.ts
+      - packages/views/chat/components/chat-session-header.tsx
+      - packages/views/chat/components/chat-session-header.test.tsx
+      - packages/views/chat/components/chat-window.tsx
+      - packages/views/chat/components/chat-window.test.tsx
+      - packages/views/chat/components/session-history-list.tsx
+      - packages/views/editor/title-editor.tsx
+      - packages/views/editor/title-editor.test.tsx
+      - packages/views/editor/use-lazy-editor.ts
+      - packages/views/editor/use-lazy-editor.test.ts
+      - packages/views/issues/components/issue-detail.tsx
+      - packages/views/issues/components/issue-detail.test.tsx
+      - packages/views/settings/components/keyboard-shortcuts-tab.tsx
+      - packages/views/settings/components/keyboard-shortcuts-tab.test.tsx
+      - apps/desktop/src/main/keyboard-shortcuts.ts
+      - apps/desktop/src/main/keyboard-shortcuts.test.ts
+      - apps/desktop/src/main/index.ts
+      - apps/desktop/src/shared/main-renderer-messages.ts
+      - apps/desktop/src/preload/index.ts
+      - apps/desktop/src/preload/index.d.ts
+      - apps/desktop/src/renderer/src/App.tsx
+      - apps/desktop/src/renderer/src/hooks/use-rename-title-shortcut.ts
+      - apps/desktop/src/renderer/src/hooks/use-rename-title-shortcut.test.tsx
+      - packages/views/locales/en/settings.json
+      - packages/views/locales/es/settings.json
+      - packages/views/locales/fr/settings.json
+      - packages/views/locales/ja/settings.json
+      - packages/views/locales/ko/settings.json
+      - packages/views/locales/ru/settings.json
+      - packages/views/locales/zh-Hans/settings.json
+      - packages/views/locales/zh-Hant/settings.json
+      - apps/docs/content/docs/shortcuts.mdx
+      - apps/docs/content/docs/shortcuts.ko.mdx
+      - apps/docs/content/docs/shortcuts.ja.mdx
+      - apps/docs/content/docs/shortcuts.zh.mdx
+      - apps/docs/content/docs/shortcuts.zh-Hant.mdx
+      - apps/docs/content/docs/shortcuts.fr.mdx
+      - apps/docs/content/docs/themes.mdx
+      - apps/docs/content/docs/themes.ko.mdx
+      - apps/docs/content/docs/themes.ja.mdx
+      - apps/docs/content/docs/themes.zh.mdx
+      - apps/docs/content/docs/themes.zh-Hant.mdx
+      - apps/docs/content/docs/themes.fr.mdx
+    watch:
+      - path: packages/core/shortcuts/store.ts
+        why: sanitizes persisted overrides through isShortcutAllowedForAction, which must keep accepting Mod+R for renameTitle
+      - path: packages/views/chat/chat-page.tsx
+        why: mounts ChatSessionHeader for the open chat
+      - path: packages/views/chat/components/session-rename-input.tsx
+        why: the floating window's row rename field, which focuses and selects on mount
+      - path: packages/views/chat/floating-chat.tsx
+        why: mounts ChatWindow only where the floating window is shown
+      - path: packages/ui/components/ui/popover.tsx
+        why: PopoverContent passes initialFocus to Base UI, which must not take focus from the rename field
+      - path: packages/views/issues/components/issue-peek.tsx
+        why: mounts a second IssueDetail over the page; the title next to the focus must win
+      - path: apps/desktop/src/renderer/src/components/issue-window.tsx
+        why: a dedicated issue window, which also receives the relayed chord
+      - path: packages/core/utils.ts
+        why: isImeComposing guards Korean/Japanese composition
+    upstream_equivalent:
+      symbols: [renameTitle, RENAME_TITLE_SHORTCUT_CHANNEL, useRenameTitleShortcut]
+      keywords: [rename shortcut, rename chat shortcut, edit title shortcut, Cmd+R rename]
+    tests:
+      - vitest: packages/core/shortcuts/definitions.test.ts
+        name: renames the open chat or issue title with Mod+R everywhere, composer included
+      - vitest: packages/core/shortcuts/definitions.test.ts
+        name: frees bare Mod+R from the reload reservation only for renaming
+      - vitest: packages/views/layout/rename-title-shortcut.test.tsx
+        name: renames the page title on Mod+R, even from a text field, and keeps the browser from reloading
+      - vitest: packages/views/layout/rename-title-shortcut.test.tsx
+        name: leaves Mod+R to the browser where nothing can be renamed
+      - vitest: packages/views/layout/rename-title-shortcut.test.tsx
+        name: renames the floating chat while focus is in it, and the page title otherwise
+      - vitest: packages/views/layout/rename-title-shortcut.test.tsx
+        name: renames the title next to the focus when two are on screen, the newest otherwise
+      - vitest: packages/views/layout/rename-title-shortcut.test.tsx
+        name: prefers the newest title over a deeper-nested page title when focus is outside both
+      - vitest: packages/views/settings/components/keyboard-shortcuts-tab.test.tsx
+        name: lets Rename take Mod+R back while it stays reserved for other actions
+      - vitest: packages/views/chat/components/chat-session-header.test.tsx
+        name: opens the title field with the title selected on Mod+R from the composer
+      - vitest: packages/views/chat/components/chat-window.test.tsx
+        name: opens the chat list with the open chat's title ready to rename on Mod+R from inside the window
+      - vitest: packages/views/issues/components/issue-detail.test.tsx
+        name: puts the caret in the title with it all selected on Mod+R, even from the comment box
+      - vitest: apps/desktop/src/main/keyboard-shortcuts.test.ts
+        name: hands Cmd+R to the renderer as rename instead of reloading on macOS
+      - vitest: apps/desktop/src/main/keyboard-shortcuts.test.ts
+        name: keeps swallowing the force-reload and other modified variants
+      - vitest: apps/desktop/src/renderer/src/hooks/use-rename-title-shortcut.test.tsx
+        name: renames from where focus is when main relays Cmd/Ctrl+R
+    scenarios:
+      - name: rename a chat from the composer
+        path: /<workspace-slug>/chat
+        widths: [1440]
+        setup: a test-database workspace with a chat open in the chat page
+        steps:
+          - Click into the composer and press Cmd+R.
+          - Type a new title and press Enter.
+        selectors:
+          - 'input[aria-label="Rename"]'
+        expect:
+          - The title becomes a text field with the whole title selected and the caret in it; the page does not reload.
+          - Enter saves the new title; the breadcrumb shows it.
+      - name: rename an issue
+        path: /<workspace-slug>/issues/<issue-id>
+        widths: [1440]
+        setup: a test-database issue
+        steps:
+          - Click into the comment box and press Cmd+R.
+          - Type a new title and press Enter.
+        selectors:
+          - '[data-mc="issue-title"]'
+        expect:
+          - The caret moves into the issue title with the whole title selected; the page does not reload.
+          - Enter saves the title.
+      - name: floating window
+        path: /<workspace-slug>/issues
+        widths: [1440]
+        setup: the floating chat window open on a chat
+        steps:
+          - Click into the floating window's composer and press Cmd+R.
+        selectors:
+          - '[data-mc="chat-window"]'
+        expect:
+          - The chat list opens with the open chat's title in a text field, selected.
+      - name: other pages keep reload
+        path: /<workspace-slug>/projects
+        widths: [1440]
+        steps:
+          - Press Cmd+R in a browser.
+        selectors: []
+        expect:
+          - The browser reloads the page.
+    drop_when: upstream ships a rebindable rename-title shortcut that also works in the desktop app.
+
+  - id: reading-pane-scroll-focus
+    summary: After picking a chat (thread row, floating-window history) or opening the issue page from a side-panel link, and after clicking plain text in the conversation or issue body, ↑/↓/PageUp/PageDown scroll what is being read instead of the list that opened it.
+    status: active
+    kind: web-ui
+    cards: [CALA-330]
+    origin:
+      type: ours
+      commits: ["a5120e89d", "45610a4a9", "01f950fa1"]
+    files:
+      - packages/views/common/take-keyboard-focus.ts
+      - packages/views/common/take-keyboard-focus.test.tsx
+      - packages/views/chat/chat-page.tsx
+      - packages/views/chat/chat-page.test.tsx
+      - packages/views/chat/components/chat-message-list.tsx
+      - packages/views/chat/components/chat-message-list.focus.test.tsx
+      - packages/views/chat/components/chat-window.tsx
+      - packages/views/chat/components/chat-window.test.tsx
+      - packages/views/chat/components/chat-window-messages.tsx
+      - packages/views/issues/components/issue-detail.tsx
+      - packages/views/issues/components/issue-detail.test.tsx
+      - packages/views/issues/components/issue-detail-route.tsx
+      - packages/views/issues/components/issue-detail-route.focus.test.tsx
+    watch:
+      - path: packages/views/chat/components/chat-thread-list.tsx
+        why: the row that keeps focus after a click; a roving-focus or arrow-key change there decides who owns ↑/↓
+      - path: packages/views/chat/components/stick-to-bottom.ts
+        why: hasReachedLiveEnd gates the focus move; the list is invisible and cannot hold focus before it
+      - path: packages/views/chat/components/use-chat-controller.ts
+        why: handleSelectSession is what both chat surfaces wrap to request focus
+      - path: packages/views/inbox/components/inbox-list.tsx
+        why: same pattern (tabIndex=-1 list, focus with preventScroll); the inbox detail pane must keep focus off the issue so ↑/↓ still move the selection
+      - path: packages/views/inbox/components/inbox-page.tsx
+        why: renders IssueDetail without focusOnOpen on purpose
+      - path: packages/core/shortcuts/definitions.ts
+        why: isEditableShortcutTarget and isPortalLayerShortcutTarget decide when focus is left alone
+    upstream_equivalent:
+      symbols: [focusRequested, focusOnOpen]
+      keywords: [arrow keys scroll chat, focus conversation, scroll keys reading pane, keyboard scroll issue detail]
+    tests:
+      - vitest: packages/views/common/take-keyboard-focus.test.tsx
+        name: waits while a menu holds focus, then takes it once the menu lets go
+      - vitest: packages/views/common/take-keyboard-focus.test.tsx
+        name: gives up after a while instead of taking focus much later
+      - vitest: packages/views/chat/components/chat-message-list.focus.test.tsx
+        name: takes the keys once the popover has let go, even when the list lands first
+      - vitest: packages/views/chat/chat-page.test.tsx
+        name: drops the request when another chat opens before the picked one does
+      - vitest: packages/views/chat/components/chat-message-list.focus.test.tsx
+        name: takes the keys when the reader clicks a message's text
+      - vitest: packages/views/chat/components/chat-message-list.focus.test.tsx
+        name: moves focus from the row that opened the chat once the list has landed, without scrolling
+      - vitest: packages/views/chat/components/chat-message-list.focus.test.tsx
+        name: leaves the caret in the composer
+      - vitest: packages/views/chat/components/chat-message-list.focus.test.tsx
+        name: does not pull focus back after the reader tabs out to the list
+      - vitest: packages/views/chat/components/chat-message-list.focus.test.tsx
+        name: stays out of the Tab order
+      - vitest: packages/views/chat/chat-page.test.tsx
+        name: asks the conversation to take focus when a thread is picked
+      - vitest: packages/views/chat/components/chat-window.test.tsx
+        name: asks the conversation to take focus when a chat is picked from the history
+      - vitest: packages/views/issues/components/issue-detail.test.tsx
+        name: moves focus from the link that opened the issue to its body, without scrolling
+      - vitest: packages/views/issues/components/issue-detail.test.tsx
+        name: lets a click on plain text in the body take the keys
+      - vitest: packages/views/issues/components/issue-detail-route.focus.test.tsx
+        name: asks the issue page to take the scroll keys when it opens
+    scenarios:
+      - name: picked chat takes the scroll keys
+        path: /<workspace-slug>/chat
+        widths: [1440]
+        setup: at least three chats, one with replies long enough to scroll
+        steps:
+          - Click the long chat's row in the chat list.
+          - Scroll the conversation up with the mouse wheel, then press ↓ three times and PageDown once.
+          - Click the composer and press ↑.
+          - Press Shift+Tab until a chat row has focus, then press ↓.
+        selectors:
+          - '[data-tab-scroll-root][data-chat-prompt-nav]'
+          - 'aside[data-slot="list-column"]'
+        expect:
+          - The conversation scrolls down; the chat list does not move.
+          - In the composer ↑ moves the caret, not the list.
+          - With a chat row focused, ↓ scrolls the chat list again.
+      - name: clicked conversation text takes the scroll keys
+        path: /<workspace-slug>/chat
+        widths: [1440]
+        setup: the chat page with a long chat open
+        steps:
+          - Press Tab until a chat row has focus.
+          - Click plain text in a message, then press ↓ three times.
+        selectors:
+          - '[data-tab-scroll-root][data-chat-prompt-nav]'
+        expect:
+          - The conversation scrolls; no focus ring appears around it.
+      - name: floating window history pick takes the scroll keys
+        path: /<workspace-slug>/issues
+        widths: [1440]
+        setup: the floating chat window open
+        steps:
+          - Open the window's chat history and pick a long chat.
+          - Scroll it up with the wheel and press ↓ three times.
+        selectors:
+          - '[data-mc="chat-window"] [data-tab-scroll-root]'
+        expect:
+          - The floating window's conversation scrolls.
+      - name: issue opened from the side panel takes the scroll keys
+        path: /<workspace-slug>/inbox
+        widths: [1440]
+        setup: the Work side panel lists at least two issues with long timelines
+        steps:
+          - Click an issue link in the side panel.
+          - Press ↓ four times.
+          - Click plain text in the issue body and press ↓ again.
+        selectors:
+          - '[data-tab-scroll-root^="main:"]'
+          - '[data-slot="space-panel"]'
+        expect:
+          - The issue scrolls both times; the side panel does not move.
+    drop_when: upstream gives the chat conversation and the issue page focusable scroll containers and moves focus to them when a chat or issue is opened from a list.
+
   - id: desktop-fork-build
     summary: Desktop app built from the fork (X.Y.Z-hoon.N, fork CLI bundled) that never auto-updates to the official release or runs its daemon from an official CLI.
     status: active
@@ -831,3 +1303,157 @@ features:
           - ShipIt is not running and no staged update is in ~/Library/Caches; updater-preferences.json says automaticUpdates false.
           - The app daemon reports cli_version X.Y.Z-hoon.N and the Mac mini runtimes are online.
     drop_when: upstream desktop builds can point updates and CLI downloads at a self-hosted source.
+
+  - id: focus-regions
+    summary: Keyboard focus regions (list, content, message box) with Buzz-style keys to jump between them (Mod+Shift+H / Mod+Shift+L / Mod+L, F8 / Shift+F8), Esc back to the message box, and arrow keys that step list rows only while the list has focus, on the chat page, the inbox and the issues pages.
+    status: active
+    kind: web-ui
+    cards: [CALA-332]
+    origin:
+      type: ours
+      commits: ["d20035726", "b55ac2c9e", "06ffc322d", "ab3b1f190", "0d72dbf1a", "34e4c4be2", "8fb27a82d"]
+    files:
+      - packages/core/shortcuts/definitions.ts
+      - packages/core/shortcuts/definitions.test.ts
+      - packages/core/shortcuts/index.ts
+      - packages/core/shortcuts/store.ts
+      - packages/core/shortcuts/store.test.ts
+      - apps/desktop/src/main/keyboard-shortcuts.test.ts
+      - packages/views/layout/focus-regions.ts
+      - packages/views/layout/focus-regions.test.ts
+      - packages/views/layout/use-focus-region-shortcuts.ts
+      - packages/views/layout/use-focus-region-shortcuts.test.tsx
+      - packages/views/layout/global-shortcuts.tsx
+      - packages/views/layout/list-column.tsx
+      - packages/views/layout/space-panel.tsx
+      - packages/views/layout/panel-nav.tsx
+      - packages/views/chat/components/chat-message-list.tsx
+      - packages/views/chat/components/chat-input.tsx
+      - packages/views/chat/components/chat-window.tsx
+      - packages/views/chat/components/chat-thread-list.tsx
+      - packages/views/chat/components/chat-thread-list.test.tsx
+      - packages/views/inbox/components/inbox-list.tsx
+      - packages/views/inbox/components/inbox-list-item.tsx
+      - packages/views/settings/components/keyboard-shortcuts-tab.tsx
+      - packages/views/issues/components/issue-detail.tsx
+      - packages/views/issues/components/comment-input.tsx
+      - packages/views/issues/components/list-view.tsx
+      - packages/views/issues/components/board-view.tsx
+      - packages/ui/styles/base.css
+      - packages/views/locales/en/settings.json
+      - packages/views/locales/es/settings.json
+      - packages/views/locales/fr/settings.json
+      - packages/views/locales/ja/settings.json
+      - packages/views/locales/ko/settings.json
+      - packages/views/locales/ru/settings.json
+      - packages/views/locales/zh-Hans/settings.json
+      - packages/views/locales/zh-Hant/settings.json
+      - apps/docs/content/docs/shortcuts.mdx
+      - apps/docs/content/docs/shortcuts.ko.mdx
+      - apps/docs/content/docs/shortcuts.ja.mdx
+      - apps/docs/content/docs/shortcuts.zh.mdx
+      - apps/docs/content/docs/shortcuts.zh-Hant.mdx
+      - apps/docs/content/docs/shortcuts.fr.mdx
+    watch:
+      - path: packages/core/shortcuts/**
+        why: shortcutMatchesEvent, the reserved-chord policy and the Settings store the five actions go through
+      - path: packages/views/layout/collection-list/collection-list.tsx
+        why: grid arrow/j/k handling and the page-level arrow capture when focus is on <body>
+      - path: packages/views/issues/components/issue-peek.tsx
+        why: document-level arrow and Esc handling for the board peek, which reads the same keys
+      - path: packages/views/editor/extensions/highlight.ts
+        why: Tiptap binds Mod+Shift+H to highlight; the region key yields to it only while text is selected
+      - path: packages/views/editor/use-lazy-editor.ts
+        why: the comment composer shell is clicked to mount the editor; a rename of its activate path breaks Focus message box on issues
+      - path: apps/desktop/src/main/keyboard-shortcuts.ts
+        why: a new main-process accelerator on Mod+L, Mod+Shift+H/L or F8 would swallow the key before the renderer
+      - path: packages/views/chat/components/use-prompt-navigation.ts
+        why: reads which chat (page or floating window) the caret is in from the same DOM; data-mc="chat-window" marks the window
+      - path: packages/views/layout/panels/sidebar-tree.tsx
+        why: tree rows carry panelRowAnchor, so their arrow Left/Right expand handlers sit inside the list region
+      - path: packages/views/common/take-keyboard-focus.ts
+        why: reading-pane-scroll-focus (CALA-330) focuses the same body scroller (chat-message-list.tsx, issue-detail.tsx) on open; the body region reuses that tabIndex=-1 box as its target
+      - path: packages/views/common/use-list-step-shortcut.ts
+        why: shortcut-list-step (CALA-328) opens the row above / below in chat-thread-list.tsx, inbox-list.tsx and space-panel.tsx, the same lists the region arrow keys step through
+      - path: packages/views/layout/rename-title-shortcut.ts
+        why: shortcut-rename-title (CALA-327) adds Mod+R next to the region keys in definitions.ts and the Settings recorder
+    upstream_equivalent:
+      symbols: [focusList, focusBody, focusComposer, focusNextRegion, focus-region]
+      keywords: [focus pane, focus region, F6 pane, move focus between panes, focus composer shortcut]
+    tests:
+      - vitest: packages/core/shortcuts/definitions.test.ts
+        name: ships Buzz's region keys in the desktop app
+      - vitest: packages/core/shortcuts/definitions.test.ts
+        name: leaves the two Safari-owned keys unassigned on the web instead of guessing a substitute
+      - vitest: packages/core/shortcuts/store.test.ts
+        name: resolves runtime-specific defaults and resets an override back to them
+      - vitest: packages/views/layout/focus-regions.test.ts
+        name: skips regions that are not rendered, inert, or aria-hidden (a collapsed list, the closed chat window)
+      - vitest: packages/views/layout/focus-regions.test.ts
+        name: cycles between list and body on a screen with no composer
+      - vitest: packages/views/layout/use-focus-region-shortcuts.test.tsx
+        name: jumps to the list, the body and the composer, each on its own key, even from inside an editor
+      - vitest: packages/views/layout/use-focus-region-shortcuts.test.tsx
+        name: sends Esc from the body or the list back to the composer, and leaves it alone elsewhere
+      - vitest: packages/views/layout/use-focus-region-shortcuts.test.tsx
+        name: steps through list rows with the arrow keys only while the list has focus
+      - vitest: packages/views/chat/components/chat-thread-list.test.tsx
+        name: takes Home and End to the ends of a long history, not of the rows mounted so far
+      - vitest: packages/views/chat/components/chat-thread-list.test.tsx
+        name: drops a pending End once focus has left the row it was pressed on
+      - vitest: packages/views/layout/use-focus-region-shortcuts.test.tsx
+        name: keeps the floating chat window's regions to itself
+      - vitest: packages/views/layout/use-focus-region-shortcuts.test.tsx
+        name: leaves Esc to an open issue peek, which closes on it
+      - vitest: packages/views/layout/use-focus-region-shortcuts.test.tsx
+        name: lets Settings record a region key instead of moving focus
+      - vitest: apps/desktop/src/main/keyboard-shortcuts.test.ts
+        name: passes the region chords through on every platform
+    scenarios:
+      - name: chat page by keyboard only
+        path: /<workspace-slug>/chat
+        widths: [1440]
+        setup: the desktop app (or the web app with Focus list / Focus message box bound in Settings), a chat open with a long conversation
+        steps:
+          - Click into the composer.
+          - Press F8, then ArrowDown three times.
+          - Press Shift+F8, then ArrowDown.
+          - Press Escape.
+          - Press Mod+Shift+H, ArrowDown, Enter.
+        selectors:
+          - '[data-focus-region]'
+          - '[data-focus-flash]'
+        expect:
+          - F8 outlines the chat list for a moment and focus sits on the open chat; ArrowDown moves focus down the list and does not scroll the conversation.
+          - Shift+F8 from the list wraps to the composer; F8 again goes list, content, composer in order.
+          - With focus on the content, ArrowDown scrolls the conversation and the list does not move.
+          - Escape from the content puts the caret back in the composer.
+          - Mod+Shift+H focuses the open chat in the list, ArrowDown moves to the next row and Enter opens it.
+      - name: inbox and issue by keyboard only
+        path: /<workspace-slug>/inbox
+        widths: [1440]
+        setup: an inbox with at least three notifications for issues, one open
+        steps:
+          - Press Mod+Shift+H, ArrowDown, Enter.
+          - Press Mod+Shift+L, then PageDown.
+          - Press Mod+L, then Escape.
+        selectors:
+          - '[data-slot="space-panel"][data-focus-region="list"]'
+          - '[data-focus-region="body"]'
+          - '[data-mc="comment-composer"]'
+        expect:
+          - Mod+Shift+H lands on the open notification in the Work panel; ArrowDown and Enter open the next one.
+          - Mod+Shift+L outlines the issue body; PageDown scrolls the issue, not the panel.
+          - Mod+L opens the comment editor with the caret in it; Escape there does nothing to focus.
+      - name: browser keys
+        path: /<workspace-slug>/chat
+        widths: [1440]
+        setup: the web app in Safari and in Chrome
+        steps:
+          - Press F8, Shift+F8 and Mod+Shift+L.
+          - Open Settings, then Shortcuts.
+        selectors: []
+        expect:
+          - All three move focus in both browsers.
+          - Focus list and Focus message box are unassigned on the web and can be bound there.
+    drop_when: upstream ships keyboard focus regions or pane-focus shortcuts for list-and-detail pages.
