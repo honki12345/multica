@@ -327,7 +327,7 @@ features:
       - path: packages/ui/components/ui/dropdown-menu.tsx
         why: the +N menu
     upstream_equivalent:
-      symbols: [maxChipsForWidth, useMaxChips, chipsThatFit, chat-bar-chips]
+      symbols: [maxChipsForWidth, useMaxChips, chat-bar-chips]
       keywords: [chat bar overflow, chat chips, bottom bar chips]
     tests:
       - vitest: packages/views/chat/components/chat-bar.test.tsx
@@ -346,6 +346,8 @@ features:
         name: has no cap on how many chips fit
       - vitest: packages/views/chat/components/chat-bar-sessions.test.ts
         name: counts the open chat's chip first when it would be folded away
+      - vitest: packages/views/chat/components/use-chat-window-anchor.test.tsx
+        name: follows its chip when the chips beside it change width or +N comes and goes
       - vitest: packages/views/layout/bottom-bar.test.tsx
     scenarios:
       - name: as many chips as fit, then +N

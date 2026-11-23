@@ -347,58 +347,60 @@ export function ChatBar() {
   return (
     <div data-slot="chat-bar" className="relative flex min-w-0 flex-1 items-center justify-end gap-0.5">
       {/* The room the chips get: whatever the bar's other content leaves. */}
-      <div ref={roomRef} data-slot="chat-bar-room" className="flex min-w-0 flex-1 items-center justify-end gap-0.5">
-        {visible.length > 0 && (
-          <div data-slot="chat-bar-chips" className="flex shrink-0 items-center gap-0.5">
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              modifiers={DRAG_MODIFIERS}
-              autoScroll={false}
-              onDragStart={startDrag}
-              onDragEnd={onDragEnd}
-              onDragCancel={settleDrag}
-            >
-              <SortableContext items={chipIdList} strategy={horizontalListSortingStrategy}>
-                {visible.map((item) => {
-                  const title = titleOf(item.session);
-                  return (
-                    <SortableChip
-                      key={item.session.id}
-                      item={item}
-                      title={title}
-                      state={stateOf(item)}
-                      closeLabel={t(($) => $.bar.close_chip, { title })}
-                      onToggle={() => toggleSession(item.session)}
-                      onClose={() => closeChip(item)}
-                    />
-                  );
-                })}
-              </SortableContext>
-            </DndContext>
-          </div>
-        )}
-        {overflow.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger aria-label={t(($) => $.bar.more, { count: overflow.length })} className={MORE_CLASS}>
-              +{overflow.length}
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" side="top" sideOffset={8} className="max-w-72 min-w-48">
-              {overflow.map((item) => (
-                <DropdownMenuItem
-                  key={item.session.id}
-                  data-chat-anchor-trigger
-                  onClick={() => openSession(item.session)}
-                >
-                  <span className="flex shrink-0 [&_svg]:size-3.5">
-                    <SessionMark item={item} />
-                  </span>
-                  <span className="min-w-0 truncate">{titleOf(item.session)}</span>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+      <div ref={roomRef} data-slot="chat-bar-room" className="flex min-w-0 flex-1 items-center justify-end">
+        <div data-slot="chat-bar-chip-group" className="flex shrink-0 items-center gap-0.5">
+          {visible.length > 0 && (
+            <div data-slot="chat-bar-chips" className="flex shrink-0 items-center gap-0.5">
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                modifiers={DRAG_MODIFIERS}
+                autoScroll={false}
+                onDragStart={startDrag}
+                onDragEnd={onDragEnd}
+                onDragCancel={settleDrag}
+              >
+                <SortableContext items={chipIdList} strategy={horizontalListSortingStrategy}>
+                  {visible.map((item) => {
+                    const title = titleOf(item.session);
+                    return (
+                      <SortableChip
+                        key={item.session.id}
+                        item={item}
+                        title={title}
+                        state={stateOf(item)}
+                        closeLabel={t(($) => $.bar.close_chip, { title })}
+                        onToggle={() => toggleSession(item.session)}
+                        onClose={() => closeChip(item)}
+                      />
+                    );
+                  })}
+                </SortableContext>
+              </DndContext>
+            </div>
+          )}
+          {overflow.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger aria-label={t(($) => $.bar.more, { count: overflow.length })} className={MORE_CLASS}>
+                +{overflow.length}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" side="top" sideOffset={8} className="max-w-72 min-w-48">
+                {overflow.map((item) => (
+                  <DropdownMenuItem
+                    key={item.session.id}
+                    data-chat-anchor-trigger
+                    onClick={() => openSession(item.session)}
+                  >
+                    <span className="flex shrink-0 [&_svg]:size-3.5">
+                      <SessionMark item={item} />
+                    </span>
+                    <span className="min-w-0 truncate">{titleOf(item.session)}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
       </div>
       {/* Every chip at its own width, and the widest "+N", out of sight. */}
       <div aria-hidden inert className="pointer-events-none invisible absolute top-0 left-0 size-0 overflow-hidden">

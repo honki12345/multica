@@ -1,6 +1,6 @@
 "use client";
 
-// Modified by honki12345, 2026: anchor the chat window to a chip in the chip strip (CALA-72); follow it when chips are reordered (CALA-300).
+// Modified by honki12345, 2026: anchor the chat window to a chip in the chip strip (CALA-72); follow it when chips are reordered (CALA-300) or moved by +N (CALA-350).
 
 import { useLayoutEffect, useRef, useState } from "react";
 
@@ -11,6 +11,8 @@ export const CHAT_WINDOW_INSET = 8;
 const CHAT_BAR_SELECTOR = '[data-slot="chat-bar"]';
 /** The strip of chips inside it. */
 const CHAT_BAR_CHIPS_SELECTOR = '[data-slot="chat-bar-chips"]';
+/** The chips and their "+N" button, right-aligned in the bar. */
+const CHAT_BAR_CHIP_GROUP_SELECTOR = '[data-slot="chat-bar-chip-group"]';
 /** The bottom-bar control the open window belongs to. */
 const PRESSED_ANCHOR_SELECTOR = '[data-chat-anchor][aria-pressed="true"]';
 /** Anything in the bar that opens or switches the window. */
@@ -125,10 +127,14 @@ export function useChatWindowAnchor(
     observer.observe(container);
     // A chip leaving the bar (its chat was read) shifts the ones beside it.
     // Follow the control the window is above, but not a change of control.
+    // The bar fills its row, so the chips' group is watched too: "+N" coming
+    // or going, or a chip changing width, moves the chips but not the bar.
     const barObserver = new ResizeObserver(() => {
       if (pressedAnchor()?.dataset.chatAnchor === placedAt) measure();
     });
     if (barForChips) barObserver.observe(barForChips);
+    const chipGroup = document.querySelector(CHAT_BAR_CHIP_GROUP_SELECTOR);
+    if (chipGroup) barObserver.observe(chipGroup);
 
     return () => {
       measureRef.current = null;
