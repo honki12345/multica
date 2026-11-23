@@ -1333,7 +1333,7 @@ features:
     cards: [CALA-332]
     origin:
       type: ours
-      commits: ["d20035726", "b55ac2c9e", "06ffc322d", "ab3b1f190", "0d72dbf1a"]
+      commits: ["d20035726", "b55ac2c9e", "06ffc322d", "ab3b1f190", "0d72dbf1a", "34e4c4be2"]
     files:
       - packages/core/shortcuts/definitions.ts
       - packages/core/shortcuts/definitions.test.ts
@@ -1353,6 +1353,7 @@ features:
       - packages/views/chat/components/chat-input.tsx
       - packages/views/chat/components/chat-window.tsx
       - packages/views/chat/components/chat-thread-list.tsx
+      - packages/views/chat/components/chat-thread-list.test.tsx
       - packages/views/inbox/components/inbox-list.tsx
       - packages/views/inbox/components/inbox-list-item.tsx
       - packages/views/settings/components/keyboard-shortcuts-tab.tsx
@@ -1418,6 +1419,8 @@ features:
         name: sends Esc from the body or the list back to the composer, and leaves it alone elsewhere
       - vitest: packages/views/layout/use-focus-region-shortcuts.test.tsx
         name: steps through list rows with the arrow keys only while the list has focus
+      - vitest: packages/views/chat/components/chat-thread-list.test.tsx
+        name: takes Home and End to the ends of a long history, not of the rows mounted so far
       - vitest: packages/views/layout/use-focus-region-shortcuts.test.tsx
         name: keeps the floating chat window's regions to itself
       - vitest: packages/views/layout/use-focus-region-shortcuts.test.tsx
