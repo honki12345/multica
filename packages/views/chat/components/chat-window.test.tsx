@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// Modified by honki12345, 2026: picking a chat from the window's history hands keyboard focus to the conversation (CALA-330).
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen } from "@testing-library/react";
@@ -6,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createChatStore, registerChatStore, useChatStore } from "@multica/core/chat";
 import { chatSessionsOptions } from "@multica/core/chat/queries";
 import type { ChatSession } from "@multica/core/types";
+import type { ReactNode } from "react";
 import { I18nProvider } from "@multica/core/i18n/react";
 import enCommon from "../../locales/en/common.json";
 import enChat from "../../locales/en/chat.json";
@@ -59,7 +61,15 @@ vi.mock("./use-chat-resize", () => ({
   }),
 }));
 vi.mock("./use-chat-context-items", () => ({ useChatContextItems: () => [] }));
-vi.mock("./chat-window-messages", () => ({ ChatWindowMessages: () => null }));
+const messagesProps = vi.hoisted(() => ({
+  last: null as { focusRequested?: boolean; onFocusRequestApplied?: () => void } | null,
+}));
+vi.mock("./chat-window-messages", () => ({
+  ChatWindowMessages: (props: { focusRequested?: boolean; onFocusRequestApplied?: () => void }) => {
+    messagesProps.last = props;
+    return null;
+  },
+}));
 vi.mock("../../common/app-requests", () => ({ ChatAppRequests: () => null }));
 const chatInputProps = vi.hoisted(() => ({ last: null as { hidden?: boolean } | null }));
 vi.mock("./chat-input", () => ({
@@ -70,7 +80,15 @@ vi.mock("./chat-input", () => ({
 }));
 vi.mock("./chat-queue", () => ({ ChatQueue: () => null }));
 vi.mock("./chat-empty-state", () => ({ EmptyState: () => null }));
-vi.mock("./session-history-list", () => ({ SessionHistoryList: () => null }));
+vi.mock("./session-history-list", () => ({
+  SessionHistoryList: ({
+    sessions,
+    renderRow,
+  }: {
+    sessions: ChatSession[];
+    renderRow: (s: ChatSession) => ReactNode;
+  }) => <div>{sessions.map((s) => <div key={s.id}>{renderRow(s)}</div>)}</div>,
+}));
 vi.mock("./chat-resize-handles", () => ({ ChatResizeHandles: () => null }));
 vi.mock("./offline-banner", () => ({ OfflineBanner: () => null }));
 vi.mock("./no-agent-banner", () => ({ NoAgentBanner: () => null }));
@@ -94,9 +112,16 @@ const session: ChatSession = {
   updated_at: "2026-11-01T00:00:00Z",
 };
 
-function renderWindow() {
+const otherSession: ChatSession = {
+  ...session,
+  id: "session-2",
+  title: "Release notes",
+  updated_at: "2026-10-31T00:00:00Z",
+};
+
+function renderWindow(sessions: ChatSession[] = [session]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  qc.setQueryData(chatSessionsOptions("ws-1").queryKey, [session]);
+  qc.setQueryData(chatSessionsOptions("ws-1").queryKey, sessions);
   return render(
     <QueryClientProvider client={qc}>
       <I18nProvider locale="en" resources={TEST_RESOURCES}>
@@ -180,5 +205,20 @@ describe("ChatWindow minimize and close", () => {
     fireEvent.click(screen.getByRole("button", { name: enChat.window.minimize_tooltip }));
 
     expect(chatInputProps.last?.hidden).toBe(true);
+  });
+});
+
+describe("ChatWindow keyboard focus after picking a chat", () => {
+  it("asks the conversation to take focus when a chat is picked from the history", () => {
+    renderWindow([session, otherSession]);
+    expect(messagesProps.last?.focusRequested).not.toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: /Roadmap/ }));
+    fireEvent.click(screen.getByText("Release notes"));
+
+    expect(useChatStore.getState().activeSessionId).toBe(otherSession.id);
+    expect(messagesProps.last?.focusRequested).toBe(true);
+    act(() => messagesProps.last?.onFocusRequestApplied?.());
+    expect(messagesProps.last?.focusRequested).toBe(false);
   });
 });
