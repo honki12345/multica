@@ -1333,7 +1333,7 @@ features:
     cards: [CALA-332]
     origin:
       type: ours
-      commits: ["d20035726"]
+      commits: ["d20035726", "b55ac2c9e", "06ffc322d", "ab3b1f190", "0d72dbf1a"]
     files:
       - packages/core/shortcuts/definitions.ts
       - packages/core/shortcuts/definitions.test.ts
@@ -1392,6 +1392,12 @@ features:
         why: reads which chat (page or floating window) the caret is in from the same DOM; data-mc="chat-window" marks the window
       - path: packages/views/layout/panels/sidebar-tree.tsx
         why: tree rows carry panelRowAnchor, so their arrow Left/Right expand handlers sit inside the list region
+      - path: packages/views/common/take-keyboard-focus.ts
+        why: reading-pane-scroll-focus (CALA-330) focuses the same body scroller (chat-message-list.tsx, issue-detail.tsx) on open; the body region reuses that tabIndex=-1 box as its target
+      - path: packages/views/common/use-list-step-shortcut.ts
+        why: shortcut-list-step (CALA-328) opens the row above / below in chat-thread-list.tsx, inbox-list.tsx and space-panel.tsx, the same lists the region arrow keys step through
+      - path: packages/views/layout/rename-title-shortcut.ts
+        why: shortcut-rename-title (CALA-327) adds Mod+R next to the region keys in definitions.ts and the Settings recorder
     upstream_equivalent:
       symbols: [focusList, focusBody, focusComposer, focusNextRegion, focus-region]
       keywords: [focus pane, focus region, F6 pane, move focus between panes, focus composer shortcut]
