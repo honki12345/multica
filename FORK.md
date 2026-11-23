@@ -17,8 +17,8 @@ Multica; the upstream project lives at https://github.com/multica-ai/multica.
 | Item | Value |
 |---|---|
 | Upstream remote | `upstream` → `https://github.com/multica-ai/multica.git` |
-| Current upstream base tag | `v0.11.1` (`e1fe10d6694848e35dd1aa00e08cd11d93e545ac`), merged into `main` |
-| Previous base tags | `v0.11.0` (`cb190810a659c1a61c4a86d9f6ecfc9df4b086d8`), `v0.10.0` (`2fcb424b72b024f65161809081009063846ea44d`), `v0.9.0` (`8cd8a2db978d532d8627c78cd29f05deab6c6f17`) |
+| Current upstream base tag | `v0.12.0` (`5bd6ab5c2f3ca0b877efe03d22bc2b1a8b0a9be7`), merged into `main` |
+| Previous base tags | `v0.11.1` (`e1fe10d6694848e35dd1aa00e08cd11d93e545ac`), `v0.11.0` (`cb190810a659c1a61c4a86d9f6ecfc9df4b086d8`), `v0.10.0` (`2fcb424b72b024f65161809081009063846ea44d`), `v0.9.0` (`8cd8a2db978d532d8627c78cd29f05deab6c6f17`) |
 | Fork trunk | `main` |
 | First fork release | `v0.9.0-hoon.1` |
 

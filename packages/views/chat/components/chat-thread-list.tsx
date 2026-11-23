@@ -89,7 +89,9 @@ const DRAG_MODIFIERS = [restrictToVerticalAxis, restrictToFirstScrollableAncesto
 // over the pinned rows the list shows (see pointerOverPinnedRows): the
 // modifiers keep the row's own box inside the list, so its box alone cannot
 // tell a release outside the list. The visible area comes from whichever
-// pinned row is mounted, not the dragged one, which may have scrolled out.
+// pinned row is mounted, not the dragged one, which may have scrolled out;
+// the list's scroller is its own element up to SESSION_LIST_VIRTUALIZE_AFTER
+// rows and Virtuoso's past it.
 // With the keyboard there is no pointer, so the nearest pinned row the moved
 // box overlaps wins.
 const pinnedRowCollision: CollisionDetection = (args) => {
@@ -97,7 +99,10 @@ const pinnedRowCollision: CollisionDetection = (args) => {
   if (pointer) {
     const rows = droppableContainers.flatMap((c) => droppableRects.get(c.id) ?? []);
     const scroller = droppableContainers
-      .map((c) => c.node.current?.closest("[data-virtuoso-scroller]"))
+      .map((c) => {
+        const node = c.node.current;
+        return node?.closest("[data-chat-session-scroller]") ?? node?.closest("[data-virtuoso-scroller]");
+      })
       .find((el) => el != null);
     const viewport = scroller ? scroller.getBoundingClientRect() : null;
     return pointerOverPinnedRows(pointer, rows, viewport) ? closestCenter(args) : [];
@@ -193,6 +198,7 @@ export function ChatThreadList({
   onArchive,
   view: controlledView,
   onViewChange,
+  onPrefetchSession,
 }: {
   sessions: ChatSession[];
   agents: Agent[];
@@ -208,6 +214,8 @@ export function ChatThreadList({
    */
   view?: ChatThreadListView;
   onViewChange?: (view: ChatThreadListView) => void;
+  /** Warm a session's messages and context on pointer hover or keyboard focus. */
+  onPrefetchSession?: (sessionId: string) => void;
 }) {
   const { t } = useT("chat");
   const { t: tLayout } = useT("layout");
@@ -269,13 +277,18 @@ export function ChatThreadList({
   // row into view. Virtuoso's call is a no-op while the row is visible, so a
   // click leaves the list where it is; mounting keeps its scroll position.
   const listRef = useRef<VirtuosoHandle>(null);
+  const rowNodesRef = useRef(new Map<string, HTMLElement>());
   const shownSessions = view === "archived" ? archivedSessions : historySessions;
   const activeIndex = shownSessions.findIndex((s) => s.id === activeSessionId);
   const shownActiveRef = useRef(activeSessionId);
   useEffect(() => {
     if (shownActiveRef.current === activeSessionId) return;
     shownActiveRef.current = activeSessionId;
-    if (activeIndex >= 0) listRef.current?.scrollIntoView({ index: activeIndex });
+    if (activeIndex < 0) return;
+    // Short lists render every row without Virtuoso (animateExit), so there
+    // is no handle; the mounted row scrolls itself.
+    if (listRef.current) listRef.current.scrollIntoView({ index: activeIndex });
+    else if (activeSessionId) rowNodesRef.current.get(activeSessionId)?.scrollIntoView({ block: "nearest" });
   }, [activeSessionId, activeIndex]);
 
   // Home / End reach the ends of the whole list. The list is windowed, so the
@@ -283,7 +296,6 @@ export function ChatThreadList({
   // scroll it in by index and focus its row once it mounts. The wait is only
   // honoured while focus is still where the key was pressed (or fell to <body>
   // when that row scrolled out); a reader who has moved on keeps their focus.
-  const rowNodesRef = useRef(new Map<string, HTMLElement>());
   const pendingEndRef = useRef<{ id: string; from: HTMLElement } | null>(null);
   useEffect(() => {
     pendingEndRef.current = null;
@@ -309,6 +321,7 @@ export function ChatThreadList({
     listRef.current?.scrollToIndex({ index, align: key === "Home" ? "start" : "end" });
     const mounted = rowNodesRef.current.get(id);
     pendingEndRef.current = mounted ? null : { id, from };
+    if (!listRef.current) mounted?.scrollIntoView({ block: "nearest" });
     mounted?.focus({ preventScroll: true });
   };
 
@@ -618,12 +631,19 @@ export function ChatThreadList({
           bindRowNode(session.id, node);
         }}
         style={drag.style}
+        data-chat-thread-row={session.id}
         aria-current={isCurrent ? "true" : undefined}
         aria-describedby={drag.describedBy}
         data-focus-row=""
         {...(isCurrent ? { "data-focus-region-target": "" } : {})}
         tabIndex={0}
         onPointerDown={drag.onPointerDown}
+        onPointerEnter={() => {
+          if (!isConfirmingAction) onPrefetchSession?.(session.id);
+        }}
+        onFocus={() => {
+          if (!isConfirmingAction) onPrefetchSession?.(session.id);
+        }}
         onClick={(e) => {
           if (isConfirmingAction || isRenaming || e.defaultPrevented) return;
           // Plain click keeps the master-detail selection. On web, a modifier
@@ -866,7 +886,15 @@ export function ChatThreadList({
           </span>
         </button>
         <div className="min-h-0 flex-1">
-          {withDrag(<SessionHistoryList sessions={archivedSessions} renderRow={renderRow} listRef={listRef} />)}
+          {withDrag(
+            <SessionHistoryList
+              key="archived"
+              sessions={archivedSessions}
+              renderRow={renderRow}
+              listRef={listRef}
+              animateExit
+            />,
+          )}
         </div>
         {rowContextMenu}
       </div>
@@ -904,10 +932,12 @@ export function ChatThreadList({
     <>
       {withDrag(
         <SessionHistoryList
+          key="history"
           sessions={historySessions}
           renderRow={renderRow}
           footer={archivedEntry}
           listRef={listRef}
+          animateExit
         />,
       )}
       {rowContextMenu}

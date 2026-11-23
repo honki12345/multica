@@ -19,6 +19,10 @@ const h = vi.hoisted(() => ({
   team: { working: [], stuck: [], byAgent: new Map() } as TeamStatus,
 }));
 
+vi.mock("@multica/core/permissions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@multica/core/permissions")>()),
+  useIsGuest: () => false,
+}));
 vi.mock("@multica/core/chat", () => ({
   useChatStore: Object.assign(
     (selector: (state: typeof h.chat) => unknown) => selector(h.chat),
@@ -86,7 +90,7 @@ describe("AppBottomBar", () => {
     renderBar();
 
     expect(
-      screen.getByRole("link", { name: "3 tasks waiting on an offline runtime" }),
+      screen.getByRole("link", { name: "3 runs waiting on an offline runtime" }),
     ).toHaveAttribute("href", "/acme/agents");
   });
 
@@ -95,7 +99,7 @@ describe("AppBottomBar", () => {
     h.team.byAgent = new Map([["a1", { queuedCount: 1 }]]);
     renderBar();
 
-    const link = screen.getByRole("link", { name: "1 task waiting on an offline runtime" });
+    const link = screen.getByRole("link", { name: "1 run waiting on an offline runtime" });
     let node: HTMLElement | null = link.parentElement;
     const footer = screen.getByRole("contentinfo");
     while (node && node !== footer) {

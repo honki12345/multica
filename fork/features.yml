@@ -817,7 +817,7 @@ features:
     drop_when: upstream ships keys that step a chat between the reader's own messages and wakeup turns.
 
   - id: shortcut-list-step
-    summary: Mod+Shift+[ / ] open the chat or notification above / below the open one, from anywhere on the page (composer and comment boxes included, which keep the caret), on the Chat page, the Inbox page and an issue opened from the Work panel's Inbox section, list on screen or not.
+    summary: "Mod+Shift+[ / ] open the chat or notification above / below the open one, from anywhere on the page (composer and comment boxes included, which keep the caret), on the Chat page and the Inbox page (where every Work panel Inbox row opens since upstream #11259), list on screen or not."
     status: active
     kind: web-ui
     cards: [CALA-328]
@@ -841,10 +841,6 @@ features:
       - packages/views/inbox/components/inbox-page.test.tsx
       - packages/views/issues/components/comment-input.tsx
       - packages/views/issues/components/comment-composers.test.tsx
-      - packages/views/layout/panels/work-inbox-list-step.tsx
-      - packages/views/layout/panels/work-inbox-list-step.test.tsx
-      - packages/views/layout/space-panel.tsx
-      - packages/views/layout/space-panel.test.tsx
       - packages/views/locales/en/settings.json
       - packages/views/locales/es/settings.json
       - packages/views/locales/fr/settings.json
@@ -871,19 +867,11 @@ features:
       - path: packages/views/editor/use-lazy-editor.ts
         why: activate() is how the next issue's comment box takes the caret
       - path: packages/views/layout/panels/inbox-section.tsx
-        why: useInboxSectionRows and the row click (requestLanding, rememberSidebarIssue) a step repeats
-      - path: packages/views/layout/panels/work-panel.tsx
-        why: rememberClickedIssue records an Inbox row click by issue id (upstream PR 10903, in v0.11.1); a step records the same through the selection store
+        why: every row opens on the Inbox page (`inboxRowHref`), whose list-step keys walk the section's rows on desktop
       - path: packages/views/inbox/components/use-filtered-inbox-rows.ts
         why: the filtered rows, in order, that a step walks on an issue opened from the section
-      - path: packages/views/inbox/components/use-sidebar-inbox-issue.ts
-        why: fromInbox decides whether the open issue takes the keys
       - path: packages/views/inbox/components/inbox-display.ts
         why: inboxRowHref is where a step lands, as a row click does
-      - path: packages/views/issues/components/issue-detail-route.tsx
-        why: shows only a skeleton while the next issue loads, which is why the Work Inbox keys live with the shell
-      - path: packages/views/issues/actions/issue-inbox-actions.tsx
-        why: the issue header that lists the same rows; a list-step listener added there would fire alongside the shell's
       - path: packages/core/inbox/open-row.ts
         why: inboxRowKey, the key both inbox lists step by
       - path: packages/views/layout/global-shortcuts.tsx
@@ -916,6 +904,8 @@ features:
         name: leaves the keys to the floating chat window, and to Go back / Go forward
       - vitest: packages/views/chat/components/chat-thread-list.scroll.test.tsx
         name: brings a chat opened from elsewhere on the page into view, and leaves the list alone on mount
+      - vitest: packages/views/chat/components/chat-thread-list.scroll.test.tsx
+        name: scrolls the row itself in a short list, which renders without Virtuoso
       - vitest: packages/views/inbox/components/inbox-page.test.tsx
         name: opens the notification below and above on desktop, where the page shows only the detail
       - vitest: packages/views/inbox/components/inbox-page.test.tsx
@@ -924,16 +914,6 @@ features:
         name: steps within the archive in the archived view
       - vitest: packages/views/inbox/components/inbox-list.test.tsx
         name: scrolls a row selected from outside the list into view, and leaves the list alone on mount
-      - vitest: packages/views/layout/panels/work-inbox-list-step.test.tsx
-        name: opens the notification below and above, as a row click would, while focus stays in a comment box
-      - vitest: packages/views/layout/panels/work-inbox-list-step.test.tsx
-        name: counts every press of a burst, the route still on the issue before or already on the next one loading
-      - vitest: packages/views/layout/panels/work-inbox-list-step.test.tsx
-        name: steps on from an issue whose page has not loaded, named by its identifier
-      - vitest: packages/views/layout/panels/work-inbox-list-step.test.tsx
-        name: steps on from a notification archived elsewhere, whose row the section keeps in place
-      - vitest: packages/views/layout/panels/work-inbox-list-step.test.tsx
-        name: stops at the last notification and still claims the key
       - vitest: packages/views/issues/components/comment-composers.test.tsx
         name: takes the caret back in the next issue when the press came from the comment box
       - vitest: packages/views/issues/components/comment-composers.test.tsx
@@ -956,10 +936,10 @@ features:
         expect:
           - Each press opens the chat one row below or above, across the pinned boundary, and the caret stays in the composer.
           - At the last chat further presses do nothing.
-      - name: step through the inbox from the issue
-        path: /<workspace-slug>/issues/<issue-id>
+      - name: step through the inbox from the comment box
+        path: /<workspace-slug>/inbox
         widths: [1440]
-        setup: an issue opened from the Work panel's Inbox section with at least three notifications listed
+        setup: a notification opened from the Work panel's Inbox section with at least three notifications listed
         steps:
           - Click into the comment box of the open issue.
           - Press Cmd+Shift+] twice, then Cmd+Shift+[ once.
@@ -967,7 +947,7 @@ features:
           - '[data-inbox-row] [data-active="true"]'
           - '[data-mc="comment-composer"]'
         expect:
-          - Each press opens the issue of the notification one row below or above, the Inbox row lights follow, and no notification is archived.
+          - Each press opens the notification one row below or above on the Inbox page, the Inbox row lights follow, and no notification is archived.
           - The caret is in the comment box of each issue opened.
       - name: listed in Settings
         path: /<workspace-slug>/settings

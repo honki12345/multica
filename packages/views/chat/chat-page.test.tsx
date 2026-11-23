@@ -18,6 +18,26 @@ import {
 
 const TEST_RESOURCES = { en: { common: enCommon, chat: enChat } };
 
+const lastMessageListProps = vi.hoisted(() => ({
+  current: null as null | { revealKey?: string | null; enterTransition?: string | null },
+}));
+const mockArchiveOutcome = vi.hoisted(() => ({
+  current: { moved: false } as
+    | { moved: false }
+    | { moved: true; targetSessionId: string; direction: "next" | "prev" }
+    | { moved: true; targetSessionId: null; direction: null },
+}));
+const mockHasMessages = vi.hoisted(() => ({ current: false }));
+const mockAdvanceSelectionAfterArchive = vi.hoisted(() =>
+  vi.fn(() => {
+    const outcome = mockArchiveOutcome.current;
+    if (outcome.moved) mockSetActiveSession(outcome.targetSessionId);
+    return outcome;
+  }),
+);
+const mockArchiveSession = vi.hoisted(() => vi.fn());
+const mockSelectSession = vi.hoisted(() => vi.fn());
+
 // These tests target the page-level URL wiring (`?agent=` / `?session=`), so
 // the conversation internals are stubbed and the controller is replaced with
 // a ref-driven fake the tests can steer. The thread-list stub stays
@@ -27,9 +47,28 @@ const messageListProps = vi.hoisted(() => ({
   last: null as { focusRequested?: boolean; onFocusRequestApplied?: () => void } | null,
 }));
 vi.mock("./components/chat-message-list", () => ({
-  ChatMessageList: (props: { focusRequested?: boolean; onFocusRequestApplied?: () => void }) => {
-    messageListProps.last = props;
-    return <div>chat-message-list</div>;
+  ChatMessageList: ({
+    revealKey,
+    enterTransition,
+    focusRequested,
+    onFocusRequestApplied,
+  }: {
+    revealKey?: string | null;
+    enterTransition?: string | null;
+    focusRequested?: boolean;
+    onFocusRequestApplied?: () => void;
+  }) => {
+    messageListProps.last = { focusRequested, onFocusRequestApplied };
+    lastMessageListProps.current = { revealKey, enterTransition };
+    return (
+      <div
+        data-testid="chat-message-list"
+        data-reveal-key={revealKey ?? ""}
+        data-enter-transition={enterTransition ?? ""}
+      >
+        chat-message-list
+      </div>
+    );
   },
   ChatMessageSkeleton: () => <div>chat-message-skeleton</div>,
 }));
@@ -38,13 +77,17 @@ vi.mock("./components/chat-input", () => ({
 }));
 vi.mock("./components/chat-thread-list", () => ({
   ChatThreadList: ({
+    activeSessionId,
     onSelectSession,
     onViewChange,
+    onArchive,
   }: {
+    activeSessionId: string | null;
     onSelectSession: (s: { id: string; agent_id: string }) => void;
     onViewChange?: (view: "history" | "archived") => void;
+    onArchive: (s: { id: string; agent_id: string }) => void;
   }) => (
-    <>
+    <div>
       <button
         type="button"
         onClick={() => onSelectSession({ id: "session-9", agent_id: "agent-9" })}
@@ -57,11 +100,38 @@ vi.mock("./components/chat-thread-list", () => ({
       <button type="button" onClick={() => onViewChange?.("history")}>
         close-archive
       </button>
-    </>
+      <button
+        type="button"
+        onClick={() =>
+          onArchive({ id: activeSessionId ?? "session-1", agent_id: "agent-1" })
+        }
+      >
+        archive-active-thread
+      </button>
+    </div>
   ),
 }));
+const mockCurrentSession = vi.hoisted(() => ({
+  current: null as { id: string; agent_id: string } | null,
+}));
+
 vi.mock("./components/chat-session-header", () => ({
-  ChatSessionHeader: () => <div>chat-session-header</div>,
+  ChatSessionHeader: ({
+    session,
+    onArchive,
+  }: {
+    session: { id: string; agent_id: string };
+    onArchive?: (s: { id: string; agent_id: string }) => void;
+  }) => (
+    <div>
+      <span>chat-session-header</span>
+      {onArchive && (
+        <button type="button" onClick={() => onArchive(session)}>
+          archive-from-header
+        </button>
+      )}
+    </div>
+  ),
 }));
 vi.mock("./components/chat-wakeups", () => ({
   ChatWakeupStrip: () => null,
@@ -124,8 +194,6 @@ const storeListeners = vi.hoisted(() => new Set<() => void>());
 const availableAgentsRef = vi.hoisted(() => ({ current: [] as Agent[] }));
 const agentsSettledRef = vi.hoisted(() => ({ current: true }));
 const sessionsRef = vi.hoisted(() => ({ current: [] as ChatSession[] }));
-const mockHandleSelectSession = vi.hoisted(() => vi.fn());
-const hasMessagesRef = vi.hoisted(() => ({ current: false }));
 const mockStartNewChat = vi.hoisted(() => vi.fn());
 const mockToastError = vi.hoisted(() => vi.fn());
 const mockSetActiveSession = vi.hoisted(() =>
@@ -166,7 +234,7 @@ vi.mock("./components/use-chat-controller", async () => {
         () => storeRef.current,
       ).activeSessionId,
       selectedAgentId: null,
-      currentSession: null,
+      currentSession: mockCurrentSession.current,
       isSessionArchived: false,
       isAgentArchived: false,
       isAgentRuntimeBound: true,
@@ -177,7 +245,7 @@ vi.mock("./components/use-chat-controller", async () => {
       pendingTask: null,
       pendingTaskId: null,
       showSkeleton: false,
-      hasMessages: hasMessagesRef.current,
+      hasMessages: mockHasMessages.current,
       firstItemIndex: 0,
       hasOlderMessages: false,
       isFetchingOlderMessages: false,
@@ -190,9 +258,9 @@ vi.mock("./components/use-chat-controller", async () => {
       handleUploadFile: vi.fn(),
       handleNewChat: vi.fn(),
       handleStartNewChat: mockStartNewChat,
-      handleSelectSession: mockHandleSelectSession,
-      advanceSelectionAfterArchive: vi.fn(),
-      archiveSession: vi.fn(),
+      handleSelectSession: mockSelectSession,
+      advanceSelectionAfterArchive: mockAdvanceSelectionAfterArchive,
+      archiveSession: mockArchiveSession,
       setActiveSession: mockSetActiveSession,
       setSelectedAgentId: vi.fn(),
     }),
@@ -280,10 +348,13 @@ beforeEach(() => {
   availableAgentsRef.current = [agent];
   agentsSettledRef.current = true;
   sessionsRef.current = [];
-  hasMessagesRef.current = false;
   messageListProps.last = null;
   platformWorkspace.slug = "acme";
   layout.width = DESKTOP;
+  lastMessageListProps.current = null;
+  mockArchiveOutcome.current = { moved: false };
+  mockHasMessages.current = false;
+  mockCurrentSession.current = null;
 });
 
 describe("ChatPage URL synchronization", () => {
@@ -559,20 +630,20 @@ describe("ChatPage list-step keys (CALA-328)", () => {
       cancelable: true,
     });
   }
-  const opened = () => mockHandleSelectSession.mock.calls.map(([s]) => (s as ChatSession).id);
+  const opened = () => mockSelectSession.mock.calls.map(([s]) => (s as ChatSession).id);
 
   beforeEach(() => {
     configureShortcutPlatform("macos");
     sessionsRef.current = SESSIONS;
-    mockHandleSelectSession.mockClear();
+    mockSelectSession.mockClear();
     // The controller opens the chat it is handed, as the real one does.
-    mockHandleSelectSession.mockImplementation((s: { id: string }) => mockSetActiveSession(s.id));
+    mockSelectSession.mockImplementation((s: { id: string }) => mockSetActiveSession(s.id));
   });
   afterEach(() => {
     // A press's cursor outlives the page for a second; a click ends it.
     fireEvent.pointerDown(document);
     configureShortcutPlatform(null);
-    mockHandleSelectSession.mockReset();
+    mockSelectSession.mockReset();
   });
 
   it("opens the chat below and above in the order the list shows, across the pinned boundary", () => {
@@ -630,7 +701,7 @@ describe("ChatPage list-step keys (CALA-328)", () => {
     storeRef.current = { activeSessionId: "p1" };
     renderPage("session=p1");
     // The open chat has not moved yet when the second press arrives.
-    mockHandleSelectSession.mockImplementation(() => {});
+    mockSelectSession.mockImplementation(() => {});
     step(document.body, "]");
     step(document.body, "]");
     expect(opened()).toEqual(["u1", "u2"]);
@@ -664,7 +735,7 @@ describe("ChatPage list-step keys (CALA-328)", () => {
 
 describe("ChatPage keyboard focus after picking a thread", () => {
   it("asks the conversation to take focus when a thread is picked", () => {
-    hasMessagesRef.current = true;
+    mockHasMessages.current = true;
     storeRef.current = { activeSessionId: "session-9" };
     renderPage("session=session-9");
     expect(messageListProps.last?.focusRequested).not.toBe(true);
@@ -677,7 +748,7 @@ describe("ChatPage keyboard focus after picking a thread", () => {
   });
 
   it("drops the request when another chat opens before the picked one does", () => {
-    hasMessagesRef.current = true;
+    mockHasMessages.current = true;
     storeRef.current = { activeSessionId: "session-1" };
     renderPage("session=session-1");
 
@@ -689,10 +760,104 @@ describe("ChatPage keyboard focus after picking a thread", () => {
   });
 
   it("leaves focus alone when the chat opens from a link", () => {
-    hasMessagesRef.current = true;
+    mockHasMessages.current = true;
     storeRef.current = { activeSessionId: "session-1" };
     renderPage("session=session-1");
 
     expect(messageListProps.last?.focusRequested).not.toBe(true);
+  });
+});
+
+describe("ChatPage archive and session transitions", () => {
+  it("opens an initial deep-linked session with revealKey and no directional transition", () => {
+    mockHasMessages.current = true;
+    storeRef.current = { activeSessionId: "session-1" };
+    renderPage("session=session-1");
+
+    const list = screen.getByTestId("chat-message-list");
+    expect(list).toHaveAttribute("data-reveal-key", "session-1");
+    expect(list).toHaveAttribute("data-enter-transition", "");
+  });
+
+  it("applies the 'next' transition when archiving advances to the following thread", () => {
+    mockHasMessages.current = true;
+    storeRef.current = { activeSessionId: "session-1" };
+    mockArchiveOutcome.current = {
+      moved: true,
+      targetSessionId: "session-2",
+      direction: "next",
+    };
+    renderPage("session=session-1");
+
+    fireEvent.click(screen.getByRole("button", { name: "archive-active-thread" }));
+
+    expect(mockAdvanceSelectionAfterArchive).toHaveBeenCalledTimes(1);
+    expect(mockArchiveSession).toHaveBeenCalledWith("session-1");
+    const list = screen.getByTestId("chat-message-list");
+    expect(list).toHaveAttribute("data-reveal-key", "session-2");
+    expect(list).toHaveAttribute("data-enter-transition", "next");
+  });
+
+  it("applies the 'prev' transition when archiving the last thread falls back upward", () => {
+    mockHasMessages.current = true;
+    storeRef.current = { activeSessionId: "session-3" };
+    mockArchiveOutcome.current = {
+      moved: true,
+      targetSessionId: "session-2",
+      direction: "prev",
+    };
+    renderPage("session=session-3");
+
+    fireEvent.click(screen.getByRole("button", { name: "archive-active-thread" }));
+
+    const list = screen.getByTestId("chat-message-list");
+    expect(list).toHaveAttribute("data-reveal-key", "session-2");
+    expect(list).toHaveAttribute("data-enter-transition", "prev");
+  });
+
+  it("fades in the neutral select prompt when archiving the only thread on desktop", () => {
+    mockHasMessages.current = true;
+    storeRef.current = { activeSessionId: "session-only" };
+    mockArchiveOutcome.current = {
+      moved: true,
+      targetSessionId: null,
+      direction: null,
+    };
+    renderPage("session=session-only");
+
+    fireEvent.click(screen.getByRole("button", { name: "archive-active-thread" }));
+
+    const prompt = screen.getByText("Pick a conversation, or start a new one with +");
+    expect(prompt.parentElement?.className).toContain("animate-chat-enter-fade");
+  });
+
+  it("applies a gentle fade when selecting another thread directly", () => {
+    mockHasMessages.current = true;
+    storeRef.current = { activeSessionId: "session-1" };
+    mockSelectSession.mockImplementationOnce((s: { id: string }) => {
+      mockSetActiveSession(s.id);
+    });
+    renderPage("session=session-1");
+
+    fireEvent.click(screen.getByRole("button", { name: "select-thread" }));
+
+    const list = screen.getByTestId("chat-message-list");
+    expect(list).toHaveAttribute("data-reveal-key", "session-9");
+    expect(list).toHaveAttribute("data-enter-transition", "fade");
+  });
+
+  it("returns to the thread list without advancing when archiving in compact layout", () => {
+    layout.width = FOLD_INNER_PORTRAIT;
+    mockHasMessages.current = true;
+    mockCurrentSession.current = { id: "session-1", agent_id: "agent-1" };
+    storeRef.current = { activeSessionId: "session-1" };
+    renderPage("session=session-1");
+
+    fireEvent.click(screen.getByRole("button", { name: "archive-from-header" }));
+
+    expect(mockSetActiveSession).toHaveBeenCalledWith(null);
+    expect(mockArchiveSession).toHaveBeenCalledWith("session-1");
+    expect(mockAdvanceSelectionAfterArchive).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "select-thread" })).toBeInTheDocument();
   });
 });
