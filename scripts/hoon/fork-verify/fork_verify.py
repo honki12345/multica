@@ -112,6 +112,20 @@ def exit_code(checks):
     return 1 if any(c.verdict == FAIL for c in checks) else 0
 
 
+def prepare_out_dir(path):
+    """Empty the report directory and return its absolute path.
+
+    Absolute because vitest and go run inside the exported tree, where a relative
+    path would land their reports. Not resolved, and a symlink is refused: the
+    directory is deleted first, and following a link would delete its target.
+    """
+    out = Path(os.path.abspath(path))
+    if out.is_symlink():
+        raise ValueError("--out %s is a symlink; pass the real directory" % out)
+    shutil.rmtree(out, ignore_errors=True)
+    return out
+
+
 def slugify_ref(ref):
     return re.sub(r"[^A-Za-z0-9._-]+", "-", ref).strip("-") or "ref"
 
@@ -174,7 +188,32 @@ def parse_vitest_json(data, tree, rel_file, case):
     return PASS, "%d개 통과" % passed
 
 
-def run_go_tests(tree, features, env, logdir, real_agent, hermes_env):
+# What a DB-backed package prints when its TestMain cannot reach the test database
+# (handler/middleware bootstrap messages, or the unresolvable NO_DB_URL host).
+GO_NO_DB_MARKERS = (
+    "fork-verify-no-db.invalid",
+    "Failed to connect to handler test database",
+    "Failed to configure handler test database",
+    "Skipping tests: could not connect to database",
+    "Skipping tests: database not reachable",
+)
+
+GOTEST_DB_REASONS = {
+    "failed": "시험 DB(multica_gotest) 마이그레이션 실패(stack-up.log)",
+    "no-stack": "후보 스택을 띄우지 않아 시험 DB 없음(--skip scenario,screen)",
+}
+
+
+def go_db_unavailable(output, gotest_db):
+    """Reason a go package's non-pass is the missing test DB, not the feature; else None."""
+    if gotest_db == "ok":
+        return None
+    if not any(m in output for m in GO_NO_DB_MARKERS):
+        return None
+    return "DB 없이 실행할 수 없음: %s" % GOTEST_DB_REASONS.get(gotest_db, "시험 DB 상태 %s" % gotest_db)
+
+
+def run_go_tests(tree, features, env, logdir, real_agent, hermes_env, gotest_db="ok"):
     checks = []
     groups = {}
     for f in features:
@@ -207,9 +246,12 @@ def run_go_tests(tree, features, env, logdir, real_agent, hermes_env):
         lf = logdir / ("go-%s.log" % slugify_ref(pkg + ("-" + tags if tags else "")))
         lf.write_text(" ".join(cmd) + "\n\n" + p.stdout + p.stderr)
         res = parse_go_test_output(p.stdout, names)
+        no_db = go_db_unavailable(p.stdout + p.stderr, gotest_db)
         for fid, n in items:
             r = res.get(n)
-            if r == "PASS":
+            if r not in ("PASS", "FAIL") and no_db:
+                checks.append(Check(fid, "test", "go %s %s" % (pkg, n), UNVERIFIED, no_db, [str(lf)]))
+            elif r == "PASS":
                 checks.append(Check(fid, "test", "go %s %s" % (pkg, n), PASS, "통과 (%.0fs)" % (time.time() - t0), [str(lf)]))
             elif r == "FAIL":
                 checks.append(Check(fid, "test", "go %s %s" % (pkg, n), FAIL, "실패", [str(lf)]))
@@ -351,9 +393,17 @@ class Stack:
         api_json(self.api, "/api/workspaces/%s" % self.ws_id, self.pat, self.ws_id, method="PATCH",
                  body={"repos": [{"url": self.a.repo_url}]})
 
+    def gotest_db_state(self):
+        """ok only when the candidate's migrations ran on multica_gotest."""
+        if not self.up_ok:
+            return "no-stack"
+        return "ok" if self.info.get("gotest_db") == "ok" else "failed"
+
     def gotest_db_url(self):
+        if self.gotest_db_state() != "ok":
+            return ""
         pw = self.ssh("cat %s/pgpw" % self.rdir).stdout.strip()
-        if not pw or self.info.get("gotest_db") != "ok":
+        if not pw:
             return ""
         return "postgres://multica:%s@127.0.0.1:%d/multica_gotest?sslmode=disable" % (pw, self.db_port)
 
@@ -830,31 +880,119 @@ def run_inbox_scenarios(res, want, logdir):
 
 # ---------- screens ----------
 
+# Fixture chats that carry a transcript for the prompt-navigation scenarios. Every
+# other fixture chat stays empty. One letter per row: u = a message you sent,
+# a = a long reply, w = a wakeup turn (a user-role row the runtime wrote).
+PROMPT_NAV_SESSIONS = {
+    "plain": (1, "ua" * 6),
+    "wakeup": (2, "ua" * 2 + "wa" + "ua" * 2 + "wa" + "ua" * 2),
+}
+PROMPT_NAV_PROMPT = re.compile(r"fv-prompt-\d+")
+_REPLY_SENTENCE = "The agent walked through the change step by step, checked the result against the earlier request and noted what is left to do. "
+
+
+def fixture_session_id(n):
+    return "00000000-0000-4000-8000-%012d" % n
+
+
+def prompt_nav_messages(session_id, layout):
+    """ChatMessage rows (packages/core/api/schemas.ts ChatMessageSchema) in conversation order."""
+    rows, sent, wakeups = [], 0, 0
+    for i, kind in enumerate(layout):
+        row = {"id": "10000000-0000-4000-8000-%012d" % (int(session_id[-12:]) * 100 + i + 1), "chat_session_id": session_id,
+               "role": "assistant", "content": "", "task_id": None, "created_at": "2026-11-10T08:%02d:00Z" % i,
+               "message_kind": "message", "quick_actions": []}
+        if kind == "u":
+            sent += 1
+            row.update(role="user", content="fv-prompt-%02d: please continue with step %d." % (sent, sent))
+        elif kind == "w":
+            wakeups += 1
+            row.update(role="user", message_kind="wakeup", content="fv-wakeup-%02d" % wakeups,
+                       task_id="20000000-0000-4000-8000-%012d" % wakeups)
+        else:
+            row["content"] = "\n\n".join("Reply %d, paragraph %d. %s" % (i + 1, k + 1, _REPLY_SENTENCE * 3) for k in range(10))
+        rows.append(row)
+    return rows
+
+
+def prompt_nav_stops(messages):
+    """What each press should land on, oldest first: a sent message's token, or "divider" for a wakeup turn."""
+    out = []
+    for m in messages:
+        if m["role"] != "user":
+            continue
+        out.append("divider" if m["message_kind"] == "wakeup" else PROMPT_NAV_PROMPT.search(m["content"]).group(0))
+    return out
+
+
 def chat_fixture():
     sessions = []
     for i in range(1, FIXTURE_CHATS + 1):
-        sessions.append({"id": "00000000-0000-4000-8000-%012d" % i, "workspace_id": "", "agent_id": "00000000-0000-4000-8000-999999999999",
+        sessions.append({"id": fixture_session_id(i), "workspace_id": "", "agent_id": "00000000-0000-4000-8000-999999999999",
                          "creator_id": "", "title": "fork-verify chat %02d" % i, "status": "active", "has_unread": True,
                          "created_at": "2026-11-%02dT08:00:00Z" % i, "updated_at": "2026-11-%02dT08:00:00Z" % i})
-    return {"sessions": sessions, "pending": {"tasks": []}}
+    messages = {fixture_session_id(n): prompt_nav_messages(fixture_session_id(n), layout) for n, layout in PROMPT_NAV_SESSIONS.values()}
+    return {"sessions": sessions, "pending": {"tasks": []}, "messages": messages}
+
+
+# (feature id, scenario name) -> how the screen layer exercises it. "plain" and
+# "wakeup" pick the fixture chat; "page" is the chat tab, "window" the floating
+# chat. A scenario of chat-prompt-navigation not listed here has no runner.
+PROMPT_NAV_RUNNERS = {
+    "step through sent messages": ("plain", "page"),
+    "floating window takes the keys while focused": ("plain", "window"),
+    "stop at wakeup dividers": ("wakeup", "page"),
+    "listed in Settings": None,
+}
+
+
+# How far (px) the stopped row's top may sit from the list's top edge; the
+# probe waits for the same tolerance before it reads the row.
+PROMPT_NAV_ALIGN_PX = 3
+
+
+def prompt_nav_shot(fixture, kind, where, slug):
+    """Probe settings for one chat-prompt-navigation scenario: which fixture chat opens, how, and what each press must land on."""
+    n, _ = PROMPT_NAV_SESSIONS[kind]
+    sid = fixture_session_id(n)
+    scope = '[data-mc="chat-window"] ' if where == "window" else ""
+    shot = {"probe": "prompt-nav", "interact": False,
+            "promptNav": {"session": sid, "kind": kind, "scope": scope, "listSelector": scope + "[data-chat-prompt-nav]",
+                          "composerSelector": scope + '[data-slot="chat-input-surface"] [contenteditable="true"]',
+                          "expect": prompt_nav_stops(fixture["messages"][sid]), "alignPx": PROMPT_NAV_ALIGN_PX}}
+    if where == "window":
+        shot["localStorage"] = {"multica:chat:isOpen": "true", "multica:chat:activeSessionId:%s" % slug: sid}
+    else:
+        shot["query"] = "?session=%s" % sid
+    return shot
 
 
 def plan_shots(features, slug, screen_input=None):
     """Registry web-ui scenarios (and screen input routes) -> shot specs."""
     shots = []
+    fixture = None
     for f in features:
         if f.get("kind") != "web-ui":
             continue
         for si, s in enumerate(f.get("scenarios") or []):
             interact = any(re.search(r"\bclick\b", st, re.I) for st in s.get("steps") or [])
             for w in s.get("widths") or []:
-                shots.append({"id": "%s-s%d-%d" % (f["id"], si + 1, w), "feature": f["id"], "scenario": s["name"], "scenarioIndex": si,
-                              "width": w, "path": s["path"].replace("<workspace-slug>", slug), "selectors": s.get("selectors") or [],
-                              "probe": "chat-bar" if f["id"] == "chat-bar-all-chips" else None, "interact": interact and si == 0})
+                shot = {"id": "%s-s%d-%d" % (f["id"], si + 1, w), "feature": f["id"], "scenario": s["name"], "scenarioIndex": si,
+                        "width": w, "path": s["path"].replace("<workspace-slug>", slug), "selectors": s.get("selectors") or [],
+                        "probe": "chat-bar" if f["id"] == "chat-bar-all-chips" else None, "interact": interact and si == 0}
+                if f["id"] == "chat-prompt-navigation":
+                    if s["name"] not in PROMPT_NAV_RUNNERS:
+                        shot["probe"] = "no-runner"
+                    elif PROMPT_NAV_RUNNERS[s["name"]]:
+                        fixture = fixture or chat_fixture()
+                        shot.update(prompt_nav_shot(fixture, *PROMPT_NAV_RUNNERS[s["name"]], slug))
+                        shot["promptNav"]["selectors"] = shot["selectors"]
+                        shot["path"] += shot.pop("query", "")
+                shots.append(shot)
     extra = []
     if screen_input:
         web = {f["id"] for f in features if f.get("kind") == "web-ui"}
-        seen = {(s["path"], s["width"]) for s in shots}
+        seen = {(s["path"].split("?")[0], s["width"]) for s in shots}
         for item in screen_input.get("screen_inputs", []):
             if item.get("feature") not in web:
                 continue
@@ -958,6 +1096,85 @@ def judge_chat_bar(shot, res, fixture_chips):
     return (FAIL if problems else PASS), ("; ".join(problems) + " — " if problems else "") + detail
 
 
+def judge_prompt_nav(shot, res):
+    """(verdict, detail) for Mod+Alt+[ / ] in one fixture chat, on the candidate (production in the detail).
+
+    The probe presses [ once per stop and ] once per stop but the last, and reports the
+    top-most visible row after each press. Every press must land on a message you sent
+    or, in the wakeup chat, a wakeup divider, never on a reply, in conversation order.
+    """
+    c = res.get("cand", {})
+    p = res.get("prod", {})
+    if c.get("error"):
+        return FAIL, "후보 화면 오류: %s" % c["error"]
+    if c.get("url") != shot["path"].split("?")[0] or not c.get("page"):
+        return FAIL, "후보가 시나리오 화면을 그리지 못함: 주소 %s, 본문 %s" % (c.get("url"), "있음" if c.get("page") else "없음")
+    expect = shot["promptNav"]["expect"]
+    cp, pp = c.get("probe") or {}, p.get("probe") or {}
+    if not cp.get("rows"):
+        return FAIL, "채팅 목록에 메시지 행이 없음(목록 %s): 시험용 대화가 열리지 않음" % ("있음" if cp.get("list") else "없음")
+    back, fwd = cp.get("back") or [], cp.get("forward") or []
+    problems = []
+    replies = [i + 1 for i, r in enumerate(back + fwd) if r.get("kind") not in ("user", "divider")]
+    if replies:
+        problems.append("%d번째 입력 뒤 맨 위가 답글이거나 비어 있음" % replies[0])
+    want_back, want_fwd = expect[::-1], expect[1:]
+    if [r.get("token") for r in back] != want_back:
+        problems.append("뒤로 %d번이 보낸 메시지 순서(최근→처음)와 다름" % len(expect))
+    if [r.get("token") for r in fwd] != want_fwd:
+        problems.append("앞으로 %d번이 보낸 메시지 순서와 다름" % len(want_fwd))
+    misaligned = [i + 1 for i, r in enumerate(back + fwd)
+                  if not isinstance(r.get("offset"), (int, float)) or abs(r["offset"]) > PROMPT_NAV_ALIGN_PX]
+    if misaligned:
+        problems.append("%d번째 입력 뒤 멈춘 행이 목록 맨 위에 맞지 않음(어긋남 %spx, 허용 %dpx)" % (
+            misaligned[0], (back + fwd)[misaligned[0] - 1].get("offset"), PROMPT_NAV_ALIGN_PX))
+    idx = [r.get("index") for r in back]
+    if not all(isinstance(i, int) for i in idx) or any(a <= b for a, b in zip(idx, idx[1:])):
+        problems.append("뒤로 갈 때 행 번호가 줄지 않음")
+    idx = [r.get("index") for r in fwd]
+    if not all(isinstance(i, int) for i in idx) or any(a >= b for a, b in zip(idx, idx[1:])):
+        problems.append("앞으로 갈 때 행 번호가 늘지 않음")
+    if not cp.get("composerFocused"):
+        problems.append("입력창에 포커스를 주지 못함")
+    elif not cp.get("focusKept"):
+        problems.append("캐럿이 입력창을 떠남")
+    tokens = lambda pr: "뒤 %s / 앞 %s" % (",".join(r.get("token") or r.get("kind") or "-" for r in pr.get("back") or []),
+                                         ",".join(r.get("token") or r.get("kind") or "-" for r in pr.get("forward") or []))
+    detail = "후보: %s (행 %s개, 입력창 포커스 %s) · 운영: %s" % (tokens(cp), cp.get("rows"), cp.get("composerFocused"), tokens(pp) if pp.get("rows") else "행 없음")
+    return (FAIL if problems else PASS), ("; ".join(problems) + " — " if problems else "") + detail
+
+
+def judge_shot(shot, sres):
+    """(verdict, detail) of one shot's candidate-side checks, before the pixel diff."""
+    probe = shot.get("probe")
+    if probe == "no-runner":
+        return UNVERIFIED, "러너 없음: 시나리오 '%s'를 돌리는 코드가 fork_verify.py PROMPT_NAV_RUNNERS에 없음" % shot["scenario"]
+    missing = [s for s, n in (sres["cand"].get("selectors") or {}).items() if n == 0]
+    if probe == "chat-bar":
+        v, d = judge_chat_bar(shot, sres, FIXTURE_CHATS)
+    elif probe == "prompt-nav":
+        v, d = judge_prompt_nav(shot, sres)
+    else:
+        v, d = (FAIL, "후보 화면 오류: %s" % sres["cand"]["error"]) if sres["cand"].get("error") else (PASS, "화면 열림")
+    if missing:
+        v, d = FAIL, "기대 요소 없음: %s; %s" % (", ".join(missing), d)
+    return v, d
+
+
+def shot_verdict(judged, region_ratio, page_ratio, threshold):
+    """Fold the pixel diff into a shot's judged (verdict, detail).
+
+    A shot with no runner stays unverified: its pixels are evidence, not a check.
+    """
+    v, d = judged
+    if v != UNVERIFIED and region_ratio is not None and region_ratio > threshold:
+        v = FAIL
+        d = "개조 영역 픽셀 차이 %.2f%% > 기준 %.2f%%; %s" % (region_ratio * 100, threshold * 100, d)
+    d += " · 픽셀 차이: 개조 영역 %s, 전체 %s" % ("-" if region_ratio is None else "%.2f%%" % (region_ratio * 100),
+                                         "-" if page_ratio is None else "%.2f%%" % (page_ratio * 100))
+    return v, d
+
+
 def run_screens(args, stack, prod, features, out_dir, logdir, screen_input):
     checks = []
     shots = plan_shots(features, prod["slug"], screen_input)
@@ -974,8 +1191,8 @@ def run_screens(args, stack, prod, features, out_dir, logdir, screen_input):
     summary = {"prod_blocked": 0, "prod_blocked_sample": [], "cand_passthrough": set(), "replayed": 0}
     try:
         for shot in shots:
-            cfg = {"prod": {"name": "prod", "origin": prod["web"], "token": prod["token"], "wsId": prod["ws_id"]},
-                   "cand": {"name": "cand", "origin": stack.web, "token": stack.pat, "wsId": stack.ws_id},
+            cfg = {"prod": {"name": "prod", "origin": prod["web"], "token": prod["token"], "wsId": prod["ws_id"], "localStorage": shot.get("localStorage", {})},
+                   "cand": {"name": "cand", "origin": stack.web, "token": stack.pat, "wsId": stack.ws_id, "localStorage": shot.get("localStorage", {})},
                    "fixture": fixture, "mask": args.mask.split(";"), "regionSelector": '[data-slot="app-bottom-bar"]',
                    "height": 900, "locale": "en-US", "timezone": "Asia/Seoul", "now": "2026-11-19T00:00:00Z", "settleMs": 1500,
                    "outDir": str(shot_dir), "shots": [shot]}
@@ -1017,18 +1234,7 @@ def run_screens(args, stack, prod, features, out_dir, logdir, screen_input):
             if po.exists() and co.exists():
                 triptych(po, co, shot_dir / ("%s-open.compare.png" % sid), scale=0.5)
                 evidence.append(str(shot_dir / ("%s-open.compare.png" % sid)))
-            missing = [s for s, n in (sres["cand"].get("selectors") or {}).items() if n == 0]
-            if shot.get("probe") == "chat-bar":
-                v, d = judge_chat_bar(shot, sres, FIXTURE_CHATS)
-            else:
-                v, d = (FAIL, "후보 화면 오류: %s" % sres["cand"]["error"]) if sres["cand"].get("error") else (PASS, "화면 열림")
-            if missing:
-                v, d = FAIL, "기대 요소 없음: %s; %s" % (", ".join(missing), d)
-            if region_ratio is not None and region_ratio > args.region_threshold:
-                v = FAIL
-                d = "개조 영역 픽셀 차이 %.2f%% > 기준 %.2f%%; %s" % (region_ratio * 100, args.region_threshold * 100, d)
-            d += " · 픽셀 차이: 개조 영역 %s, 전체 %s" % ("-" if region_ratio is None else "%.2f%%" % (region_ratio * 100),
-                                                 "-" if page_ratio is None else "%.2f%%" % (page_ratio * 100))
+            v, d = shot_verdict(judge_shot(shot, sres), region_ratio, page_ratio, args.region_threshold)
             checks.append(Check(shot["feature"], "screen", "%s @%dpx" % (shot["scenario"], shot["width"]), v, d, evidence))
     finally:
         pw("close", timeout=60)
@@ -1158,8 +1364,11 @@ def main(argv):
         return 2
     short = sha[:9]
     version = resolve_version(args.ref, args.version, short)
-    out_dir = Path(args.out) if args.out else REPO / "out" / "fork-verify" / slugify_ref(args.ref)
-    shutil.rmtree(out_dir, ignore_errors=True)
+    try:
+        out_dir = prepare_out_dir(Path(args.out) if args.out else REPO / "out" / "fork-verify" / slugify_ref(args.ref))
+    except ValueError as e:
+        print("fork-verify: %s" % e, file=sys.stderr)
+        return 2
     logdir = out_dir / "logs"
     logdir.mkdir(parents=True)
     backup = args.backup or default_backup()
@@ -1211,14 +1420,15 @@ def main(argv):
             t = time.time()
             env = clean_env()
             # Never let DB-backed tests fall back to localhost:5432 (another Postgres may live there).
-            env["DATABASE_URL"] = (stack.up_ok and stack.gotest_db_url()) or NO_DB_URL
+            gotest_db = stack.gotest_db_state()
+            env["DATABASE_URL"] = (gotest_db == "ok" and stack.gotest_db_url()) or NO_DB_URL
             agent_env = {}
             res_for_env = Resident(args, stack, version, logdir, cli_bin)
             try:
                 if args.real_agent:
                     res_for_env.prepare_hermes_home()
                     agent_env = res_for_env.base_env()
-                checks += run_go_tests(tree, present, env, logdir, args.real_agent, agent_env)
+                checks += run_go_tests(tree, present, env, logdir, args.real_agent, agent_env, gotest_db)
             finally:
                 res_for_env.cleanup()
             checks += run_vitest(tree, present, clean_env(), logdir)
@@ -1245,7 +1455,8 @@ def main(argv):
             timings["screens"] = time.time() - t
             safety_lines.append("운영 화면: 런타임 소유자 PAT로 읽기만 함. GET 외 요청 %d건을 브라우저에서 막음(예: %s). 실시간 소켓은 빈 스텁."
                                 % (summary.get("prod_blocked", 0), ", ".join(summary.get("prod_blocked_sample", [])[:3]) or "없음"))
-            safety_lines.append("채팅 목록·대기 작업 API는 양쪽 모두 가짜 데이터(fork-verify chat 01~%02d)로 답함. 실제 채팅 제목은 화면에 나오지 않음." % FIXTURE_CHATS)
+            safety_lines.append("채팅 목록·대기 작업 API는 양쪽 모두 가짜 데이터(fork-verify chat 01~%02d)로 답함. 실제 채팅 제목은 화면에 나오지 않음. "
+                                "chat 01·02만 가짜 대화 내용(보낸 메시지 6개와 긴 답글, chat 02는 깨우기 2번)을 가짐." % FIXTURE_CHATS)
             safety_lines.append("가림: %s 영역 흐림 처리." % args.mask.replace(";", ", "))
             safety_lines.append("후보 화면은 운영에서 받은 GET 응답 %d건을 재생. 운영에 없던 요청은 후보 서버 시험 작업 공간으로 보냄: %s"
                                 % (summary.get("replayed", 0), ", ".join("`%s`" % x for x in summary.get("cand_passthrough", [])[:8]) or "없음"))
@@ -1276,6 +1487,9 @@ def main(argv):
         stack_lines.append("기기: `%s` (빌드·DB·서버). 이 Mac: 화면 브라우저, 시험 데몬·Hermes gateway, Go·vitest 시험." % args.host)
         stack_lines.append("백업: `%s` 복원 → 표 %s개, 마이그레이션 `%s` → `%s`(후보 기동 때 적용)." % (
             os.path.basename(backup), i.get("tables", "?"), i.get("migrations_before", "?"), i.get("migrations_after", "?")))
+        stack_lines.append("Go 시험 DB `multica_gotest`: %s, 마이그레이션 `%s`(후보 서버 DB는 `%s`)." % (
+            "후보 마이그레이션 적용됨" if i.get("gotest_db") == "ok" else "마이그레이션 실패, DB 시험은 확인 불가",
+            i.get("gotest_migrations") or "-", i.get("migrations_after", "?")))
         stack_lines.append("걸린 시간: 이미지 빌드 %ss, 복원 %ss, 기동 %ss, 전송 등 %ss." % (
             i.get("build_secs", "?"), i.get("restore_secs", "?"), i.get("boot_secs", "?"), i.get("upload_secs", "?")))
         if i.get("stats"):

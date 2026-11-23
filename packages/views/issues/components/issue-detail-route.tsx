@@ -1,5 +1,7 @@
 "use client";
 
+// Modified by honki12345, 2026: the issue page takes the scroll keys from the link that opened it (CALA-330).
+
 import { useCallback, useEffect, useRef } from "react";
 import { useCanonicalIssue } from "@multica/core/issues/canonical-id";
 import { useWorkspaceId } from "@multica/core/hooks";
@@ -145,6 +147,9 @@ export function IssueDetailRoute({ routeId, onDelete, deliverable }: IssueDetail
         onHighlightLanded={onHighlightLanded}
         openDeliverable={deliverable}
         onDeliverableLinkDone={deliverable ? onDeliverableLinkDone : undefined}
+        // Opening the issue page means reading it: ↑/↓ scroll the issue, not
+        // the side panel whose link opened it (CALA-330).
+        focusOnOpen
       />
     </IssuePeekHost>
   );

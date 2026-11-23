@@ -289,9 +289,9 @@ failed.
 
 | Layer | What runs | Where |
 |---|---|---|
-| test | each feature's `tests`: `go test -run` per package (`-p 2`), vitest files/cases (`--maxWorkers=2`); `real_agent` tests only with `--real-agent` | this Mac, on an export of the candidate |
+| test | each feature's `tests`: `go test -run` per package (`-p 2`), vitest files/cases (`--maxWorkers=2`); `real_agent` tests only with `--real-agent`. DB-backed Go tests run against `multica_gotest` on the candidate stack, migrated with the candidate's own `./migrate up`; when that migration fails (or no stack runs) they are reported unverified with that reason, never pass or fail | this Mac, on an export of the candidate |
 | scenario | `server`/`cli`/`daemon` scenarios for real: a resident test issue (`issue get`, `daemon status`, `repo checkout`, `environment list`, `ls -a ..`), a steer (comment with `--steer` during `sleep 60`, the same turn must answer `CODE=PINEAPPLE`), Quick Create through `POST /api/issues/quick-create`, and the inbox CLI reads | candidate stack + a test daemon and test Hermes gateway on this Mac |
-| screen | `web-ui` scenarios: production and candidate web in the same headless browser at each `widths` entry; `production \| candidate \| diff` sheets and the pixel share that changed in the bottom bar; DOM selectors and the chat-bar probe (chip count, no `+N`, wheel scroll, click opens the window) | this Mac (`playwright-cli`) |
+| screen | `web-ui` scenarios: production and candidate web in the same headless browser at each `widths` entry; `production \| candidate \| diff` sheets and the pixel share that changed in the bottom bar; DOM selectors and two probes: chat-bar (chip count, no `+N`, wheel scroll, click opens the window) and prompt-nav (see below) | this Mac (`playwright-cli`) |
 
 The candidate stack runs on **calabii-02** (amd64, idle): the candidate's
 backend and web images are built there from `git archive` (about 6 minutes,
@@ -328,6 +328,18 @@ scripts/hoon/fork-verify.sh merge/v0.12.0 --screen-input triage.json   # B paths
 scripts/hoon/fork-verify.sh v0.11.0-hoon.1 --skip test                 # scenarios and screens only
 bash scripts/hoon/fork-verify.test.sh                                   # judging logic, no stack
 ```
+
+The prompt-nav probe covers `chat-prompt-navigation`. Fixture chats 01 and 02
+carry a transcript on both sides: 01 has six sent messages with long replies
+between them, 02 the same with two wakeup turns. The shot opens the chat tab
+with `?session=<id>`, or the floating window through `multica:chat:isOpen` and
+`multica:chat:activeSessionId:<slug>`; the candidate side then clicks the
+composer, presses Cmd+Option+[ once per stop and Cmd+Option+] back to the newest
+one, and reads the top-most visible row after every press. It must be a message
+you sent or a wakeup divider, never a reply, in conversation order both ways,
+and the caret must stay in the composer. It does not check the held-key
+repeat, the live-end jump or pixels; the vitest cases cover those. A scenario of
+that feature missing from `PROMPT_NAV_RUNNERS` is reported unverified.
 
 A feature whose `origin.commits` are not in the candidate is reported n/a, so
 an older tag can be verified with today's registry (`--registry-ref`). A
