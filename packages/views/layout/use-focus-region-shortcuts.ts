@@ -73,8 +73,13 @@ function enterRegion(region: FocusRegion): boolean {
   clearFlash();
   for (const target of focusRegionTargets(region.element)) {
     if (target.hasAttribute(FOCUS_ACTIVATE_ATTR)) {
-      // A lazy editor shell mounts the real editor on click and focuses it.
+      // A lazy editor shell mounts the real editor on click and focuses it on
+      // a later tick. Hold focus on the shell until then, so the loop does not
+      // hand it to the next control in the region (the attach button).
+      target.focus({ preventScroll: true });
       target.click();
+      flash(region.element);
+      return true;
     } else {
       // preventScroll: focusing a box scrolls every scrollable ancestor to
       // reveal it, which shoves the shell around on desktop (#3929).

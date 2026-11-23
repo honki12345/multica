@@ -148,11 +148,15 @@ describe("useFocusRegionShortcuts", () => {
 
   it("activates a lazy composer shell instead of focusing it", () => {
     let activated = 0;
-    render(<Page onActivate={() => activated++} />);
+    const { getByTestId } = render(<Page onActivate={() => activated++} />);
     giveBoxes();
     document.getElementById("row-1")!.focus();
     press("L", { metaKey: true });
     expect(activated).toBe(1);
+    // The editor mounts on a later tick; the shell is where the key landed,
+    // so nothing else in the composer (its attach button) takes focus.
+    expect(active()).not.toBe("attach");
+    expect(getByTestId("composer").hasAttribute(FOCUS_FLASH_ATTR)).toBe(true);
   });
 
   it("flashes the region keyboard focus moved into, and not on a mouse click", () => {
