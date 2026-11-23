@@ -1,11 +1,12 @@
 "use client";
 
+// Modified by honki12345, 2026: resolve runtime-specific defaults (CALA-332).
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { defaultStorage } from "../platform/storage";
 import {
   SHORTCUT_ACTIONS,
-  SHORTCUT_ACTION_BY_ID,
+  getShortcutDefault,
   isShortcutAllowedForAction,
   parseLegacyShortcut,
   shortcutChordEquals,
@@ -116,7 +117,7 @@ export const useShortcutStore = create<ShortcutState>()(
             return state;
           }
           const next = { ...state.overrides };
-          if (shortcutChordEquals(shortcut, SHORTCUT_ACTION_BY_ID[actionId].defaultShortcut)) {
+          if (shortcutChordEquals(shortcut, getShortcutDefault(actionId))) {
             delete next[actionId];
           } else {
             next[actionId] = shortcut;
@@ -156,7 +157,7 @@ export function resolveShortcut(
 ): ShortcutChord | null {
   return Object.prototype.hasOwnProperty.call(overrides, actionId)
     ? overrides[actionId] ?? null
-    : SHORTCUT_ACTION_BY_ID[actionId].defaultShortcut;
+    : getShortcutDefault(actionId);
 }
 
 export function useShortcut(actionId: ShortcutActionId): ShortcutChord | null {

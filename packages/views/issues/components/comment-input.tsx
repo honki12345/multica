@@ -1,6 +1,7 @@
 "use client";
 
 // Modified by honki12345, 2026: take back the caret a list-step press carried from the previous issue's comment box (CALA-328).
+// Modified by honki12345, 2026: mark the comment composer as a keyboard focus region (CALA-332).
 
 import { useRef, useState, useEffect, useMemo } from "react";
 import { cn } from "@multica/ui/lib/utils";
@@ -266,6 +267,7 @@ function CommentInput({ issueId, onSubmit, onAccepted, onEditAnnotation, annotat
     })}
     <div
       data-mc={COMMENT_COMPOSER}
+      data-focus-region="composer"
       {...dropZoneProps}
       {...focusProps}
       className={cn(
@@ -298,6 +300,7 @@ function CommentInput({ issueId, onSubmit, onAccepted, onEditAnnotation, annotat
           !lazy.ready && "hidden",
         )}
         aria-busy={submitting || undefined}
+        data-focus-region-target={lazy.ready ? "" : undefined}
       >
         <ContentEditor
           ref={editorRef}
@@ -331,6 +334,8 @@ function CommentInput({ issueId, onSubmit, onAccepted, onEditAnnotation, annotat
       {!lazy.ready && (
         <div
           data-testid="comment-composer-shell"
+          data-focus-region-target=""
+          data-focus-activate=""
           role="button"
           tabIndex={0}
           aria-label={t(($) => $.comment.leave_comment_placeholder)}

@@ -438,6 +438,26 @@
         "label": "채팅·태스크 이름 바꾸기",
         "description": "화면에 열린 채팅이나 태스크의 제목을 전체 선택한 채로 편집합니다."
       },
+      "focusList": {
+        "label": "목록으로 이동",
+        "description": "키보드 포커스를 페이지 옆 목록(채팅, 인박스 알림, 사이드바)으로 옮깁니다."
+      },
+      "focusBody": {
+        "label": "본문으로 이동",
+        "description": "키보드 포커스를 읽고 있는 본문으로 옮깁니다. 이후 방향키로 본문이 스크롤됩니다."
+      },
+      "focusComposer": {
+        "label": "입력창으로 이동",
+        "description": "키보드 포커스를 메시지·댓글 입력창으로 옮깁니다."
+      },
+      "focusNextRegion": {
+        "label": "다음 영역",
+        "description": "키보드 포커스를 목록, 본문, 입력창 중 다음 영역으로 옮깁니다."
+      },
+      "focusPreviousRegion": {
+        "label": "이전 영역",
+        "description": "키보드 포커스를 목록, 본문, 입력창 중 이전 영역으로 옮깁니다."
+      },
       "findInIssue": {
         "label": "태스크에서 찾기",
         "description": "열린 태스크 상세 내용에서 검색합니다."

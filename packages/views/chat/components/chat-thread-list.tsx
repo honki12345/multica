@@ -1,6 +1,7 @@
 "use client";
 
 // Modified by honki12345, 2026: drag pinned chats into order, saved on the server (CALA-316); scroll the chat opened from elsewhere on the page into view (CALA-328).
+// Modified by honki12345, 2026: drag pinned chats into order, saved on the server (CALA-316), rows for the focus region keys (CALA-332).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -276,6 +277,40 @@ export function ChatThreadList({
     shownActiveRef.current = activeSessionId;
     if (activeIndex >= 0) listRef.current?.scrollIntoView({ index: activeIndex });
   }, [activeSessionId, activeIndex]);
+
+  // Home / End reach the ends of the whole list. The list is windowed, so the
+  // first or last chat may not be mounted for the focus region keys to find;
+  // scroll it in by index and focus its row once it mounts. The wait is only
+  // honoured while focus is still where the key was pressed (or fell to <body>
+  // when that row scrolled out); a reader who has moved on keeps their focus.
+  const rowNodesRef = useRef(new Map<string, HTMLElement>());
+  const pendingEndRef = useRef<{ id: string; from: HTMLElement } | null>(null);
+  useEffect(() => {
+    pendingEndRef.current = null;
+  }, [view]);
+  const bindRowNode = (id: string, node: HTMLElement | null) => {
+    if (!node) {
+      rowNodesRef.current.delete(id);
+      return;
+    }
+    rowNodesRef.current.set(id, node);
+    const pending = pendingEndRef.current;
+    if (pending?.id !== id) return;
+    pendingEndRef.current = null;
+    const active = node.ownerDocument.activeElement;
+    if (active === pending.from || active === node.ownerDocument.body || !active) {
+      node.focus({ preventScroll: true });
+    }
+  };
+  const focusListEnd = (key: "Home" | "End", from: HTMLElement) => {
+    const index = key === "Home" ? 0 : shownSessions.length - 1;
+    const id = shownSessions[index]?.id;
+    if (!id) return;
+    listRef.current?.scrollToIndex({ index, align: key === "Home" ? "start" : "end" });
+    const mounted = rowNodesRef.current.get(id);
+    pendingEndRef.current = mounted ? null : { id, from };
+    mounted?.focus({ preventScroll: true });
+  };
 
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [confirmingStopId, setConfirmingStopId] = useState<string | null>(null);
@@ -578,10 +613,15 @@ export function ChatThreadList({
       <SortableChatRow key={session.id} id={session.id} sortable={sortable}>
         {(drag) => (
       <div
-        ref={drag.setNodeRef}
+        ref={(node) => {
+          drag.setNodeRef(node);
+          bindRowNode(session.id, node);
+        }}
         style={drag.style}
         aria-current={isCurrent ? "true" : undefined}
         aria-describedby={drag.describedBy}
+        data-focus-row=""
+        {...(isCurrent ? { "data-focus-region-target": "" } : {})}
         tabIndex={0}
         onPointerDown={drag.onPointerDown}
         onClick={(e) => {
@@ -615,12 +655,19 @@ export function ChatThreadList({
           e.preventDefault();
           window.open(getShareableUrl(href), "_blank", "noopener,noreferrer");
         }}
+        data-dragging={drag.isDragging ? "" : undefined}
         onKeyDown={(e) => {
           // A drag under way owns the keys: the one that drops the row must
           // not also open it.
           if (draggingRef.current || isConfirmingAction || isRenaming) return;
           if (drag.onKeyDown && e.target === e.currentTarget && e.code === "Space") {
             drag.onKeyDown(e);
+            return;
+          }
+          const plain = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+          if (plain && e.target === e.currentTarget && (e.key === "Home" || e.key === "End")) {
+            e.preventDefault();
+            focusListEnd(e.key, e.currentTarget);
             return;
           }
           handleRowActivationKey(e, () => onSelectSession(session));

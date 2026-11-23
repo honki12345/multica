@@ -1,5 +1,6 @@
 // @vitest-environment node
 // Modified by honki12345, 2026: Cmd/Ctrl+R renames the open title instead of being swallowed (CALA-327).
+// Modified by honki12345, 2026: the focus region keys reach the renderer (CALA-332).
 import { describe, expect, it, vi } from "vitest";
 import { handleAppShortcut, type ShortcutInput } from "./keyboard-shortcuts";
 
@@ -448,5 +449,19 @@ describe("handleAppShortcut — close tab (Cmd/Ctrl+W)", () => {
         "darwin",
       ),
     ).toBe(true);
+  });
+});
+
+describe("handleAppShortcut — focus region keys reach the renderer", () => {
+  // The renderer owns Cmd+L / Cmd+Shift+H / Cmd+Shift+L and F8 / Shift+F8
+  // (packages/core/shortcuts); main must leave them alone.
+  it("passes the region chords through on every platform", () => {
+    const wc = makeWc();
+    expect(handleAppShortcut(key("l", { meta: true }), wc, "darwin")).toBe(false);
+    expect(handleAppShortcut(key("H", { meta: true, shift: true }), wc, "darwin")).toBe(false);
+    expect(handleAppShortcut(key("L", { meta: true, shift: true }), wc, "darwin")).toBe(false);
+    expect(handleAppShortcut(key("l", { control: true }), wc, "win32")).toBe(false);
+    expect(handleAppShortcut(key("F8", {}, "F8"), wc, "darwin")).toBe(false);
+    expect(handleAppShortcut(key("F8", { shift: true }, "F8"), wc, "linux")).toBe(false);
   });
 });

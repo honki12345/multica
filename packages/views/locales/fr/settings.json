@@ -444,6 +444,26 @@
         "label": "Renommer la discussion ou la tâche",
         "description": "Modifier le titre de la discussion ou de la tâche affichée, texte sélectionné."
       },
+      "focusList": {
+        "label": "Aller à la liste",
+        "description": "Placer le focus clavier sur la liste à côté de la page : discussions, notifications de la boîte de réception ou barre latérale."
+      },
+      "focusBody": {
+        "label": "Aller au contenu",
+        "description": "Placer le focus clavier sur ce que vous lisez, pour que les flèches le fassent défiler."
+      },
+      "focusComposer": {
+        "label": "Aller au champ de message",
+        "description": "Placer le focus clavier sur le champ de message ou de commentaire."
+      },
+      "focusNextRegion": {
+        "label": "Volet suivant",
+        "description": "Placer le focus clavier sur l'élément suivant parmi la liste, le contenu et le champ de message."
+      },
+      "focusPreviousRegion": {
+        "label": "Volet précédent",
+        "description": "Placer le focus clavier sur l'élément précédent parmi la liste, le contenu et le champ de message."
+      },
       "findInIssue": {
         "label": "Rechercher dans la tâche",
         "description": "Rechercher dans la tâche ouverte."

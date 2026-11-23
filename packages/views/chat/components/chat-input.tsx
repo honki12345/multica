@@ -1,5 +1,6 @@
 "use client";
 
+// Modified by honki12345, 2026: mark the composer as a keyboard focus region (CALA-332).
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Scan, TriangleAlert, X } from "@multica/ui/icons";
@@ -759,6 +760,7 @@ export function ChatInput({
       <div
         data-slot="chat-input-surface"
         data-mc="chat-input"
+        data-focus-region="composer"
         {...(uploadEnabled ? dropZoneProps : {})}
         className={cn(
           // max-h-96 is the absolute ceiling on top of the wrapper's 50%: on a
@@ -859,7 +861,7 @@ export function ChatInput({
             )}
           </div>
         )}
-        <div ref={editorAreaRef} className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
+        <div ref={editorAreaRef} data-focus-region-target="" className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
           <ContentEditor
             // See the editorKey / draftKey split note above — editor identity
             // intentionally tracks neither the session nor the agent.

@@ -1,6 +1,7 @@
 "use client";
 
 // Modified by honki12345, 2026: previous/next sent-message shortcuts (CALA-281), wakeup stops (CALA-318), keyboard focus for scrolling (CALA-330).
+// Modified by honki12345, 2026: previous/next sent-message shortcuts (CALA-281), wakeup stops (CALA-318), body focus region (CALA-332).
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -412,10 +413,12 @@ export function ChatMessageList({
     <div
       ref={setScrollContainerRef}
       data-tab-scroll-root
+      data-focus-region="body"
       {...{ [PROMPT_NAV_ATTR]: "" }}
-      // Focusable but not a Tab stop: clicking a message's text focuses the
-      // conversation, so the scroll keys reach it rather than whatever list
-      // row kept focus (CALA-330). No ring, as with the inbox list.
+      // Focusable but not a Tab stop: clicking a message's text, a focus
+      // region key or Esc gives the conversation the scroll keys rather than
+      // whatever list row kept focus (CALA-330). The region ring is drawn by
+      // `[data-focus-flash]`, not by focus.
       tabIndex={-1}
       style={fadeStyle}
       // The gutter lives on the scroll container, so it applies once to the

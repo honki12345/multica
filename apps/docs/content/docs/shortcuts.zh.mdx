@@ -5,6 +5,7 @@ description: 用 ⌘K 搜索和执行命令，查看和修改键盘快捷键，�
 
 {/* Modified by honki12345, 2026: document the previous/next sent-message chat shortcuts (CALA-281), wakeup stops (CALA-318), the chat/inbox list step keys (CALA-328). */}
 {/* Modified by honki12345, 2026: document the previous/next sent-message chat shortcuts (CALA-281), wakeup stops (CALA-318), rename title shortcut (CALA-327). */}
+{/* Modified by honki12345, 2026: document the previous/next sent-message chat shortcuts (CALA-281), wakeup stops (CALA-318), focus region keys (CALA-332). */}
 
 import { Callout } from "fumadocs-ui/components/callout";
 import { Step, Steps } from "fumadocs-ui/components/steps";
@@ -43,6 +44,10 @@ import { Step, Steps } from "fumadocs-ui/components/steps";
 | 上一个聊天或通知 | `⇧⌘[` | `Ctrl+Shift+[` | 打开聊天页列表中当前聊天上方的聊天，或收件箱中上方的通知。输入时也可用，光标留在原处。macOS 上的 Chrome 和 Safari 会把这个键留给浏览器切换标签页，请使用桌面应用或更换按键。 |
 | 下一个聊天或通知 | `⇧⌘]` | `Ctrl+Shift+]` | 打开下方的聊天或通知。到列表末尾时停止。 |
 | 重命名聊天或任务 | `⌘R` | `Ctrl+R` | 在聊天或任务页面，把光标移到标题并选中全部文字。聊天按 `↵` 保存、`Esc` 取消；任务标题和点击编辑时一样，离开输入框（包括按 `Esc`）就会保存。输入时也能用。光标在悬浮聊天窗里时作用于该窗口的聊天。其他页面保持原样：浏览器会刷新，桌面端什么也不做。 |
+| 聚焦列表 | `⇧⌘H` | `Ctrl+Shift+H` | 把键盘焦点移到页面旁的列表（聊天、收件箱通知、侧边栏），落在当前打开的那一行。再按一次在侧边栏和页面自己的列表之间切换。网页版不分配：Safari 用 `⇧⌘H` 打开主页。 |
+| 聚焦正文 | `⇧⌘L` | `Ctrl+Shift+L` | 把键盘焦点移到正在阅读的内容，之后 `↑` / `↓` 和 `Page Up` / `Page Down` 滚动正文而不是列表。 |
+| 聚焦输入框 | `⌘L` | `Ctrl+L` | 把键盘焦点移到聊天输入框或任务的评论框。网页版不分配：浏览器用它聚焦地址栏。 |
+| 下一个区域 / 上一个区域 | `F8` / `⇧F8` | `F8` / `Shift+F8` | 按列表、正文、输入框的顺序移动键盘焦点，到末尾后回到开头。Mac 键盘上可能需要同时按 `Fn`。 |
 | 在任务中查找 | `⌘F` | `Ctrl+F` | 见下文。 |
 | 归档通知 | `E` | `E` | 在从收件箱打开的任务上，归档它的通知并打开下一条；查看已归档时则取消归档当前打开的通知。见[收件箱](/inbox#处理通知)。 |
 | 延后通知 | `H` | `H` | 在从收件箱打开的任务上，延后它并打开下一条；已延后的任务则让它现在回来。 |
@@ -50,6 +55,8 @@ import { Step, Steps } from "fumadocs-ui/components/steps";
 | 语音输入 | 未设置 | 未设置 | 仅 Desktop；先在设置 → 语音输入中开启。见[语音输入](/desktop-app#语音输入)。 |
 | 后退 | `⌘[` | `Ctrl+[` | |
 | 前进 | `⌘]` | `Ctrl+]` | |
+
+切换区域的键在输入时也有效。焦点进入的区域会短暂显示边框。焦点在列表里时，`↑` / `↓` 在行之间移动，`Home` / `End` 跳到首尾；在其他地方仍滚动当前焦点所在处。在列表或正文中按 `Esc` 回到输入框；没有输入框的页面上不做任何事。
 
 单键快捷键（`C`、`E`、`H`）和后退、前进在输入框里不起作用，避免打字时误触。
 
@@ -94,7 +101,7 @@ import { Step, Steps } from "fumadocs-ui/components/steps";
 
 - 已经分给其他操作的组合。
 - 浏览器、桌面窗口或系统占用的组合，例如 `⌘W`、`⌘R`（重命名聊天或任务除外）、`⌘Q`、`⌘,`、复制粘贴这类编辑键、`⌘0`–`⌘9` 和缩放键。网页版里 `⌘P`、`⌘L`、`⌘T`、`⌘N`、`⌘D`、`⌘U` 也不能用，桌面端可以。Windows 和 Linux 上带 Win / Super 键的组合都不能用。
-- 打开搜索、聊天窗、在任务中查找这类在输入框里也生效的操作，必须带 `⌘`、`Ctrl` 或 `Control`，否则打字时会误触。 语音输入还允许 `Option` / `Alt` 加 `Space` 等不输入文字的按键，但不能使用已被占用的组合。
+- 打开搜索、聊天窗、在任务中查找这类在输入框里也生效的操作，必须带 `⌘`、`Ctrl` 或 `Control`，否则打字时会误触。 语音输入还允许 `Option` / `Alt` 加 `Space` 等不输入文字的按键，但不能使用已被占用的组合。 `F8` 这类功能键不输入文字，单独或加 `Shift` 都可以使用。`⇧⌘L` 在浏览器中也可用，其他 `⌘L` 组合不行。
 - **发送**只能是 `↵` 或 `⌘↵`。
 
 <Callout>

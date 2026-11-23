@@ -438,6 +438,26 @@
         "label": "重命名聊天或任务",
         "description": "编辑当前聊天或任务的标题，并选中全部文字。"
       },
+      "focusList": {
+        "label": "聚焦列表",
+        "description": "将键盘焦点移到页面旁的列表：聊天、收件箱通知或侧边栏。"
+      },
+      "focusBody": {
+        "label": "聚焦正文",
+        "description": "将键盘焦点移到正在阅读的内容，方向键随后滚动它。"
+      },
+      "focusComposer": {
+        "label": "聚焦输入框",
+        "description": "将键盘焦点移到消息或评论输入框。"
+      },
+      "focusNextRegion": {
+        "label": "下一个区域",
+        "description": "将键盘焦点移到列表、正文、输入框中的下一个。"
+      },
+      "focusPreviousRegion": {
+        "label": "上一个区域",
+        "description": "将键盘焦点移到列表、正文、输入框中的上一个。"
+      },
       "findInIssue": {
         "label": "在任务中查找",
         "description": "搜索当前打开的任务详情。"

@@ -444,6 +444,26 @@
         "label": "Rename chat or issue",
         "description": "Edit the title of the chat or issue on screen, with the text selected."
       },
+      "focusList": {
+        "label": "Focus list",
+        "description": "Move keyboard focus to the list beside the page: chats, inbox notifications, or the sidebar."
+      },
+      "focusBody": {
+        "label": "Focus content",
+        "description": "Move keyboard focus to what you are reading, so arrow keys scroll it."
+      },
+      "focusComposer": {
+        "label": "Focus message box",
+        "description": "Move keyboard focus to the message or comment box."
+      },
+      "focusNextRegion": {
+        "label": "Next pane",
+        "description": "Move keyboard focus to the next of list, content and message box."
+      },
+      "focusPreviousRegion": {
+        "label": "Previous pane",
+        "description": "Move keyboard focus to the previous of list, content and message box."
+      },
       "findInIssue": {
         "label": "Find in issue",
         "description": "Search within the open issue detail."

@@ -1,7 +1,7 @@
-// Modified by honki12345, 2026: cover dragging pinned chats into order (CALA-316).
+// Modified by honki12345, 2026: cover dragging pinned chats into order (CALA-316), Home/End over the windowed list (CALA-332).
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VirtuosoMockContext } from "react-virtuoso";
 import { I18nProvider } from "@multica/core/i18n/react";
@@ -326,6 +326,66 @@ describe("ChatThreadList row keyboard semantics", () => {
     );
 
     expect(onSelectSession).not.toHaveBeenCalled();
+  });
+
+  it("takes Home and End to the ends of a long history, not of the rows mounted so far", async () => {
+    // jsdom does not scroll; let the windowed list's scroller move and report it.
+    HTMLElement.prototype.scrollTo = function (this: HTMLElement, options?: ScrollToOptions | number) {
+      if (typeof options === "object" && options.top != null) this.scrollTop = options.top;
+      fireEvent.scroll(this);
+    } as HTMLElement["scrollTo"];
+    renderList(null, {
+      renderedSessions: Array.from({ length: 100 }, (_, i) =>
+        makeSession({ id: `h${i}`, updated_at: new Date(Date.UTC(2026, 0, 1, 0, 100 - i)).toISOString() }),
+      ),
+    });
+    expect(screen.queryByText("Chat h99")).not.toBeInTheDocument();
+    const scroller = screen.getByTestId("virtuoso-scroller");
+    Object.defineProperty(scroller, "scrollHeight", { configurable: true, value: 100 * 56 });
+    Object.defineProperty(scroller, "clientHeight", { configurable: true, value: 560 });
+    Object.defineProperty(scroller, "offsetHeight", { configurable: true, value: 560 });
+
+    const first = screen.getByText("Chat h0").closest<HTMLElement>("[data-focus-row]")!;
+    first.focus();
+    fireEvent.keyDown(first, { key: "End" });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByText("Chat h99").closest("[data-focus-row]")));
+
+    fireEvent.keyDown(document.activeElement!, { key: "Home" });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByText("Chat h0").closest("[data-focus-row]")));
+    delete (HTMLElement.prototype as Partial<HTMLElement>).scrollTo;
+  });
+
+  it("drops a pending End once focus has left the row it was pressed on", async () => {
+    // A scroller that does not report the scroll yet: the end row mounts later.
+    let reportScroll = () => {};
+    HTMLElement.prototype.scrollTo = function (this: HTMLElement, options?: ScrollToOptions | number) {
+      if (typeof options === "object" && options.top != null) this.scrollTop = options.top;
+      reportScroll = () => fireEvent.scroll(this);
+    } as HTMLElement["scrollTo"];
+    render(
+      <>
+        <input aria-label="composer" />
+      </>,
+    );
+    renderList(null, {
+      renderedSessions: Array.from({ length: 100 }, (_, i) =>
+        makeSession({ id: `h${i}`, updated_at: new Date(Date.UTC(2026, 0, 1, 0, 100 - i)).toISOString() }),
+      ),
+    });
+    const scroller = screen.getByTestId("virtuoso-scroller");
+    Object.defineProperty(scroller, "scrollHeight", { configurable: true, value: 100 * 56 });
+    Object.defineProperty(scroller, "clientHeight", { configurable: true, value: 560 });
+    Object.defineProperty(scroller, "offsetHeight", { configurable: true, value: 560 });
+
+    const first = screen.getByText("Chat h0").closest<HTMLElement>("[data-focus-row]")!;
+    first.focus();
+    fireEvent.keyDown(first, { key: "End" });
+    const composer = screen.getByLabelText("composer");
+    composer.focus();
+    act(() => reportScroll());
+    await waitFor(() => expect(screen.getByText("Chat h99")).toBeInTheDocument());
+    expect(document.activeElement).toBe(composer);
+    delete (HTMLElement.prototype as Partial<HTMLElement>).scrollTo;
   });
 });
 

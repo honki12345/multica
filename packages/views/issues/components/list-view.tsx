@@ -1,5 +1,6 @@
 "use client";
 
+// Modified by honki12345, 2026: the issue list is the body focus region of the issues page (CALA-332).
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import { useWorkspaceId } from "@multica/core/hooks";
 
@@ -426,7 +427,7 @@ function ListViewImpl({
 
   if (!dragEnabled) {
     return (
-      <div ref={attachScroller} data-tab-scroll-root="list" className="flex-1 min-h-0 overflow-y-auto p-2 pt-0">
+      <div ref={attachScroller} data-tab-scroll-root="list" data-focus-region="body" tabIndex={-1} className="flex-1 min-h-0 overflow-y-auto p-2 pt-0 outline-none">
         {content}
       </div>
     );
@@ -441,7 +442,7 @@ function ListViewImpl({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div ref={attachScroller} data-tab-scroll-root="list" className="flex-1 min-h-0 overflow-y-auto p-2 pt-0">
+      <div ref={attachScroller} data-tab-scroll-root="list" data-focus-region="body" tabIndex={-1} className="flex-1 min-h-0 overflow-y-auto p-2 pt-0 outline-none">
         {content}
       </div>
 

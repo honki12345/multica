@@ -5,6 +5,7 @@ description: Rechercher et exécuter des commandes avec ⌘K, consulter et modif
 
 {/* Modified by honki12345, 2026: document the previous/next sent-message chat shortcuts (CALA-281), wakeup stops (CALA-318), the chat/inbox list step keys (CALA-328). */}
 {/* Modified by honki12345, 2026: document the previous/next sent-message chat shortcuts (CALA-281), wakeup stops (CALA-318), rename title shortcut (CALA-327). */}
+{/* Modified by honki12345, 2026: document the previous/next sent-message chat shortcuts (CALA-281), wakeup stops (CALA-318), focus region keys (CALA-332). */}
 
 import { Callout } from "fumadocs-ui/components/callout";
 import { Step, Steps } from "fumadocs-ui/components/steps";
@@ -43,6 +44,10 @@ Choisir un résultat l'ouvre. Maintenez `⌘` (`Ctrl` sous Windows et Linux) en 
 | Discussion ou notification précédente | `⇧⌘[` | `Ctrl+Shift+[` | Ouvre la discussion au-dessus de celle ouverte dans la liste de la page Discussions, ou la notification au-dessus dans la boîte de réception. Fonctionne pendant la saisie, et le curseur reste en place. Dans Chrome et Safari sur macOS, le navigateur garde cette touche pour changer d'onglet ; utilisez l'application de bureau ou changez la touche. |
 | Discussion ou notification suivante | `⇧⌘]` | `Ctrl+Shift+]` | Ouvre la discussion ou la notification en dessous. S'arrête au bout de la liste. |
 | Renommer la discussion ou la tâche | `⌘R` | `Ctrl+R` | Sur une discussion ou une tâche, place le curseur dans son titre, texte sélectionné. Sur une discussion, `↵` enregistre et `Esc` annule ; le titre d'une tâche s'enregistre quand vous quittez le champ, `Esc` compris, comme après un clic. Fonctionne pendant la saisie. Agit sur la fenêtre flottante si votre curseur y est. Ailleurs, `⌘R` garde son sens habituel : le navigateur recharge la page, l'application de bureau ne fait rien. |
+| Aller à la liste | `⇧⌘H` | `Ctrl+Shift+H` | Place le focus clavier sur la liste à côté de la page (discussions, notifications de la boîte de réception, barre latérale), sur la ligne ouverte. Appuyez de nouveau pour passer de la barre latérale à la liste propre à la page. Non attribué dans l'application web : Safari ouvre sa page d'accueil avec `⇧⌘H`. |
+| Aller au contenu | `⇧⌘L` | `Ctrl+Shift+L` | Place le focus clavier sur ce que vous lisez, pour que `↑` / `↓` et `Page Up` / `Page Down` le fassent défiler au lieu de la liste. |
+| Aller au champ de message | `⌘L` | `Ctrl+L` | Place le focus clavier dans le champ de message de la discussion ou le champ de commentaire de la tâche. Non attribué dans l'application web, où les navigateurs l'utilisent pour la barre d'adresse. |
+| Volet suivant / précédent | `F8` / `⇧F8` | `F8` / `Shift+F8` | Fait passer le focus clavier de la liste au contenu puis au champ de message, et revient au début. Sur un clavier Mac, il peut falloir `Fn`. |
 | Rechercher dans la tâche | `⌘F` | `Ctrl+F` | Voir plus bas. |
 | Archiver la notification | `E` | `E` | Sur une tâche ouverte depuis la boîte de réception, archive sa notification et ouvre la suivante. Dans les notifications archivées, restaure celle qui est ouverte. Voir [Boîte de réception](/inbox#traiter-les-notifications). |
 | Reporter la notification | `H` | `H` | Sur une tâche ouverte depuis la boîte de réception, la reporte et ouvre la suivante. Sur une tâche reportée, la fait revenir maintenant. |
@@ -50,6 +55,8 @@ Choisir un résultat l'ouvre. Maintenez `⌘` (`Ctrl` sous Windows et Linux) en 
 | Saisie vocale | Non défini | Non défini | Desktop uniquement ; activez-la d’abord dans Paramètres → Saisie vocale. Voir [Saisie vocale](/desktop-app#saisie-vocale). |
 | Revenir en arrière | `⌘[` | `Ctrl+[` | |
 | Avancer | `⌘]` | `Ctrl+]` | |
+
+Les touches qui changent de volet fonctionnent pendant la saisie. Le volet qui reçoit le focus est encadré un instant. Quand la liste a le focus, `↑` / `↓` passent d'une ligne à l'autre et `Home` / `End` vont au début et à la fin ; ailleurs, ils font toujours défiler ce qui a le focus. `Esc` dans la liste ou le contenu revient au champ de message ; sur une page sans champ de message, il ne fait rien.
 
 Les raccourcis à une seule touche (`C`, `E`, `H`) et Revenir en arrière / Avancer ne réagissent pas pendant que vous tapez dans un champ.
 
@@ -94,7 +101,7 @@ L'enregistrement refuse certaines combinaisons et en indique la raison sous les 
 
 - une combinaison déjà attribuée à une autre action ;
 - les combinaisons réservées au navigateur, à la fenêtre de bureau ou au système, comme `⌘W`, `⌘R` (sauf pour Renommer la discussion ou la tâche), `⌘Q`, `⌘,`, les touches d'édition (copier, coller…), `⌘0`–`⌘9` et les touches de zoom. Dans un navigateur, `⌘P`, `⌘L`, `⌘T`, `⌘N`, `⌘D` et `⌘U` sont aussi exclus ; l'application de bureau les accepte. Sous Windows et Linux, toute combinaison avec la touche Windows / Super est refusée ;
-- les actions qui fonctionnent aussi dans un champ de saisie, comme Ouvrir la recherche, la fenêtre de discussion ou Rechercher dans la tâche, exigent `⌘`, `Ctrl` ou `Control`, pour ne jamais se déclencher pendant la frappe ; La saisie vocale accepte aussi `Option` / `Alt` avec une touche non imprimable, comme `Space`, sauf si la combinaison est réservée.
+- les actions qui fonctionnent aussi dans un champ de saisie, comme Ouvrir la recherche, la fenêtre de discussion ou Rechercher dans la tâche, exigent `⌘`, `Ctrl` ou `Control`, pour ne jamais se déclencher pendant la frappe ; La saisie vocale accepte aussi `Option` / `Alt` avec une touche non imprimable, comme `Space`, sauf si la combinaison est réservée. Une touche de fonction comme `F8`, seule ou avec `Shift`, est aussi acceptée, car elle ne tape rien. `⇧⌘L` est libre dans le navigateur aussi ; les autres variantes de `⌘L` ne le sont pas.
 - **Envoyer** ne peut être que `↵` ou `⌘↵`.
 
 <Callout>

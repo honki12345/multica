@@ -2,6 +2,7 @@
 
 // Modified by honki12345, 2026: rename the issue title with the renameTitle shortcut (CALA-327).
 // Modified by honki12345, 2026: the opened issue takes the scroll keys from the link that opened it (CALA-330).
+// Modified by honki12345, 2026: mark the issue body as a keyboard focus region (CALA-332).
 
 import { subIssueCreateDefaults } from "@multica/core/issues";
 import {
@@ -3790,8 +3791,10 @@ export function IssueDetail({ issueId, onDelete, onDone, onUnsubscribeArchive, d
         <div
           ref={attachScrollContainer}
           data-tab-scroll-root={isPeek ? undefined : scrollContainerKey}
-          // Focusable but not a Tab stop: a click on the body's text gives it
-          // the scroll keys instead of the panel link that opened the issue.
+          data-focus-region="body"
+          // Focusable but not a Tab stop: a click on the body's text, a
+          // focus region key or Esc gives it the scroll keys instead of the
+          // panel link that opened the issue.
           tabIndex={-1}
           className="@container relative flex-1 overflow-y-auto outline-none [scrollbar-gutter:stable_both-edges]"
           onContextMenu={pageMenu.onContextMenu}

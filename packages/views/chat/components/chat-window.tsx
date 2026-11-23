@@ -2,6 +2,7 @@
 
 // Modified by honki12345, 2026: rename the open chat with the renameTitle shortcut (CALA-327).
 // Modified by honki12345, 2026: picking a chat from the history hands keyboard focus to the conversation (CALA-330).
+// Modified by honki12345, 2026: the floating window keeps its own focus regions (CALA-332).
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -250,6 +251,7 @@ export function ChatWindow() {
   return (
     <motion.div
       data-mc="chat-window"
+      data-focus-scope=""
       ref={windowRef}
       inert={!isOpen}
       aria-hidden={!isOpen}
